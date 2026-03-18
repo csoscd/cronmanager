@@ -937,6 +937,101 @@ htmlspecialchars($value, ENT_QUOTES, 'UTF-8')
 
 No raw `echo` of user-controlled data occurs in templates.
 
+### CSRF protection
+
+Every state-changing request (POST / PUT / PATCH / DELETE) on a protected route is validated
+against a per-session CSRF token.
+
+**Token generation** (`SessionManager::getCsrfToken()`):
+```php
+$token = bin2hex(random_bytes(32));   // 64 hex characters
+$_SESSION[self::KEY_CSRF] = $token;
+```
+
+**Validation** (`Router::dispatch()`):
+```php
+$submitted = (string) ($_POST['_csrf'] ?? '');
+if (!SessionManager::validateCsrfToken($submitted)) {
+    $this->render403();
+    return;
+}
+```
+
+`validateCsrfToken()` uses `hash_equals()` to prevent timing attacks.
+
+All templates include the token as a hidden field:
+```html
+<input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES) ?>">
+```
+
+`BaseController::render()` injects `csrf_token` automatically into every template data array,
+so individual controllers do not need to pass it explicitly.
+
+---
+
+### Login rate limiting
+
+`SessionManager` tracks failed login attempts per IP address to limit brute-force attacks.
+
+| Setting | Value | Constant |
+|---|---|---|
+| Max attempts | 5 | `RATE_MAX_ATTEMPTS` |
+| Lockout duration | 900 s (15 min) | `RATE_LOCK_SECONDS` |
+
+The IP is stored as `hash('sha256', $ip)` in the session to avoid logging raw addresses.
+
+```php
+if (!SessionManager::isLoginAllowed($ip)) {
+    $remaining = (int) ceil(SessionManager::getLockoutRemaining($ip) / 60);
+    // flash error + redirect /login
+}
+// ... after failed auth:
+SessionManager::recordLoginFailure($ip);
+// ... after successful auth:
+SessionManager::clearLoginFailures($ip);
+```
+
+**Limitation**: Rate data is stored in the PHP session. An attacker opening a new browser
+(new session) or rotating IPs bypasses the counter. A shared store (APCu / Redis / DB table)
+is required for production-grade limiting.
+
+---
+
+### HTTP security response headers
+
+Sent by `web/index.php` before any output on every request:
+
+| Header | Value |
+|---|---|
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'` |
+
+`'unsafe-inline'` for scripts is necessary for the Tailwind dark-mode detection snippet and
+`tailwind.config` block. For a stricter policy, move those snippets to external files and use
+nonce-based CSP.
+
+---
+
+### Startup HMAC secret validation
+
+On startup both `web/index.php` and `agent/agent.php` check the configured HMAC secret:
+
+```php
+if ($secret === '' || $secret === 'change-me-to-a-secure-random-string') {
+    $logger->critical('SECURITY: hmac_secret is empty or default ...');
+} elseif (strlen($secret) < 32) {
+    $logger->warning('SECURITY: hmac_secret is shorter than 32 characters ...');
+}
+```
+
+This ensures misconfigured instances are visible in the log immediately after start, before
+any requests are processed.
+
+---
+
 ### OIDC PKCE + state
 
 - `code_verifier` is a cryptographically random 64-byte base64url string

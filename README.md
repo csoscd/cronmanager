@@ -105,6 +105,12 @@ A MariaDB container (`cronmanager-db`) stores users, job metadata, tags, and exe
 The Docker image used for the web container (`cs1711/cs_php-nginx-fpm:latest-alpine`)
 includes PHP-FPM 8.4 and Nginx.
 
+> **Alternative images**: Any Docker image that bundles PHP-FPM **8.4** (or later 8.x) with
+> Nginx (or Apache) and the required PHP extensions (`pdo_mysql`, `json`, `mbstring`, `openssl`,
+> `curl`) is supported. Official images such as `php:8.4-fpm-alpine` combined with a separate
+> Nginx container, or community images like `webdevops/php-nginx:8.4-alpine`, are equally valid.
+> Update the `image:` field in `docker-compose.yml` accordingly.
+
 ---
 
 ## Quick Start

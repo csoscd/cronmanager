@@ -1,0 +1,36 @@
+{
+    "database": {
+        "host": "cronmanager-db",
+        "port": 3306,
+        "name": "cronmanager",
+        "user": "cronmanager",
+        "password": "cronmanagerpassword"
+    },
+    "agent": {
+        "url": "http://host.docker.internal:8865",
+        "hmac_secret": "change-me-to-a-secure-random-string",
+        "timeout": 10
+    },
+    "logging": {
+        "path": "/var/www/log/cronmanager-web.log",
+        "level": "info",
+        "max_days": 30
+    },
+    "session": {
+        "lifetime": 3600,
+        "name": "cronmanager_sess"
+    },
+    "i18n": {
+        "default_language": "en",
+        "available": ["en", "de"]
+    },
+    "auth": {
+        "oidc_enabled": false,
+        "oidc_provider_url": "https://auth.example.com/application/o/cronmanager/",
+        "oidc_client_id": "",
+        "oidc_client_secret": "",
+        "oidc_redirect_uri": "https://cronmanager.example.com/auth/callback",
+        "oidc_ssl_verify": true,
+        "oidc_ssl_ca_bundle": ""
+    }
+}

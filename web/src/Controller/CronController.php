@@ -1,0 +1,690 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Cronmanager Web UI – Cron Job Controller
+ *
+ * Handles all CRUD operations for cron jobs, proxying requests through the
+ * host agent.  Admin-only actions (create, edit, delete) are enforced at the
+ * router level before this controller is invoked.
+ *
+ * Routes handled:
+ *   GET  /crons                – list all jobs (with optional ?tag= / ?user= filters)
+ *   GET  /crons/import         – show unmanaged crontab entries for import [admin]
+ *   POST /crons/import         – bulk-import selected unmanaged entries [admin]
+ *   GET  /crons/new            – show create form  [admin]
+ *   POST /crons                – process create form [admin]
+ *   GET  /crons/{id}           – show job detail + execution history
+ *   GET  /crons/{id}/edit      – show edit form  [admin]
+ *   POST /crons/{id}/edit      – process edit form [admin]
+ *   POST /crons/{id}/delete    – delete job  [admin]
+ *
+ * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+ * @license GNU General Public License version 3 or later
+ */
+
+namespace Cronmanager\Web\Controller;
+
+use Cronmanager\Web\Database\Connection;
+use Cronmanager\Web\Http\Response;
+use Cronmanager\Web\Repository\UserPreferenceRepository;
+use Cronmanager\Web\Session\SessionManager;
+
+/**
+ * Class CronController
+ *
+ * All action methods receive the route path parameters as an associative
+ * array and return void – output is produced via $this->render().
+ */
+class CronController extends BaseController
+{
+    // -------------------------------------------------------------------------
+    // Actions
+    // -------------------------------------------------------------------------
+
+    /**
+     * List all cron jobs, with optional tag and user filters.
+     *
+     * Query parameters forwarded to the agent:
+     *   ?tag=  – filter by tag name
+     *   ?user= – filter by linux_user
+     *
+     * @param array<string,string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function index(array $params): void
+    {
+        $agent         = $this->agentClient();
+        $filterTag    = trim((string) ($_GET['tag']    ?? ''));
+        $filterUser   = trim((string) ($_GET['user']   ?? ''));
+        $filterTarget = trim((string) ($_GET['target'] ?? ''));
+        $filterSearch = trim((string) ($_GET['search'] ?? ''));
+
+        // ------------------------------------------------------------------
+        // Resolve page-size preference
+        // ------------------------------------------------------------------
+
+        $userId = SessionManager::getUserId();
+        $prefs  = $userId !== null
+            ? new UserPreferenceRepository(Connection::getInstance()->getPdo())
+            : null;
+
+        // If the request carries an explicit ?limit= value, persist it.
+        $rawLimit = $_GET['limit'] ?? null;
+        if ($rawLimit !== null && $prefs !== null && $userId !== null) {
+            $requestedLimit = (int) $rawLimit;
+            $prefs->setCronListPageSize($userId, $requestedLimit);
+        }
+
+        // Read effective page size (0 = show all).
+        $pageSize = ($prefs !== null && $userId !== null)
+            ? $prefs->getCronListPageSize($userId)
+            : UserPreferenceRepository::DEFAULT_PAGE_SIZE;
+
+        // Current page (1-based).
+        $currentPage = max(1, (int) ($_GET['page'] ?? 1));
+
+        // ------------------------------------------------------------------
+        // Build agent query params
+        // ------------------------------------------------------------------
+
+        $query = [];
+        if ($filterTag    !== '') { $query['tag']    = $filterTag; }
+        if ($filterUser   !== '') { $query['user']   = $filterUser; }
+        if ($filterTarget !== '') { $query['target'] = $filterTarget; }
+
+        try {
+            // Always fetch all jobs for building the filter dropdowns (users/sshHosts),
+            // then fetch filtered jobs for the table when any filter is active.
+            $allJobs  = $agent->get('/crons')['data'] ?? [];
+            $jobs     = ($query !== []) ? ($agent->get('/crons', $query)['data'] ?? []) : $allJobs;
+            $allTags  = $agent->get('/tags')['data'] ?? [];
+            // Only show tags that are actually in use in the filter dropdown
+            $tags = array_values(array_filter($allTags, static fn(array $t): bool => ($t['job_count'] ?? 0) > 0));
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::index: agent request failed', [
+                'message' => $e->getMessage(),
+            ]);
+            $this->renderError(503, 'error_agent_unavailable', '/crons');
+            return;
+        }
+
+        // Apply free-text search filter (description + command, case-insensitive substring)
+        if ($filterSearch !== '') {
+            $needle = mb_strtolower($filterSearch);
+            $jobs   = array_values(array_filter($jobs, static function (array $job) use ($needle): bool {
+                $desc    = mb_strtolower((string) ($job['description'] ?? ''));
+                $command = mb_strtolower((string) ($job['command']     ?? ''));
+                return str_contains($desc, $needle) || str_contains($command, $needle);
+            }));
+        }
+
+        // Collect unique users and all unique targets from the full unfiltered list
+        $users          = [];
+        $allTargets     = [];  // All distinct target values (for filter dropdown)
+        foreach ($allJobs as $job) {
+            $u = (string) ($job['linux_user'] ?? '');
+            if ($u !== '' && !in_array($u, $users, strict: true)) {
+                $users[] = $u;
+            }
+            foreach ((array) ($job['targets'] ?? []) as $t) {
+                $t = (string) $t;
+                if ($t !== '' && !in_array($t, $allTargets, strict: true)) {
+                    $allTargets[] = $t;
+                }
+            }
+        }
+        sort($users);
+        sort($allTargets);
+
+        // ------------------------------------------------------------------
+        // Paginate the filtered jobs array
+        // ------------------------------------------------------------------
+
+        $totalJobs  = count($jobs);
+        $totalPages = ($pageSize > 0) ? (int) ceil($totalJobs / $pageSize) : 1;
+        $totalPages = max(1, $totalPages);
+
+        // Clamp current page to valid range.
+        $currentPage = min($currentPage, $totalPages);
+
+        if ($pageSize > 0) {
+            $offset    = ($currentPage - 1) * $pageSize;
+            $pagedJobs = array_slice($jobs, $offset, $pageSize);
+        } else {
+            // Show all
+            $pagedJobs   = $jobs;
+            $currentPage = 1;
+        }
+
+        $this->render('cron/list.php', $this->translator()->t('crons_title'), [
+            'jobs'          => $pagedJobs,
+            'tags'          => $tags,
+            'filterTag'     => $filterTag,
+            'filterUser'    => $filterUser,
+            'filterTarget'  => $filterTarget,
+            'filterSearch'  => $filterSearch,
+            'users'         => $users,
+            'allTargets'    => $allTargets,
+            'isAdmin'       => SessionManager::hasRole('admin'),
+            'pageSize'      => $pageSize,
+            'currentPage'   => $currentPage,
+            'totalJobs'     => $totalJobs,
+            'totalPages'    => $totalPages,
+        ], '/crons');
+    }
+
+    /**
+     * Show the create-new-job form.
+     *
+     * @param array<string,string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function create(array $params): void
+    {
+        try {
+            $tags = $this->agentClient()->get('/tags')['data'] ?? [];
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::create: agent request failed', [
+                'message' => $e->getMessage(),
+            ]);
+            $this->renderError(503, 'error_agent_unavailable', '/crons');
+            return;
+        }
+
+        // Fetch SSH hosts for all known users so the JS can populate the
+        // SSH host selector dynamically when the linux_user field changes.
+        $sshHostsByUser = $this->fetchSshHostsByUser();
+
+        $this->render('cron/form.php', $this->translator()->t('cron_add'), [
+            'job'            => null,
+            'tags'           => $tags,
+            'sshHosts'       => [],
+            'sshHostsByUser' => json_encode($sshHostsByUser, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'error'          => null,
+            'isEdit'         => false,
+        ], '/crons');
+    }
+
+    /**
+     * Process the create-job form submission.
+     *
+     * On success: redirects to /crons.
+     * On error:   re-renders the form with an error message.
+     *
+     * @param array<string,string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function store(array $params): void
+    {
+        $data = $this->buildJobPayload($_POST);
+
+        try {
+            $this->agentClient()->post('/crons', $data);
+        } catch (\RuntimeException $e) {
+            $this->logger->warning('CronController::store: failed to create job', [
+                'message' => $e->getMessage(),
+            ]);
+
+            // Re-render form with error
+            try {
+                $tags = $this->agentClient()->get('/tags')['data'] ?? [];
+            } catch (\RuntimeException) {
+                $tags = [];
+            }
+
+            $sshHostsByUser = $this->fetchSshHostsByUser();
+
+            $this->render('cron/form.php', $this->translator()->t('cron_add'), [
+                'job'            => $_POST,
+                'tags'           => $tags,
+                'sshHosts'       => [],
+                'sshHostsByUser' => json_encode($sshHostsByUser, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'error'          => $e->getMessage(),
+                'isEdit'         => false,
+            ], '/crons');
+            return;
+        }
+
+        $this->logger->info('CronController::store: job created', [
+            'linux_user' => $data['linux_user'] ?? '',
+            'schedule'   => $data['schedule']   ?? '',
+        ]);
+
+        (new Response())->redirect('/crons');
+    }
+
+    /**
+     * Show the detail page for a single job, including execution history.
+     *
+     * @param array<string,string> $params Path parameters: ['id' => string].
+     *
+     * @return void
+     */
+    public function show(array $params): void
+    {
+        $id    = (string) ($params['id'] ?? '');
+        $agent = $this->agentClient();
+
+        try {
+            $job     = $agent->get('/crons/' . rawurlencode($id));
+            $history = $agent->get('/history', ['job_id' => $id, 'limit' => 20])['data'] ?? [];
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::show: agent request failed', [
+                'id'      => $id,
+                'message' => $e->getMessage(),
+            ]);
+            $this->renderError(503, 'error_agent_unavailable', '/crons');
+            return;
+        }
+
+        if (empty($job)) {
+            $this->renderError(404, 'error_404', '/crons');
+            return;
+        }
+
+        $this->render('cron/detail.php', (string) ($job['description'] ?? "Job #{$id}"), [
+            'job'     => $job,
+            'history' => $history,
+            'isAdmin' => SessionManager::hasRole('admin'),
+        ], '/crons');
+    }
+
+    /**
+     * Show the edit form for an existing job.
+     *
+     * @param array<string,string> $params Path parameters: ['id' => string].
+     *
+     * @return void
+     */
+    public function edit(array $params): void
+    {
+        $id    = (string) ($params['id'] ?? '');
+        $agent = $this->agentClient();
+
+        try {
+            $job  = $agent->get('/crons/' . rawurlencode($id));
+            $tags = $agent->get('/tags')['data'] ?? [];
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::edit: agent request failed', [
+                'id'      => $id,
+                'message' => $e->getMessage(),
+            ]);
+            $this->renderError(503, 'error_agent_unavailable', '/crons');
+            return;
+        }
+
+        if (empty($job)) {
+            $this->renderError(404, 'error_404', '/crons');
+            return;
+        }
+
+        // Fetch SSH hosts for the specific user of this job
+        $sshHosts = [];
+        try {
+            $sshHostsResponse = $this->agentClient()->get('/ssh-hosts', ['user' => $job['linux_user']]);
+            $sshHosts = $sshHostsResponse['data'] ?? [];
+        } catch (\RuntimeException) {
+            // Non-fatal: SSH hosts list will be empty
+            $sshHosts = [];
+        }
+
+        // Selected targets from job data; fall back to ['local'] for old jobs
+        $selectedTargets = isset($job['targets']) && is_array($job['targets']) && $job['targets'] !== []
+            ? $job['targets']
+            : ['local'];
+
+        $this->render('cron/form.php', $this->translator()->t('cron_edit'), [
+            'job'             => $job,
+            'tags'            => $tags,
+            'sshHosts'        => $sshHosts,
+            'selectedTargets' => $selectedTargets,
+            'sshHostsByUser'  => json_encode([], JSON_UNESCAPED_UNICODE),
+            'error'           => null,
+            'isEdit'          => true,
+        ], '/crons');
+    }
+
+    /**
+     * Process the edit-job form submission.
+     *
+     * On success: redirects to /crons/{id}.
+     * On error:   re-renders the form with an error message.
+     *
+     * @param array<string,string> $params Path parameters: ['id' => string].
+     *
+     * @return void
+     */
+    public function update(array $params): void
+    {
+        $id   = (string) ($params['id'] ?? '');
+        $data = $this->buildJobPayload($_POST);
+
+        try {
+            $this->agentClient()->put('/crons/' . rawurlencode($id), $data);
+        } catch (\RuntimeException $e) {
+            $this->logger->warning('CronController::update: failed to update job', [
+                'id'      => $id,
+                'message' => $e->getMessage(),
+            ]);
+
+            try {
+                $job  = $this->agentClient()->get('/crons/' . rawurlencode($id));
+                $tags = $this->agentClient()->get('/tags')['data'] ?? [];
+            } catch (\RuntimeException) {
+                $job  = $_POST;
+                $tags = [];
+            }
+
+            $mergedJob  = array_merge((array) $job, $_POST);
+            $editUser   = (string) ($mergedJob['linux_user'] ?? '');
+            $sshHosts   = [];
+            if ($editUser !== '') {
+                try {
+                    $sshHostsResponse = $this->agentClient()->get('/ssh-hosts', ['user' => $editUser]);
+                    $sshHosts = $sshHostsResponse['data'] ?? [];
+                } catch (\RuntimeException) {
+                    $sshHosts = [];
+                }
+            }
+
+            $this->render('cron/form.php', $this->translator()->t('cron_edit'), [
+                'job'            => $mergedJob,
+                'tags'           => $tags,
+                'sshHosts'       => $sshHosts,
+                'sshHostsByUser' => json_encode([], JSON_UNESCAPED_UNICODE),
+                'error'          => $e->getMessage(),
+                'isEdit'         => true,
+            ], '/crons');
+            return;
+        }
+
+        $this->logger->info('CronController::update: job updated', ['id' => $id]);
+
+        (new Response())->redirect('/crons/' . rawurlencode($id));
+    }
+
+    /**
+     * GET /crons/import — show list of unmanaged crontab entries for a user
+     * to allow converting them to managed jobs.
+     *
+     * Query parameters:
+     *   ?user= – Linux user name to inspect (optional; shows user selector when absent)
+     *
+     * @param array<string,string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function importList(array $params): void
+    {
+        $agent        = $this->agentClient();
+        $selectedUser = trim((string) ($_GET['user'] ?? ''));
+        if ($selectedUser === '') {
+            $selectedUser = null;
+        }
+
+        // Fetch all Linux users that have any crontab entries (managed or not)
+        $users = [];
+        try {
+            $response = $agent->get('/crons/users');
+            $users    = $response['data'] ?? [];
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::importList: failed to fetch crontab users', [
+                'message' => $e->getMessage(),
+            ]);
+            // Non-fatal: continue with an empty users list
+        }
+
+        // Fetch tags for the import form
+        $tags = [];
+        try {
+            $tags = $agent->get('/tags')['data'] ?? [];
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::importList: failed to fetch tags', [
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        // If a user is selected, fetch their unmanaged crontab entries
+        $unmanagedEntries = [];
+        if ($selectedUser !== null) {
+            try {
+                $response         = $agent->get('/crons/unmanaged', ['user' => $selectedUser]);
+                $unmanagedEntries = $response['data'] ?? [];
+            } catch (\RuntimeException $e) {
+                $this->logger->error('CronController::importList: failed to fetch unmanaged entries', [
+                    'user'    => $selectedUser,
+                    'message' => $e->getMessage(),
+                ]);
+                $this->renderError(503, 'error_agent_unavailable', '/crons');
+                return;
+            }
+        }
+
+        $this->render('cron/import.php', $this->translator()->t('import_title'), [
+            'users'            => $users,
+            'selectedUser'     => $selectedUser,
+            'unmanagedEntries' => $unmanagedEntries,
+            'tags'             => $tags,
+            'isAdmin'          => SessionManager::hasRole('admin'),
+        ], '/crons');
+    }
+
+    /**
+     * POST /crons/import — bulk-import selected unmanaged entries as managed jobs.
+     *
+     * Expected POST fields:
+     *   user              – Linux user name the entries belong to
+     *   schedule[i]       – Cron schedule expression for entry i
+     *   command[i]        – Command for entry i
+     *   description[i]    – Optional description for entry i
+     *   tags[i]           – Comma-separated tag string for entry i
+     *   selected[]        – Array of selected indices (as strings)
+     *
+     * On success: redirects to /crons with a flash message.
+     *
+     * @param array<string,string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function importStore(array $params): void
+    {
+        $user     = trim((string) ($_POST['user'] ?? ''));
+        $selected = (array) ($_POST['selected'] ?? []);
+
+        if ($user === '' || empty($selected)) {
+            (new Response())->redirect('/crons/import');
+            return;
+        }
+
+        $schedules    = (array) ($_POST['schedule']    ?? []);
+        $commands     = (array) ($_POST['command']     ?? []);
+        $descriptions = (array) ($_POST['description'] ?? []);
+        $tagsMap      = (array) ($_POST['tags']        ?? []);
+
+        $agent       = $this->agentClient();
+        $imported    = 0;
+        $errorOccurred = false;
+
+        foreach ($selected as $idx) {
+            $idx = (string) $idx;
+
+            // Guard: ensure the index exists in all source arrays
+            if (!isset($schedules[$idx], $commands[$idx])) {
+                $this->logger->warning('CronController::importStore: missing data for index', [
+                    'index' => $idx,
+                ]);
+                continue;
+            }
+
+            $rawTags = (string) ($tagsMap[$idx] ?? '');
+            $tags    = array_values(
+                array_filter(
+                    array_map('trim', explode(',', $rawTags)),
+                    static fn(string $t): bool => $t !== '',
+                )
+            );
+
+            $originalSchedule = trim((string) $schedules[$idx]);
+            $originalCommand  = trim((string) $commands[$idx]);
+
+            $payload = [
+                'linux_user'        => $user,
+                'schedule'          => $originalSchedule,
+                'command'           => $originalCommand,
+                'description'       => trim((string) ($descriptions[$idx] ?? '')),
+                'tags'              => $tags,
+                'active'            => true,
+                'notify_on_failure' => false,
+                'targets'           => ['local'],
+                // Tell the agent to comment out the original unmanaged crontab line
+                'original_schedule' => $originalSchedule,
+                'original_command'  => $originalCommand,
+            ];
+
+            try {
+                $agent->post('/crons', $payload);
+                $imported++;
+            } catch (\RuntimeException $e) {
+                $this->logger->error('CronController::importStore: failed to create job', [
+                    'user'    => $user,
+                    'command' => $payload['command'],
+                    'message' => $e->getMessage(),
+                ]);
+                $errorOccurred = true;
+            }
+        }
+
+        $this->logger->info('CronController::importStore: import completed', [
+            'user'     => $user,
+            'imported' => $imported,
+            'errors'   => $errorOccurred,
+        ]);
+
+        // Store a flash success message with the count of imported jobs
+        SessionManager::set('_flash_success', str_replace(
+            '{count}',
+            (string) $imported,
+            $this->translator()->t('import_success')
+        ));
+
+        (new Response())->redirect('/crons');
+    }
+
+    /**
+     * Delete a job and redirect to the job list.
+     *
+     * @param array<string,string> $params Path parameters: ['id' => string].
+     *
+     * @return void
+     */
+    public function destroy(array $params): void
+    {
+        $id = (string) ($params['id'] ?? '');
+
+        try {
+            $this->agentClient()->delete('/crons/' . rawurlencode($id));
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::destroy: failed to delete job', [
+                'id'      => $id,
+                'message' => $e->getMessage(),
+            ]);
+            $this->renderError(503, 'error_agent_unavailable', '/crons');
+            return;
+        }
+
+        $this->logger->info('CronController::destroy: job deleted', ['id' => $id]);
+
+        // Redirect back to the list page preserving any active filters.
+        // Validate the return URL to prevent open-redirect: must start with /crons.
+        $returnUrl = trim((string) ($_POST['_return'] ?? ''));
+        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons';
+
+        (new Response())->redirect($safe);
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Fetch SSH host aliases for every unique linux_user found in the job list.
+     *
+     * Used by the create form so the JavaScript can populate the SSH host
+     * selector when the user types a linux_user name.
+     *
+     * @return array<string, string[]> Map of linux_user => list of SSH host aliases.
+     */
+    private function fetchSshHostsByUser(): array
+    {
+        try {
+            $allJobs = $this->agentClient()->get('/crons');
+        } catch (\RuntimeException) {
+            return [];
+        }
+
+        $users = array_unique(array_column($allJobs['data'] ?? [], 'linux_user'));
+        $sshHostsByUser = [];
+
+        foreach ($users as $user) {
+            if (!is_string($user) || $user === '') {
+                continue;
+            }
+            try {
+                $response = $this->agentClient()->get('/ssh-hosts', ['user' => $user]);
+                $sshHostsByUser[$user] = $response['data'] ?? [];
+            } catch (\RuntimeException) {
+                $sshHostsByUser[$user] = [];
+            }
+        }
+
+        return $sshHostsByUser;
+    }
+
+    /**
+     * Build a normalised job payload array from raw POST data.
+     *
+     * Tags are accepted as a comma-separated string and split into an array.
+     * Boolean fields (active, notify_on_failure) are treated as checkbox values.
+     *
+     * @param array<string,mixed> $post Raw POST data (typically $_POST).
+     *
+     * @return array<string,mixed> Normalised payload ready to be sent to the agent.
+     */
+    private function buildJobPayload(array $post): array
+    {
+        // Parse comma-separated tags into a trimmed, filtered array
+        $rawTags = (string) ($post['tags'] ?? '');
+        $tags    = array_values(
+            array_filter(
+                array_map('trim', explode(',', $rawTags)),
+                static fn(string $t): bool => $t !== '',
+            )
+        );
+
+        // Build targets array from checkboxes; default to ['local'] if nothing selected
+        $rawTargets = isset($post['targets']) && is_array($post['targets']) ? $post['targets'] : [];
+        $targets    = array_values(array_filter(
+            array_map('trim', $rawTargets),
+            static fn(string $t): bool => $t !== '',
+        ));
+        if ($targets === []) {
+            $targets = ['local'];
+        }
+
+        return [
+            'linux_user'        => trim((string) ($post['linux_user']   ?? '')),
+            'schedule'          => trim((string) ($post['schedule']     ?? '')),
+            'command'           => trim((string) ($post['command']      ?? '')),
+            'description'       => trim((string) ($post['description']  ?? '')),
+            'tags'              => $tags,
+            'active'            => isset($post['active']),
+            'notify_on_failure' => isset($post['notify_on_failure']),
+            'targets'           => $targets,
+        ];
+    }
+}

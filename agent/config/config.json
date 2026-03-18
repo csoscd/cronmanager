@@ -1,0 +1,33 @@
+{
+    "agent": {
+        "bind_address": "0.0.0.0",
+        "port": 8865,
+        "hmac_secret": "change-me-to-a-secure-random-string"
+    },
+    "database": {
+        "host": "127.0.0.1",
+        "port": 3306,
+        "name": "cronmanager",
+        "user": "cronmanager",
+        "password": "cronmanagerpassword"
+    },
+    "logging": {
+        "path": "/opt/phpscripts/log/cronmanager-agent.log",
+        "level": "info",
+        "max_days": 30
+    },
+    "mail": {
+        "enabled": false,
+        "host": "smtp.example.com",
+        "port": 587,
+        "username": "alerts@example.com",
+        "password": "mailpassword",
+        "from": "alerts@example.com",
+        "from_name": "Cronmanager",
+        "to": "admin@example.com",
+        "encryption": "tls"
+    },
+    "cron": {
+        "wrapper_script": "/opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh"
+    }
+}

@@ -1,0 +1,25 @@
+[Unit]
+Description=Cronmanager Host Agent
+Documentation=https://github.com/example/cronmanager
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=root
+
+# Start wrapper script reads bind_address + port from config.json
+ExecStart=/opt/phpscripts/cronmanager/agent/bin/start-agent.sh
+
+WorkingDirectory=/opt/phpscripts/cronmanager/agent
+
+# Restart automatically on failure; wait 5 s before each retry
+Restart=always
+RestartSec=5
+
+# Log to systemd journal (view with: journalctl -u cronmanager-agent -f)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cronmanager-agent
+
+[Install]
+WantedBy=multi-user.target

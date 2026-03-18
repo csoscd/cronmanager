@@ -1,0 +1,508 @@
+#!/bin/bash
+# =============================================================================
+# Cronmanager – Deployment Script
+#
+# Configuration is read from deploy.env in the same directory.
+# Database credentials are read from db.credentials in the same directory.
+#
+# Usage:
+#   ./deploy.sh [full|update] [ssh-host] [--agent|--web]
+#
+#   full    – Create folder structure + deploy all files (default)
+#   update  – Deploy only changed files (rsync checksum comparison)
+#   --agent – Deploy agent only  (skip web app)
+#   --web   – Deploy web app only (skip agent)
+#   ssh-host – Override DEPLOY_SSH from deploy.env (SSH transport only)
+#
+# deploy.env variables:
+#   DEPLOY_TYPE          – Transport: SSH or LOCAL
+#   DEPLOY_SSH           – SSH host alias from ~/.ssh/config (SSH only)
+#   DEPLOY_DB            – Target path for MariaDB data directory
+#   DEPLOY_WEB           – Target base path for the web application
+#   DEPLOY_AGENT         – Target path for the host agent
+#   DEPLOY_COMPOSER      – Target path for the shared composer.json
+#   DEPLOY_COMPOSER_VENDOR – Target path for the shared vendor directory
+#
+# @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+# @license GNU General Public License version 3 or later
+# =============================================================================
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Load deploy.env
+# ---------------------------------------------------------------------------
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOY_ENV_FILE="${SCRIPT_DIR}/deploy.env"
+
+if [[ ! -f "${DEPLOY_ENV_FILE}" ]]; then
+    echo "[deploy] ERROR: deploy.env not found at ${DEPLOY_ENV_FILE}" >&2
+    echo "[deploy]        Copy deploy.env.example to deploy.env and fill in your values." >&2
+    exit 1
+fi
+
+# shellcheck source=/dev/null
+source "${DEPLOY_ENV_FILE}"
+
+# Validate required deploy.env variables
+for var in DEPLOY_TYPE DEPLOY_DB DEPLOY_WEB DEPLOY_AGENT DEPLOY_COMPOSER DEPLOY_COMPOSER_VENDOR; do
+    if [[ -z "${!var:-}" ]]; then
+        echo "[deploy] ERROR: '${var}' is not set in ${DEPLOY_ENV_FILE}" >&2
+        exit 1
+    fi
+done
+
+if [[ "${DEPLOY_TYPE}" == "SSH" && -z "${DEPLOY_SSH:-}" ]]; then
+    echo "[deploy] ERROR: DEPLOY_TYPE=SSH requires DEPLOY_SSH to be set in ${DEPLOY_ENV_FILE}" >&2
+    exit 1
+fi
+
+if [[ "${DEPLOY_TYPE}" != "SSH" && "${DEPLOY_TYPE}" != "LOCAL" ]]; then
+    echo "[deploy] ERROR: DEPLOY_TYPE must be 'SSH' or 'LOCAL' (got: '${DEPLOY_TYPE}')" >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Parse command-line arguments
+# ---------------------------------------------------------------------------
+
+DEPLOY_MODE="full"           # full = mirror; update = changed files only
+DEPLOY_AGENT_PART=true       # deploy the host agent?
+DEPLOY_WEB_PART=true         # deploy the web application?
+SSH_HOST="${DEPLOY_SSH:-}"   # may be overridden by positional CLI arg
+
+for arg in "$@"; do
+    case "${arg}" in
+        full|update)
+            DEPLOY_MODE="${arg}"
+            ;;
+        --agent)
+            DEPLOY_AGENT_PART=true
+            DEPLOY_WEB_PART=false
+            ;;
+        --web)
+            DEPLOY_AGENT_PART=false
+            DEPLOY_WEB_PART=true
+            ;;
+        -*)
+            echo "[deploy] ERROR: Unknown option '${arg}'. Use --agent or --web." >&2
+            exit 1
+            ;;
+        *)
+            # Positional non-flag: treat as SSH host override (SSH mode only)
+            SSH_HOST="${arg}"
+            ;;
+    esac
+done
+
+# ---------------------------------------------------------------------------
+# Resolve source and target paths
+# ---------------------------------------------------------------------------
+
+AGENT_SRC="${SCRIPT_DIR}/agent"
+WEB_SRC="${SCRIPT_DIR}/web"
+COMPOSER_SRC="${SCRIPT_DIR}/composer.json"
+CREDENTIALS_FILE="${SCRIPT_DIR}/db.credentials"
+
+# Strip trailing slashes from deploy.env paths, then build sub-paths
+AGENT_TARGET="${DEPLOY_AGENT%/}"
+WEB_TARGET="${DEPLOY_WEB%/}"
+WEB_WWW_TARGET="${WEB_TARGET}/www"
+WEB_CONF_TARGET="${WEB_TARGET}/conf"
+WEB_LOG_TARGET="${WEB_TARGET}/log"
+DB_DIR="${DEPLOY_DB%/}"
+COMPOSER_DIR="${DEPLOY_COMPOSER%/}"
+COMPOSER_VENDOR_DIR="${DEPLOY_COMPOSER_VENDOR%/}"
+
+# ---------------------------------------------------------------------------
+# Transport helpers (SSH vs LOCAL)
+# ---------------------------------------------------------------------------
+
+# Run a shell command string on the target system
+run_on_target() {
+    if [[ "${DEPLOY_TYPE}" == "SSH" ]]; then
+        ssh "${SSH_HOST}" "$@"
+    else
+        bash -c "$*"
+    fi
+}
+
+# Create a directory (and parents) on the target
+mkdir_on_target() {
+    run_on_target "mkdir -p '$1' && chmod 755 '$1'"
+}
+
+# Return 0 if a file exists on the target, 1 otherwise
+file_exists_on_target() {
+    if [[ "${DEPLOY_TYPE}" == "SSH" ]]; then
+        ssh "${SSH_HOST}" "test -f '$1'" 2>/dev/null
+    else
+        test -f "$1" 2>/dev/null
+    fi
+}
+
+# Copy a single local file to a target path
+copy_to_target() {
+    # $1 = local source file, $2 = target destination path
+    if [[ "${DEPLOY_TYPE}" == "SSH" ]]; then
+        scp "$1" "${SSH_HOST}:$2"
+    else
+        cp "$1" "$2"
+    fi
+}
+
+# Rsync options
+RSYNC_BASE="rsync -az --no-owner --no-group"
+RSYNC_UPDATE="${RSYNC_BASE} --checksum"   # update: transfer only changed files
+RSYNC_FULL="${RSYNC_BASE} --delete"       # full:   mirror source to target
+
+# Transport flag and prefix for rsync commands
+if [[ "${DEPLOY_TYPE}" == "SSH" ]]; then
+    RSYNC_TRANSPORT="-e ssh"
+    TARGET_PREFIX="${SSH_HOST}:"
+else
+    RSYNC_TRANSPORT=""
+    TARGET_PREFIX=""
+fi
+
+# ---------------------------------------------------------------------------
+# Logging helpers
+# ---------------------------------------------------------------------------
+
+log()  { echo "[deploy] $*"; }
+err()  { echo "[deploy] ERROR: $*" >&2; }
+die()  { err "$*"; exit 1; }
+info() { echo "[deploy] INFO:  $*"; }
+
+# ---------------------------------------------------------------------------
+# Load database credentials
+# ---------------------------------------------------------------------------
+
+if [[ ! -f "${CREDENTIALS_FILE}" ]]; then
+    die "Credentials file not found: ${CREDENTIALS_FILE}
+       Copy db.credentials.example to db.credentials and fill in your values."
+fi
+
+# shellcheck source=/dev/null
+source "${CREDENTIALS_FILE}"
+
+for var in DB_NAME DB_USER DB_PASSWORD DB_ROOT_USER DB_ROOT_PASSWORD; do
+    if [[ -z "${!var:-}" ]]; then
+        die "Variable '${var}' is not set in ${CREDENTIALS_FILE}"
+    fi
+done
+
+log "Credentials loaded from ${CREDENTIALS_FILE}"
+
+# ---------------------------------------------------------------------------
+# Validate and log configuration
+# ---------------------------------------------------------------------------
+
+if [[ "${DEPLOY_MODE}" != "full" && "${DEPLOY_MODE}" != "update" ]]; then
+    die "Unknown deploy mode '${DEPLOY_MODE}'. Use 'full' or 'update'."
+fi
+
+log "============================================================"
+log "  Deploy mode  : ${DEPLOY_MODE}"
+log "  Transport    : ${DEPLOY_TYPE}"
+if [[ "${DEPLOY_TYPE}" == "SSH" ]]; then
+log "  SSH host     : ${SSH_HOST}"
+fi
+log "  Agent target : ${AGENT_TARGET}"
+log "  Web target   : ${WEB_WWW_TARGET}"
+log "  DB dir       : ${DB_DIR}"
+log "  Composer dir : ${COMPOSER_DIR}"
+log "  Vendor dir   : ${COMPOSER_VENDOR_DIR}"
+log "============================================================"
+
+# ---------------------------------------------------------------------------
+# SSH: verify connectivity and ensure rsync is available on remote
+# ---------------------------------------------------------------------------
+
+if [[ "${DEPLOY_TYPE}" == "SSH" ]]; then
+    log "Checking SSH connectivity to ${SSH_HOST}..."
+    if ! ssh -q -o BatchMode=yes -o ConnectTimeout=10 "${SSH_HOST}" exit 2>/dev/null; then
+        die "Cannot connect to '${SSH_HOST}' via SSH. Check your ~/.ssh/config."
+    fi
+    log "SSH connection OK."
+
+    if ! run_on_target "command -v rsync >/dev/null 2>&1"; then
+        log "rsync not found on remote – attempting to install..."
+        if run_on_target "command -v apt-get >/dev/null 2>&1"; then
+            run_on_target "apt-get install -y rsync" \
+                && log "rsync installed via apt-get." \
+                || die "Failed to install rsync. Install it manually: apt-get install -y rsync"
+        elif run_on_target "command -v yum >/dev/null 2>&1"; then
+            run_on_target "yum install -y rsync" \
+                && log "rsync installed via yum." \
+                || die "Failed to install rsync. Install it manually: yum install -y rsync"
+        else
+            die "rsync not found on remote and no known package manager available."
+        fi
+    else
+        log "rsync available on remote."
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Handle composer.json on target
+# ---------------------------------------------------------------------------
+
+if [[ ! -f "${COMPOSER_SRC}" ]]; then
+    log "WARNING: ${COMPOSER_SRC} not found – skipping composer handling."
+else
+    COMPOSER_TARGET="${COMPOSER_DIR}/composer.json"
+
+    if file_exists_on_target "${COMPOSER_TARGET}"; then
+        info "composer.json already exists at ${COMPOSER_TARGET}."
+        info "This project requires the following libraries (ensure they are installed there):"
+        # List require entries from our local composer.json
+        if command -v python3 >/dev/null 2>&1; then
+            python3 - "${COMPOSER_SRC}" <<'PYEOF'
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+    for pkg, ver in data.get("require", {}).items():
+        if not pkg.startswith("php"):
+            print(f"[deploy] INFO:    {pkg}: {ver}")
+except Exception as e:
+    print(f"[deploy] INFO:    (could not parse composer.json: {e})")
+PYEOF
+        else
+            # Fallback: simple grep
+            grep -E '"[a-z].+/[a-z].+"' "${COMPOSER_SRC}" \
+                | grep -v '"php"' \
+                | sed 's/^/[deploy] INFO:    /' || true
+        fi
+        info "Run 'composer install' or 'composer require ...' in ${COMPOSER_DIR} if any are missing."
+    else
+        log "Deploying composer.json to ${COMPOSER_TARGET}..."
+        mkdir_on_target "${COMPOSER_DIR}"
+        copy_to_target "${COMPOSER_SRC}" "${COMPOSER_TARGET}"
+        log "composer.json deployed."
+        info "Run 'cd ${COMPOSER_DIR} && composer install' on the target to install dependencies."
+    fi
+
+    # Check vendor directory
+    if ! run_on_target "test -d '${COMPOSER_VENDOR_DIR}'" 2>/dev/null; then
+        log "WARNING: Vendor directory ${COMPOSER_VENDOR_DIR} does not exist on target."
+        log "         Run 'composer install' in ${COMPOSER_DIR} after deployment."
+    else
+        log "Vendor directory ${COMPOSER_VENDOR_DIR} is present."
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Create target folder structure (always, even on update)
+# ---------------------------------------------------------------------------
+
+log "Creating target folder structure..."
+
+if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
+    mkdir_on_target "${AGENT_TARGET}"
+    mkdir_on_target "${AGENT_TARGET}/bin"
+    mkdir_on_target "${AGENT_TARGET}/config"
+    mkdir_on_target "${AGENT_TARGET}/src/Database"
+    mkdir_on_target "${AGENT_TARGET}/src/Security"
+    mkdir_on_target "${AGENT_TARGET}/src/Endpoints"
+    mkdir_on_target "${AGENT_TARGET}/src/Cron"
+    mkdir_on_target "${AGENT_TARGET}/src/Notification"
+    mkdir_on_target "${AGENT_TARGET}/sql"
+    mkdir_on_target "${AGENT_TARGET}/systemd"
+
+    mkdir_on_target "${DB_DIR}/data"
+    mkdir_on_target "${DB_DIR}/conf"
+    mkdir_on_target "${DB_DIR}/log"
+    mkdir_on_target "${DB_DIR}/init"
+fi
+
+if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
+    mkdir_on_target "${WEB_WWW_TARGET}"
+    mkdir_on_target "${WEB_CONF_TARGET}"
+    mkdir_on_target "${WEB_LOG_TARGET}"
+    mkdir_on_target "${WEB_WWW_TARGET}/src/Http"
+    mkdir_on_target "${WEB_WWW_TARGET}/src/Controller"
+    mkdir_on_target "${WEB_WWW_TARGET}/src/Agent"
+    mkdir_on_target "${WEB_WWW_TARGET}/src/Auth"
+    mkdir_on_target "${WEB_WWW_TARGET}/src/Session"
+    mkdir_on_target "${WEB_WWW_TARGET}/src/I18n"
+    mkdir_on_target "${WEB_WWW_TARGET}/src/Database"
+    mkdir_on_target "${WEB_WWW_TARGET}/src/Repository"
+    mkdir_on_target "${WEB_WWW_TARGET}/templates/cron"
+    mkdir_on_target "${WEB_WWW_TARGET}/lang"
+    mkdir_on_target "${WEB_WWW_TARGET}/assets/css"
+    mkdir_on_target "${WEB_WWW_TARGET}/assets/js"
+fi
+
+log "Folder structure ready."
+
+# ---------------------------------------------------------------------------
+# Deploy Agent
+# ---------------------------------------------------------------------------
+
+if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
+    log "Deploying agent to ${AGENT_TARGET}..."
+
+    if [[ "${DEPLOY_MODE}" == "full" ]]; then
+        # shellcheck disable=SC2086
+        ${RSYNC_FULL} --exclude='config/' ${RSYNC_TRANSPORT} \
+            "${AGENT_SRC}/" "${TARGET_PREFIX}${AGENT_TARGET}/"
+    else
+        # shellcheck disable=SC2086
+        ${RSYNC_UPDATE} --exclude='config/' ${RSYNC_TRANSPORT} \
+            "${AGENT_SRC}/" "${TARGET_PREFIX}${AGENT_TARGET}/"
+    fi
+
+    # Deploy example config only on full deploy if no config exists yet
+    if [[ "${DEPLOY_MODE}" == "full" ]]; then
+        if ! file_exists_on_target "${AGENT_TARGET}/config/config.json" 2>/dev/null; then
+            log "No existing agent config – deploying example config..."
+            copy_to_target "${AGENT_SRC}/config/config.json" "${AGENT_TARGET}/config/config.json"
+        else
+            log "Agent config already exists – skipping (update manually if needed)."
+        fi
+    fi
+
+    # Ensure scripts are executable
+    run_on_target "chmod +x '${AGENT_TARGET}/bin/start-agent.sh'"  2>/dev/null || true
+    run_on_target "chmod +x '${AGENT_TARGET}/bin/cron-wrapper.sh'" 2>/dev/null || true
+    run_on_target "chmod +x '${AGENT_TARGET}/bin/setup-db.php'"    2>/dev/null || true
+    run_on_target "chmod +x '${AGENT_TARGET}/agent.php'"           2>/dev/null || true
+
+    log "Agent files deployed."
+
+    # -------------------------------------------------------------------------
+    # Install / reload systemd service
+    # -------------------------------------------------------------------------
+
+    log "Installing systemd service..."
+    run_on_target "cp '${AGENT_TARGET}/systemd/cronmanager-agent.service' /etc/systemd/system/cronmanager-agent.service"
+    run_on_target "systemctl daemon-reload"
+    run_on_target "systemctl enable cronmanager-agent"
+    run_on_target "systemctl restart cronmanager-agent"
+
+    run_on_target "systemctl is-active --quiet cronmanager-agent \
+        && echo '[deploy] Service is running.' \
+        || echo '[deploy] WARNING: Service is NOT running – check: journalctl -u cronmanager-agent'"
+
+    # -------------------------------------------------------------------------
+    # MariaDB init script (generated from credentials)
+    # -------------------------------------------------------------------------
+
+    log "Deploying MariaDB init script..."
+    run_on_target "cat > '${DB_DIR}/init/01-grants.sql'" <<EOF
+-- Auto-generated by deploy.sh – do not edit manually.
+CREATE USER IF NOT EXISTS '${DB_USER}'@'%' IDENTIFIED BY '${DB_PASSWORD}';
+GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'%';
+FLUSH PRIVILEGES;
+EOF
+    log "MariaDB init script deployed."
+
+    # -------------------------------------------------------------------------
+    # Ensure MariaDB user grants (handles already-running containers)
+    # -------------------------------------------------------------------------
+
+    log "Ensuring MariaDB user grants..."
+    run_on_target "docker exec -i cronmanager-db mariadb \
+        -u '${DB_ROOT_USER}' -p'${DB_ROOT_PASSWORD}' \
+        -e \"CREATE USER IF NOT EXISTS '${DB_USER}'@'%' IDENTIFIED BY '${DB_PASSWORD}'; \
+             GRANT ALL PRIVILEGES ON \\\`${DB_NAME}\\\`.* TO '${DB_USER}'@'%'; \
+             FLUSH PRIVILEGES;\"" \
+        && log "MariaDB user grants applied." \
+        || log "WARNING: Could not apply MariaDB grants – container may not be running yet."
+
+    # -------------------------------------------------------------------------
+    # Database schema (full deploy only)
+    # -------------------------------------------------------------------------
+
+    if [[ "${DEPLOY_MODE}" == "full" ]]; then
+        log "Applying database schema..."
+        run_on_target "docker exec -i cronmanager-db mariadb \
+            -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' \
+            < '${AGENT_TARGET}/sql/schema.sql'" \
+            && log "Schema applied successfully." \
+            || log "WARNING: Schema application failed – container may not be running yet. Apply manually."
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Deploy Web Application
+# ---------------------------------------------------------------------------
+
+if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
+    log "Deploying web application to ${WEB_WWW_TARGET}..."
+
+    if [[ "${DEPLOY_MODE}" == "full" ]]; then
+        # Exclude tailwind so --delete does not wipe a previously downloaded copy
+        # shellcheck disable=SC2086
+        ${RSYNC_FULL} --exclude='config/' --exclude='assets/css/tailwind.min.css' \
+            ${RSYNC_TRANSPORT} "${WEB_SRC}/" "${TARGET_PREFIX}${WEB_WWW_TARGET}/"
+    else
+        # shellcheck disable=SC2086
+        ${RSYNC_UPDATE} --exclude='config/' ${RSYNC_TRANSPORT} \
+            "${WEB_SRC}/" "${TARGET_PREFIX}${WEB_WWW_TARGET}/"
+    fi
+
+    # Deploy example web config only on full deploy if none exists yet
+    if [[ "${DEPLOY_MODE}" == "full" ]]; then
+        if ! file_exists_on_target "${WEB_CONF_TARGET}/config.json" 2>/dev/null; then
+            log "No existing web config – deploying example config..."
+            copy_to_target "${WEB_SRC}/config/config.json" "${WEB_CONF_TARGET}/config.json"
+        else
+            log "Web config already exists – skipping."
+        fi
+    fi
+
+    log "Web application deployed."
+
+    # -------------------------------------------------------------------------
+    # Download Tailwind CSS (skip if already present)
+    # -------------------------------------------------------------------------
+
+    TAILWIND_TARGET="${WEB_WWW_TARGET}/assets/js/tailwind.min.js"
+    if ! run_on_target "test -f '${TAILWIND_TARGET}'" 2>/dev/null; then
+        log "Downloading Tailwind CSS (Play CDN script)..."
+        run_on_target "mkdir -p '$(dirname "${TAILWIND_TARGET}")' && \
+            curl -sL https://cdn.tailwindcss.com/3.4.17 -o '${TAILWIND_TARGET}'" \
+            && log "Tailwind downloaded to ${TAILWIND_TARGET}." \
+            || log "WARNING: Tailwind download failed – download manually to ${TAILWIND_TARGET}"
+    else
+        log "Tailwind already present – skipping."
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+
+log "============================================================"
+log "Deployment complete!"
+log "  Deploy mode  : ${DEPLOY_MODE}"
+log "  Transport    : ${DEPLOY_TYPE}"
+if [[ "${DEPLOY_TYPE}" == "SSH" ]]; then
+log "  SSH host     : ${SSH_HOST}"
+fi
+if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
+log "  Agent        : ${AGENT_TARGET}"
+fi
+if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
+log "  Web          : ${WEB_WWW_TARGET}"
+fi
+log "============================================================"
+if [[ "${DEPLOY_AGENT_PART}" == "true" && "${DEPLOY_WEB_PART}" == "true" ]]; then
+log "Next steps:"
+log "  1. Review and adjust ${AGENT_TARGET}/config/config.json"
+log "  2. Review and adjust ${WEB_CONF_TARGET}/config.json"
+log "  3. Deploy Docker stack via Portainer:"
+log "       - Paste the contents of docker-compose.yml into a new Portainer stack"
+log "       - Add the following environment variables in Portainer:"
+log "           DB_NAME          = ${DB_NAME}"
+log "           DB_USER          = ${DB_USER}"
+log "           DB_PASSWORD      = (your password)"
+log "           DB_ROOT_PASSWORD = (your root password)"
+log "  4. Apply DB schema:    docker exec -i cronmanager-db mariadb -u ${DB_USER} -p${DB_PASSWORD} ${DB_NAME} < ${AGENT_TARGET}/sql/schema.sql"
+log "  5. Test agent health:  curl http://<host>:8865/health"
+log "  6. Open web UI:        http://<host>:8880/ (first visit creates the admin account)"
+fi

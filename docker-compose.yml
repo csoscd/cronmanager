@@ -1,0 +1,72 @@
+---
+# Cronmanager – docker-compose.yml
+# Brings up the PHP-FPM/Nginx web container and the MariaDB database container.
+#
+# @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+# @license GNU General Public License version 3 or later
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Web UI (PHP-FPM + Nginx)
+  # ---------------------------------------------------------------------------
+  cronmanager-web:
+    image: cs1711/cs_php-nginx-fpm:latest-alpine
+    container_name: cronmanager-web
+    restart: unless-stopped
+    extra_hosts:
+      # Allows the web container to reach the Host Agent on the Docker host
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /opt/websites/cronmanager/conf:/var/www/conf
+      - /opt/websites/cronmanager/www:/var/www/html
+      - /opt/websites/cronmanager/log:/var/www/log
+      - /opt/phplib/vendor:/var/www/libs/vendor
+    ports:
+      - "8880:80"
+    networks:
+      - cronmanager-internal
+    depends_on:
+      cronmanager-db:
+        condition: service_healthy
+    labels:
+      - "com.centurylinklabs.watchtower.scope=doupdate"
+
+  # ---------------------------------------------------------------------------
+  # MariaDB Database
+  # ---------------------------------------------------------------------------
+  cronmanager-db:
+    image: mariadb:lts
+    container_name: cronmanager-db
+    restart: unless-stopped
+    volumes:
+      - /opt/cronmanager/db/data:/var/lib/mysql
+      - /opt/cronmanager/db/conf:/etc/mysql
+      - /opt/cronmanager/db/log:/var/log/mysql
+      - /opt/cronmanager/db/init:/docker-entrypoint-initdb.d
+    ports:
+      # Exposed to localhost only — required by the host agent (runs outside Docker)
+      - "127.0.0.1:3306:3306"
+    environment:
+      MARIADB_DATABASE:      ${DB_NAME}
+      MARIADB_USER:          ${DB_USER}
+      MARIADB_PASSWORD:      ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - cronmanager-internal
+    labels:
+      - "com.centurylinklabs.watchtower.scope=doupdate"
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  cronmanager-internal:
+    driver: bridge

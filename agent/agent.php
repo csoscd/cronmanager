@@ -1,0 +1,246 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Cronmanager Host Agent – Entry Point
+ *
+ * This file is the PHP built-in server router script. It is invoked for every
+ * incoming HTTP request when the agent is started via:
+ *
+ *   php -S 0.0.0.0:8865 /opt/phpscripts/cronmanager/agent/agent.php
+ *
+ * Responsibilities:
+ *   - Bootstrap configuration and logging (Bootstrap singleton)
+ *   - Validate HMAC-SHA256 request signatures (HmacValidator)
+ *   - Register all API routes (Router)
+ *   - Dispatch the request to the matching handler
+ *   - Return a top-level 500 JSON response on any unhandled exception
+ *
+ * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+ * @license GNU General Public License version 3 or later
+ */
+
+require_once '/opt/phplib/vendor/autoload.php';
+
+// PSR-4 autoloader for Cronmanager\Agent\* classes (not in shared vendor)
+spl_autoload_register(function (string $class): void {
+    $prefix  = 'Cronmanager\\Agent\\';
+    $baseDir = __DIR__ . '/src/';
+    if (str_starts_with($class, $prefix)) {
+        $file = $baseDir . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
+        if (file_exists($file)) {
+            require_once $file;
+        }
+    }
+});
+
+use Cronmanager\Agent\Bootstrap;
+use Cronmanager\Agent\Router;
+use Cronmanager\Agent\Security\HmacValidator;
+
+// =============================================================================
+// Helper: JSON response
+// =============================================================================
+
+/**
+ * Emit a JSON HTTP response and terminate the script.
+ *
+ * @param int   $statusCode HTTP status code.
+ * @param array $data       Associative array to encode as JSON.
+ *
+ * @return void  (exits)
+ */
+function jsonResponse(int $statusCode, array $data): void
+{
+    http_response_code($statusCode);
+    header('Content-Type: application/json');
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// =============================================================================
+// Top-level exception boundary
+// =============================================================================
+
+try {
+
+    // -------------------------------------------------------------------------
+    // Static file pass-through (PHP built-in server convention)
+    // -------------------------------------------------------------------------
+
+    // If the requested path maps to a real file on disk, let the built-in
+    // server serve it directly (e.g. favicon.ico).
+    $rawPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+    $rawPath = '/' . ltrim((string) $rawPath, '/');
+
+    if ($rawPath !== '/' && file_exists(__DIR__ . $rawPath)) {
+        return false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Bootstrap: config + logger
+    // -------------------------------------------------------------------------
+
+    $bootstrap = Bootstrap::getInstance();
+    $config    = $bootstrap->getConfig();
+    $logger    = $bootstrap->getLogger();
+
+    // -------------------------------------------------------------------------
+    // Request parsing
+    // -------------------------------------------------------------------------
+
+    $method    = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+    $path      = $rawPath;
+    $rawBody   = (string) file_get_contents('php://input');
+    $clientIp  = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+
+    // Retrieve the HMAC signature header (PHP converts hyphens to underscores
+    // and prepends HTTP_ for non-standard headers)
+    $signatureHeader = $_SERVER['HTTP_X_AGENT_SIGNATURE'] ?? '';
+
+    // -------------------------------------------------------------------------
+    // Skip HMAC validation for the /health endpoint
+    // Health checks are used by monitoring tools and do not carry a signature.
+    // -------------------------------------------------------------------------
+
+    if ($path !== '/health') {
+        $hmacSecret = (string) $config->get('agent.hmac_secret', '');
+
+        try {
+            $validator = new HmacValidator($hmacSecret);
+        } catch (\InvalidArgumentException $e) {
+            $logger->critical('HMAC secret is not configured', ['error' => $e->getMessage()]);
+            jsonResponse(500, ['error' => 'Internal Server Error', 'message' => 'Agent misconfigured: HMAC secret missing.', 'code' => 500]);
+        }
+
+        if (!$validator->validate($method, $path, $rawBody, $signatureHeader)) {
+            $logger->warning('HMAC validation failed – request rejected', [
+                'method'    => $method,
+                'path'      => $path,
+                'client_ip' => $clientIp,
+            ]);
+            jsonResponse(401, ['error' => 'Unauthorized', 'message' => 'Invalid or missing request signature.', 'code' => 401]);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Log every incoming request at DEBUG level
+    // -------------------------------------------------------------------------
+
+    $logger->debug('Incoming request', [
+        'method'    => $method,
+        'path'      => $path,
+        'client_ip' => $clientIp,
+    ]);
+
+    // -------------------------------------------------------------------------
+    // Router setup
+    // -------------------------------------------------------------------------
+
+    $router = new Router();
+
+    // -- Health (fully functional, HMAC-exempt) --------------------------------
+
+    $router->addRoute('GET', '/health', function (array $params) use ($logger): void {
+        $logger->info('Health check requested');
+        jsonResponse(200, [
+            'status'    => 'ok',
+            'timestamp' => date('c'),
+        ]);
+    });
+
+    // -- Crons ----------------------------------------------------------------
+
+    // Initialise shared dependencies for all cron endpoints
+    $pdo           = \Cronmanager\Agent\Database\Connection::getInstance()->getPdo();
+    $wrapperScript = (string) $config->get('cron.wrapper_script', '/opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh');
+    $crontabManager = new \Cronmanager\Agent\Cron\CrontabManager($logger, $wrapperScript);
+
+    $cronList   = new \Cronmanager\Agent\Endpoints\CronListEndpoint($pdo, $logger);
+    $cronGet    = new \Cronmanager\Agent\Endpoints\CronGetEndpoint($pdo, $logger);
+    $cronCreate = new \Cronmanager\Agent\Endpoints\CronCreateEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
+    $cronUpdate = new \Cronmanager\Agent\Endpoints\CronUpdateEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
+    $cronDelete = new \Cronmanager\Agent\Endpoints\CronDeleteEndpoint($pdo, $logger, $crontabManager);
+
+    $cronUnmanaged = new \Cronmanager\Agent\Endpoints\CronUnmanagedEndpoint($logger, $crontabManager);
+    $cronUsers     = new \Cronmanager\Agent\Endpoints\CronUsersEndpoint($logger, $crontabManager);
+
+    $router->addRoute('GET',    '/crons',            [$cronList,      'handle']);
+    $router->addRoute('GET',    '/crons/users',      [$cronUsers,     'handle']);
+    $router->addRoute('GET',    '/crons/unmanaged',  [$cronUnmanaged, 'handle']);
+    $router->addRoute('GET',    '/crons/{id}',       [$cronGet,       'handle']);
+    $router->addRoute('POST',   '/crons',        [$cronCreate, 'handle']);
+    $router->addRoute('PUT',    '/crons/{id}',   [$cronUpdate, 'handle']);
+    $router->addRoute('DELETE', '/crons/{id}',   [$cronDelete, 'handle']);
+
+    // -- Execution lifecycle --------------------------------------------------
+
+    $mailNotifier = new \Cronmanager\Agent\Notification\MailNotifier($logger, $config);
+
+    $execStart  = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger);
+    $execFinish = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier);
+
+    $router->addRoute('POST', '/execution/start',  [$execStart,  'handle']);
+    $router->addRoute('POST', '/execution/finish', [$execFinish, 'handle']);
+
+    // -- Tags -----------------------------------------------------------------
+
+    $tagList   = new \Cronmanager\Agent\Endpoints\TagListEndpoint($pdo, $logger);
+    $tagCreate = new \Cronmanager\Agent\Endpoints\TagCreateEndpoint($pdo, $logger);
+    $tagDelete = new \Cronmanager\Agent\Endpoints\TagDeleteEndpoint($pdo, $logger);
+
+    $router->addRoute('GET',    '/tags',        [$tagList,   'handle']);
+    $router->addRoute('POST',   '/tags',        [$tagCreate, 'handle']);
+    $router->addRoute('DELETE', '/tags/{id}',   [$tagDelete, 'handle']);
+
+    // -- SSH Hosts ------------------------------------------------------------
+
+    $sshHosts = new \Cronmanager\Agent\Endpoints\SshHostsEndpoint($logger);
+    $router->addRoute('GET', '/ssh-hosts', [$sshHosts, 'handle']);
+
+    // -- History --------------------------------------------------------------
+
+    $history = new \Cronmanager\Agent\Endpoints\HistoryEndpoint($pdo, $logger);
+    $router->addRoute('GET', '/history', [$history, 'handle']);
+
+    // -- Export ---------------------------------------------------------------
+
+    $export = new \Cronmanager\Agent\Endpoints\ExportEndpoint($pdo, $logger);
+    $router->addRoute('GET', '/export', [$export, 'handle']);
+
+    // -------------------------------------------------------------------------
+    // Dispatch
+    // -------------------------------------------------------------------------
+
+    $router->dispatch($method, $path);
+
+} catch (\Throwable $e) {
+    // Top-level exception guard: log and return a generic 500 so the server
+    // never exposes an unhandled PHP error to the network.
+
+    // Attempt to log via the already-initialised logger if available;
+    // otherwise fall back to PHP's error_log().
+    if (isset($logger)) {
+        $logger->error('Unhandled exception in agent', [
+            'exception' => get_class($e),
+            'message'   => $e->getMessage(),
+            'file'      => $e->getFile(),
+            'line'      => $e->getLine(),
+        ]);
+    } else {
+        error_log(sprintf(
+            '[cronmanager-agent] Unhandled %s: %s in %s:%d',
+            get_class($e),
+            $e->getMessage(),
+            $e->getFile(),
+            $e->getLine()
+        ));
+    }
+
+    jsonResponse(500, [
+        'error'   => 'Internal Server Error',
+        'message' => 'An unexpected error occurred. Check the agent log for details.',
+        'code'    => 500,
+    ]);
+}

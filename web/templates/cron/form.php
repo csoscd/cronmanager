@@ -88,6 +88,7 @@ foreach ($tags as $tag) {
 
         <!-- Form -->
         <form method="POST" action="<?= htmlspecialchars($formAction, ENT_QUOTES, 'UTF-8') ?>" novalidate>
+            <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
 
             <!-- Linux User -->
             <div class="mb-4">

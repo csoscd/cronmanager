@@ -29,6 +29,7 @@ return [
     'login_or'                => 'oder',
     'login_error_credentials' => 'Ungültiger Benutzername oder Passwort.',
     'login_error_required'    => 'Benutzername und Passwort sind erforderlich.',
+    'login_error_locked'      => 'Zu viele fehlgeschlagene Anmeldeversuche. Bitte versuchen Sie es in {minutes} Minute(n) erneut.',
 
     // -------------------------------------------------------------------------
     // Navigation

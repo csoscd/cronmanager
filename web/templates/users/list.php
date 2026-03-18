@@ -125,6 +125,7 @@ $isAdmin       = isset($isAdmin)       && (bool) $isAdmin;
                                             <!-- Toggle role -->
                                             <form method="POST"
                                                   action="/users/<?= $uid ?>/role">
+                                                <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
                                                 <input type="hidden" name="role"
                                                        value="<?= $h($role === 'admin' ? 'view' : 'admin') ?>">
                                                 <button type="submit"
@@ -137,6 +138,7 @@ $isAdmin       = isset($isAdmin)       && (bool) $isAdmin;
                                             <form method="POST"
                                                   action="/users/<?= $uid ?>/delete"
                                                   onsubmit="return confirm('<?= $h($t('user_delete_confirm')) ?>')">
+                                                <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
                                                 <button type="submit"
                                                         class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-200 text-sm font-medium transition">
                                                     <?= $h($t('cron_delete')) ?>

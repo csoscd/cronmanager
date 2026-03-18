@@ -29,6 +29,7 @@ return [
     'login_or'                => 'or',
     'login_error_credentials' => 'Invalid username or password.',
     'login_error_required'    => 'Username and password are required.',
+    'login_error_locked'      => 'Too many failed login attempts. Please try again in {minutes} minute(s).',
 
     // -------------------------------------------------------------------------
     // Navigation

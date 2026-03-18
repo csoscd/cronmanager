@@ -103,6 +103,7 @@ $lastRun    = (string) ($job['last_run']       ?? '');
                 <form method="POST"
                       action="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/delete"
                       onsubmit="return confirm('<?= htmlspecialchars($t('cron_delete_confirm'), ENT_QUOTES, 'UTF-8') ?>')">
+                    <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
                     <button type="submit"
                             class="inline-flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-700
                                    text-sm font-medium px-4 py-2 rounded-lg border border-red-200 transition

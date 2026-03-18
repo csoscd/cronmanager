@@ -107,6 +107,16 @@ try {
     if ($path !== '/health') {
         $hmacSecret = (string) $config->get('agent.hmac_secret', '');
 
+        // Warn loudly if the secret is still set to the shipped example value
+        if ($hmacSecret === 'change-me-to-a-secure-random-string') {
+            $logger->critical('SECURITY: agent.hmac_secret is set to the default example value. ' .
+                'Any party that knows the default can forge valid requests. ' .
+                'Generate a new secret immediately: openssl rand -hex 32');
+        } elseif (strlen($hmacSecret) < 32) {
+            $logger->warning('SECURITY: agent.hmac_secret is shorter than 32 characters. ' .
+                'Use at least 32 random bytes for adequate security.');
+        }
+
         try {
             $validator = new HmacValidator($hmacSecret);
         } catch (\InvalidArgumentException $e) {

@@ -72,15 +72,19 @@ class AuthController
         $translator  = new Translator($this->config);
         $oidcEnabled = (bool) $this->config->get('auth.oidc_enabled', false);
 
-        // Consume single-use flash error message
-        $error = SessionManager::get('_flash_error');
+        // Consume single-use flash messages
+        $error          = SessionManager::get('_flash_error');
+        $lockoutMinutes = SessionManager::get('_flash_lockout_minutes');
         SessionManager::remove('_flash_error');
+        SessionManager::remove('_flash_lockout_minutes');
 
         $this->renderLogin([
-            'oidcEnabled' => $oidcEnabled,
-            'error'       => $error,
-            'translator'  => $translator,
-            'config'      => $this->config,
+            'oidcEnabled'    => $oidcEnabled,
+            'error'          => $error,
+            'lockoutMinutes' => $lockoutMinutes,
+            'translator'     => $translator,
+            'config'         => $this->config,
+            'csrf_token'     => SessionManager::getCsrfToken(),
         ]);
     }
 
@@ -97,16 +101,27 @@ class AuthController
     public function handleLogin(array $params): void
     {
         $response = new Response();
+        $ip       = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
         $username = trim((string) ($_POST['username'] ?? ''));
         $password = (string) ($_POST['password'] ?? '');
+
+        // ------------------------------------------------------------------
+        // Rate limiting: reject locked IPs before any credential processing
+        // ------------------------------------------------------------------
+        if (!SessionManager::isLoginAllowed($ip)) {
+            $remaining = (int) ceil(SessionManager::getLockoutRemaining($ip) / 60);
+            $this->logger->warning('Login blocked: rate limit exceeded', ['ip' => $ip]);
+            SessionManager::set('_flash_error', 'login_error_locked');
+            SessionManager::set('_flash_lockout_minutes', $remaining);
+            $response->redirect('/login');
+            return;
+        }
 
         // ------------------------------------------------------------------
         // Validation
         // ------------------------------------------------------------------
         if ($username === '' || $password === '') {
-            $this->logger->debug('Login attempt with empty credentials', [
-                'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
-            ]);
+            $this->logger->debug('Login attempt with empty credentials', ['ip' => $ip]);
             SessionManager::set('_flash_error', 'login_error_required');
             $response->redirect('/login');
             return;
@@ -129,9 +144,12 @@ class AuthController
         }
 
         if ($user === null) {
+            // Record failure against this IP; do NOT reveal whether the
+            // username exists (uniform error message for both cases).
+            SessionManager::recordLoginFailure($ip);
             $this->logger->info('Login failed', [
-                'username' => $username,
-                'ip'       => $_SERVER['REMOTE_ADDR'] ?? '',
+                'username_hash' => hash('sha256', $username),
+                'ip'            => $ip,
             ]);
             SessionManager::set('_flash_error', 'login_error_credentials');
             $response->redirect('/login');
@@ -141,12 +159,13 @@ class AuthController
         // ------------------------------------------------------------------
         // Success
         // ------------------------------------------------------------------
+        SessionManager::clearLoginFailures($ip);
         SessionManager::login($user);
         SessionManager::remove('_flash_error');
 
         $this->logger->info('Login successful', [
             'username' => $user['username'] ?? '',
-            'ip'       => $_SERVER['REMOTE_ADDR'] ?? '',
+            'ip'       => $ip,
         ]);
 
         $response->redirect('/dashboard');

@@ -93,6 +93,10 @@ abstract class BaseController
 
         $translator = $this->translator();
 
+        // Always inject the CSRF token so every template has access to it
+        // without needing to call SessionManager directly.
+        $data['csrf_token'] = SessionManager::getCsrfToken();
+
         // ------------------------------------------------------------------
         // Step 1-4: capture the sub-template output
         // ------------------------------------------------------------------

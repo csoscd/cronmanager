@@ -141,6 +141,7 @@ if ($flashSuccess !== null) {
     <?php else: ?>
 
         <form method="POST" action="/crons/import">
+            <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
             <!-- Pass the user to the controller -->
             <input type="hidden" name="user" value="<?= htmlspecialchars($selectedUser, ENT_QUOTES, 'UTF-8') ?>">
 

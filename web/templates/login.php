@@ -27,10 +27,16 @@ $errorKey    = isset($error) ? (string) $error : null;
 $t    = static fn(string $key, array $r = []): string => isset($translator) ? $translator->t($key, $r) : $key;
 $lang = isset($translator) ? $translator->getLang() : 'en';
 
-// Resolve the human-readable error text from the key stored in the session flash
+// Resolve the human-readable error text from the key stored in the session flash.
+// The 'login_error_locked' key requires the remaining lockout minutes as a placeholder.
 $errorMessage = null;
 if ($errorKey !== null && $errorKey !== '') {
-    $errorMessage = $t($errorKey);
+    if ($errorKey === 'login_error_locked') {
+        $minutes = (string) (isset($lockoutMinutes) ? (int) $lockoutMinutes : 15);
+        $errorMessage = $t($errorKey, ['minutes' => $minutes]);
+    } else {
+        $errorMessage = $t($errorKey);
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -83,6 +89,7 @@ if ($errorKey !== null && $errorKey !== '') {
 
             <!-- Local login form -->
             <form method="POST" action="/login" novalidate>
+                <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
 
                 <!-- Username -->
                 <div class="mb-4">

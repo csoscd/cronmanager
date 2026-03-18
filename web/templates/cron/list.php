@@ -390,6 +390,7 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                                         <form method="POST"
                                               action="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/delete"
                                               onsubmit="return confirm('<?= htmlspecialchars($t('cron_delete_confirm'), ENT_QUOTES, 'UTF-8') ?>')">
+                                            <input type="hidden" name="_csrf"   value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
                                             <input type="hidden" name="_return" value="<?= htmlspecialchars($pageUrl($currentPage), ENT_QUOTES, 'UTF-8') ?>">
                                             <button type="submit"
                                                     class="text-red-600 hover:text-red-800 text-sm font-medium transition">

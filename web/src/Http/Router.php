@@ -186,6 +186,20 @@ class Router
                     return;
                 }
 
+                // CSRF validation for all state-changing methods on protected routes
+                if ($method === 'POST' || $method === 'PUT' || $method === 'PATCH' || $method === 'DELETE') {
+                    $submitted = (string) ($_POST['_csrf'] ?? '');
+                    if (!SessionManager::validateCsrfToken($submitted)) {
+                        $this->logger->warning('CSRF token validation failed', [
+                            'path'   => $path,
+                            'method' => $method,
+                            'user'   => SessionManager::getUsername(),
+                        ]);
+                        $this->render403();
+                        return;
+                    }
+                }
+
                 ($route['handler'])($params);
                 return;
             }

@@ -91,6 +91,7 @@ if ($errorKey !== null && $errorKey !== '') {
 
             <!-- Setup form -->
             <form method="POST" action="/setup" novalidate>
+                <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
 
                 <!-- Username -->
                 <div class="mb-4">

@@ -51,6 +51,40 @@ try {
     $logger    = $bootstrap->getLogger();
 
     // -------------------------------------------------------------------------
+    // Startup config validation – warn early about insecure defaults
+    // -------------------------------------------------------------------------
+    $hmacSecret = (string) $config->get('agent.hmac_secret', '');
+    if ($hmacSecret === '' || $hmacSecret === 'change-me-to-a-secure-random-string') {
+        $logger->critical('SECURITY: agent.hmac_secret is empty or set to the default value. ' .
+            'All requests to the host agent are unauthenticated. ' .
+            'Generate a secure secret with: openssl rand -hex 32');
+    } elseif (strlen($hmacSecret) < 32) {
+        $logger->warning('SECURITY: agent.hmac_secret is shorter than 32 characters. ' .
+            'A minimum of 32 random bytes is recommended.');
+    }
+
+    // -------------------------------------------------------------------------
+    // Security response headers
+    // Send before any output so headers arrive with every response.
+    // -------------------------------------------------------------------------
+    // Prevent browsers from sniffing MIME types (guards against content-type attacks)
+    header('X-Content-Type-Options: nosniff');
+    // Deny framing entirely to block clickjacking
+    header('X-Frame-Options: DENY');
+    // Restrict referrer information to same-origin only
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    // Disable access to sensitive browser features not used by this application
+    header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()');
+    // Content-Security-Policy:
+    //   - default-src 'self'   : all resource types default to same-origin
+    //   - script-src 'unsafe-inline': required for the Tailwind dark-mode
+    //     detection snippet and inline tailwind.config in layout.php
+    //   - style-src 'unsafe-inline' : required for Tailwind's runtime utility classes
+    //   - img-src data:              : allows inline SVG data URIs used by the UI
+    //   - frame-ancestors 'none'     : redundant with X-Frame-Options, defence-in-depth
+    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'");
+
+    // -------------------------------------------------------------------------
     // Session
     // -------------------------------------------------------------------------
     SessionManager::start($config);

@@ -111,6 +111,7 @@ class SetupController extends BaseController
         $this->renderSetup([
             'error'      => $error,
             'translator' => $translator,
+            'csrf_token' => SessionManager::getCsrfToken(),
         ]);
     }
 

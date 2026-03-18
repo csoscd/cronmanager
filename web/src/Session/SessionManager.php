@@ -38,6 +38,26 @@ class SessionManager
     /** @var string Session key for the authenticated user array */
     private const KEY_USER = '_cronmanager_user';
 
+    /** @var string Session key for the per-session CSRF token */
+    private const KEY_CSRF = '_cronmanager_csrf';
+
+    /**
+     * Session key for login rate-limit data.
+     * Stores an array indexed by hashed IP addresses.
+     *
+     * NOTE: This is session-scoped rate limiting.  It prevents brute-force
+     * attacks that reuse the same session cookie (the most common automated
+     * attack pattern).  For full IP-based protection across sessions a shared
+     * persistent store (APCu, Redis, or a database table) is required.
+     */
+    private const KEY_RATE = '_cronmanager_rate';
+
+    /** @var int Maximum failed login attempts before the IP is locked */
+    private const RATE_MAX_ATTEMPTS = 5;
+
+    /** @var int Lock duration in seconds after exceeding the attempt limit (15 min) */
+    private const RATE_LOCK_SECONDS = 900;
+
     // -------------------------------------------------------------------------
     // Session initialisation
     // -------------------------------------------------------------------------
@@ -254,5 +274,189 @@ class SessionManager
     public static function remove(string $key): void
     {
         unset($_SESSION[$key]);
+    }
+
+    /**
+     * Read a value from the session and immediately remove it (flash pattern).
+     *
+     * @param string $key     Session key.
+     * @param mixed  $default Value returned when the key is absent.
+     *
+     * @return mixed
+     */
+    public static function flash(string $key, mixed $default = null): mixed
+    {
+        $value = $_SESSION[$key] ?? $default;
+        unset($_SESSION[$key]);
+        return $value;
+    }
+
+    // -------------------------------------------------------------------------
+    // CSRF protection
+    // -------------------------------------------------------------------------
+
+    /**
+     * Return the per-session CSRF token, generating one if it does not exist.
+     *
+     * The token is a 64-character hex string generated with random_bytes().
+     * It is tied to the session lifetime and rotated on every login via
+     * session_regenerate_id().
+     *
+     * @return string 64-character hex CSRF token.
+     */
+    public static function getCsrfToken(): string
+    {
+        if (empty($_SESSION[self::KEY_CSRF]) || !is_string($_SESSION[self::KEY_CSRF])) {
+            $_SESSION[self::KEY_CSRF] = bin2hex(random_bytes(32));
+        }
+
+        return $_SESSION[self::KEY_CSRF];
+    }
+
+    /**
+     * Validate a submitted CSRF token against the session token.
+     *
+     * Uses hash_equals() for constant-time comparison to prevent timing attacks.
+     *
+     * @param string $submittedToken Token value from the POST body (_csrf field).
+     *
+     * @return bool True when the token matches, false otherwise.
+     */
+    public static function validateCsrfToken(string $submittedToken): bool
+    {
+        $stored = $_SESSION[self::KEY_CSRF] ?? '';
+
+        if ($stored === '' || $submittedToken === '') {
+            return false;
+        }
+
+        return hash_equals($stored, $submittedToken);
+    }
+
+    // -------------------------------------------------------------------------
+    // Login rate limiting (session-scoped, per hashed IP)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Check whether a login attempt from the given IP is currently allowed.
+     *
+     * Returns false if the IP has exceeded RATE_MAX_ATTEMPTS failed logins within
+     * the sliding window and the lock period has not yet expired.
+     *
+     * @param string $ip Remote IP address of the client.
+     *
+     * @return bool True when the attempt is allowed, false when locked.
+     */
+    public static function isLoginAllowed(string $ip): bool
+    {
+        $data = self::getRateEntry($ip);
+
+        if ($data === null) {
+            return true;
+        }
+
+        if (isset($data['locked_until']) && $data['locked_until'] > time()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Return the number of seconds remaining in the current lockout, or 0.
+     *
+     * @param string $ip Remote IP address of the client.
+     *
+     * @return int Seconds until the lock expires; 0 when not locked.
+     */
+    public static function getLockoutRemaining(string $ip): int
+    {
+        $data = self::getRateEntry($ip);
+
+        if ($data === null || !isset($data['locked_until'])) {
+            return 0;
+        }
+
+        $remaining = (int) $data['locked_until'] - time();
+
+        return $remaining > 0 ? $remaining : 0;
+    }
+
+    /**
+     * Record a failed login attempt for the given IP.
+     *
+     * Increments the failure counter and sets a lock when RATE_MAX_ATTEMPTS is
+     * reached.  The sliding window resets automatically once RATE_LOCK_SECONDS
+     * have elapsed since the first attempt.
+     *
+     * @param string $ip Remote IP address of the client.
+     *
+     * @return void
+     */
+    public static function recordLoginFailure(string $ip): void
+    {
+        $data = self::getRateEntry($ip);
+        $now  = time();
+
+        if ($data === null || ($now - ($data['first_at'] ?? 0)) > self::RATE_LOCK_SECONDS) {
+            // Start a fresh window
+            $data = ['attempts' => 1, 'first_at' => $now];
+        } else {
+            $data['attempts'] = ($data['attempts'] ?? 0) + 1;
+
+            if ($data['attempts'] >= self::RATE_MAX_ATTEMPTS) {
+                $data['locked_until'] = $now + self::RATE_LOCK_SECONDS;
+            }
+        }
+
+        self::setRateEntry($ip, $data);
+    }
+
+    /**
+     * Clear the failed-login counter for the given IP (called on successful login).
+     *
+     * @param string $ip Remote IP address of the client.
+     *
+     * @return void
+     */
+    public static function clearLoginFailures(string $ip): void
+    {
+        $all = $_SESSION[self::KEY_RATE] ?? [];
+        unset($all[hash('sha256', $ip)]);
+        $_SESSION[self::KEY_RATE] = $all;
+    }
+
+    // -------------------------------------------------------------------------
+    // Private rate-limit helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Retrieve the rate-limit entry for the given IP from the session.
+     *
+     * @param string $ip Remote IP address.
+     *
+     * @return array<string,mixed>|null Entry array, or null when absent.
+     */
+    private static function getRateEntry(string $ip): ?array
+    {
+        $all = $_SESSION[self::KEY_RATE] ?? [];
+        $key = hash('sha256', $ip);
+
+        return isset($all[$key]) && is_array($all[$key]) ? $all[$key] : null;
+    }
+
+    /**
+     * Persist the rate-limit entry for the given IP in the session.
+     *
+     * @param string               $ip   Remote IP address.
+     * @param array<string,mixed>  $data Rate-limit data to store.
+     *
+     * @return void
+     */
+    private static function setRateEntry(string $ip, array $data): void
+    {
+        $all = $_SESSION[self::KEY_RATE] ?? [];
+        $all[hash('sha256', $ip)] = $data;
+        $_SESSION[self::KEY_RATE] = $all;
     }
 }

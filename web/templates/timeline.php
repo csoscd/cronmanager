@@ -188,8 +188,11 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
      ====================================================================== -->
 <?php if ($total > 0): ?>
     <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Showing <span class="font-medium"><?= $showFrom ?></span>–<span class="font-medium"><?= $showTo ?></span>
-        of <span class="font-medium"><?= $total ?></span> executions
+        <?= htmlspecialchars($t('timeline_showing', [
+            'from'  => (string) $showFrom,
+            'to'    => (string) $showTo,
+            'total' => (string) $total,
+        ]), ENT_QUOTES, 'UTF-8') ?>
     </p>
 <?php endif; ?>
 

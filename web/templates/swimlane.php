@@ -400,6 +400,38 @@ $timings          = isset($timings)          ? (array)  $timings          : [];
 /** @type {Array} */
 const JOBS = <?= $swimlaneJobsJson ?>;
 
+/* ─── Translations injected from PHP ────────────────────────────────────── */
+const I18N = <?= json_encode([
+    'time_prefix'      => $translator->t('swimlane_time_prefix'),
+    'day_prefix'       => $translator->t('swimlane_day_prefix'),
+    'all_days'         => $translator->t('swimlane_all_days'),
+    'job_singular'     => $translator->t('swimlane_job_singular'),
+    'job_plural'       => $translator->t('swimlane_job_plural'),
+    'shown'            => $translator->t('swimlane_shown'),
+    'next_prefix'      => $translator->t('swimlane_next_prefix'),
+    'at'               => $translator->t('swimlane_at'),
+    'in_prefix'        => $translator->t('swimlane_in_prefix'),
+    'min'              => $translator->t('swimlane_min'),
+    'hour_abbr'        => $translator->t('swimlane_hour_abbr'),
+    'inactive_warning' => $translator->t('swimlane_inactive_warning'),
+    'sw_schedule'      => $translator->t('sw_schedule'),
+    'sw_meaning'       => $translator->t('sw_meaning'),
+    'sw_fires_at'      => $translator->t('sw_fires_at'),
+    'sw_target'        => $translator->t('sw_target'),
+    'sw_user'          => $translator->t('sw_user'),
+    'sw_tags'          => $translator->t('sw_tags'),
+    // Day names indexed as JS getDay() (0 = Sun … 6 = Sat)
+    'days' => [
+        $translator->t('day_sunday'),
+        $translator->t('day_monday'),
+        $translator->t('day_tuesday'),
+        $translator->t('day_wednesday'),
+        $translator->t('day_thursday'),
+        $translator->t('day_friday'),
+        $translator->t('day_saturday'),
+    ],
+], JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+
 /* ─── Colour palette for tags (assigned on first encounter) ─────────────── */
 const PALETTE = [
     '#0284c7', '#059669', '#7c3aed', '#b45309',
@@ -497,18 +529,16 @@ function buildNowLine() {
 }
 
 /* ─── Info bar ───────────────────────────────────────────────────────────── */
-const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-
 function updateInfoBar(visibleCount) {
     const endLabel = endH === 24 ? '24:00' : padH(endH);
     document.getElementById('lblRange').textContent =
-        'Time: ' + padH(startH) + ' – ' + endLabel;
+        I18N.time_prefix + ' ' + padH(startH) + ' – ' + endLabel;
 
     document.getElementById('lblDay').textContent =
-        'Day: ' + (selDay === -1 ? 'All days' : DAY_NAMES[selDay] + 's');
+        I18N.day_prefix + ' ' + (selDay === -1 ? I18N.all_days : I18N.days[selDay]);
 
     document.getElementById('lblCount').textContent =
-        visibleCount + ' job' + (visibleCount !== 1 ? 's' : '') + ' shown';
+        visibleCount + ' ' + (visibleCount !== 1 ? I18N.job_plural : I18N.job_singular) + ' ' + I18N.shown;
 
     // Find the next upcoming fire time today (within the selected range)
     const now = new Date();
@@ -530,8 +560,8 @@ function updateInfoBar(visibleCount) {
     if (nextJob) {
         const hh = Math.floor(nextMin / 60), mm = nextMin % 60;
         const diff = nextMin - curMin;
-        const diffStr = diff < 60 ? diff + ' min' : (diff / 60).toFixed(1) + ' h';
-        lblNext.textContent = 'Next: ' + nextJob + ' at ' + padT(hh, mm) + ' (in ' + diffStr + ')';
+        const diffStr = diff < 60 ? diff + ' ' + I18N.min : (diff / 60).toFixed(1) + ' ' + I18N.hour_abbr;
+        lblNext.textContent = I18N.next_prefix + ' ' + nextJob + ' ' + I18N.at + ' ' + padT(hh, mm) + ' (' + I18N.in_prefix + ' ' + diffStr + ')';
     } else {
         lblNext.textContent = '';
     }
@@ -716,13 +746,13 @@ function showTip(e) {
         '<div style="font-weight:700;font-size:.9rem;color:' + escHtml(d.color) + ';margin-bottom:6px">' +
             escHtml(d.job) +
         '</div>' +
-        row('Schedule', '<span style="color:#38bdf8;font-family:monospace">' + escHtml(d.cron) + '</span>') +
-        row('Meaning',  escHtml(d.cronHuman)) +
-        row('Fires at', '<strong>' + time + '</strong>') +
-        row('Target',   escHtml(d.target)) +
-        row('User',     escHtml(d.user)) +
-        (d.tags ? row('Tags', escHtml(d.tags)) : '') +
-        (!isActive ? '<div style="margin-top:6px;color:#f97316;font-size:.75rem">⚠ Job is inactive</div>' : '');
+        row(I18N.sw_schedule, '<span style="color:#38bdf8;font-family:monospace">' + escHtml(d.cron) + '</span>') +
+        row(I18N.sw_meaning,  escHtml(d.cronHuman)) +
+        row(I18N.sw_fires_at, '<strong>' + time + '</strong>') +
+        row(I18N.sw_target,   escHtml(d.target)) +
+        row(I18N.sw_user,     escHtml(d.user)) +
+        (d.tags ? row(I18N.sw_tags, escHtml(d.tags)) : '') +
+        (!isActive ? '<div style="margin-top:6px;color:#f97316;font-size:.75rem">' + escHtml(I18N.inactive_warning) + '</div>' : '');
 
     tip.classList.remove('hidden');
     moveTip(e);

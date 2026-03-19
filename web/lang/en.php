@@ -119,6 +119,7 @@ return [
     // -------------------------------------------------------------------------
     'timeline_title'          => 'Timeline',
     'timeline_no_results'     => 'No executions found.',
+    'timeline_showing'        => 'Showing {from}–{to} of {total} executions',
 
     // -------------------------------------------------------------------------
     // Swimlane
@@ -132,6 +133,24 @@ return [
     'swimlane_all_days'       => 'All days',
     'swimlane_no_results'     => 'No jobs scheduled in this time range.',
     'swimlane_no_results_hint'=> 'Try expanding the hours or switching to "All days".',
+    // Info bar / tooltip JS strings
+    'swimlane_time_prefix'    => 'Time:',
+    'swimlane_day_prefix'     => 'Day:',
+    'swimlane_job_singular'   => 'job',
+    'swimlane_job_plural'     => 'jobs',
+    'swimlane_shown'          => 'shown',
+    'swimlane_next_prefix'    => 'Next:',
+    'swimlane_at'             => 'at',
+    'swimlane_in_prefix'      => 'in',
+    'swimlane_min'            => 'min',
+    'swimlane_hour_abbr'      => 'h',
+    'swimlane_inactive_warning' => '⚠ Job is inactive',
+    'sw_schedule'             => 'Schedule',
+    'sw_meaning'              => 'Meaning',
+    'sw_fires_at'             => 'Fires at',
+    'sw_target'               => 'Target',
+    'sw_user'                 => 'User',
+    'sw_tags'                 => 'Tags',
     'day_monday'              => 'Monday',
     'day_tuesday'             => 'Tuesday',
     'day_wednesday'           => 'Wednesday',
@@ -139,6 +158,19 @@ return [
     'day_friday'              => 'Friday',
     'day_saturday'            => 'Saturday',
     'day_sunday'              => 'Sunday',
+    // Month names (used for locale-aware date formatting)
+    'month_1'                 => 'January',
+    'month_2'                 => 'February',
+    'month_3'                 => 'March',
+    'month_4'                 => 'April',
+    'month_5'                 => 'May',
+    'month_6'                 => 'June',
+    'month_7'                 => 'July',
+    'month_8'                 => 'August',
+    'month_9'                 => 'September',
+    'month_10'                => 'October',
+    'month_11'                => 'November',
+    'month_12'                => 'December',
 
     // -------------------------------------------------------------------------
     // Export

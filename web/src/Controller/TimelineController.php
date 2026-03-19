@@ -74,7 +74,7 @@ class TimelineController extends BaseController
         // ------------------------------------------------------------------
         try {
             $historyResponse = $agent->get('/history', $query);
-            $tags            = $agent->get('/tags')['data']  ?? [];
+            $allTags         = $agent->get('/tags')['data']  ?? [];
             $allJobs         = $agent->get('/crons')['data'] ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('TimelineController::index: agent request failed', [
@@ -108,6 +108,12 @@ class TimelineController extends BaseController
             }
         }
         sort($users);
+
+        // Only show tags that are in use (job_count > 0)
+        $tags = array_values(array_filter(
+            $allTags,
+            static fn(array $t): bool => ($t['job_count'] ?? 0) > 0
+        ));
 
         // Active filter values passed to the template for pre-filling the form
         $filters = [

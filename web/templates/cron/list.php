@@ -77,7 +77,7 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                 </svg>
                 <?= htmlspecialchars($t('import_title'), ENT_QUOTES, 'UTF-8') ?>
             </a>
-            <a href="/crons/new"
+            <a href="/crons/new?_return=<?= htmlspecialchars(rawurlencode($pageUrl($currentPage)), ENT_QUOTES, 'UTF-8') ?>"
                class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white
                       text-sm font-medium px-4 py-2.5 rounded-lg transition focus:outline-none
                       focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
@@ -383,7 +383,7 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                             <?php if ($isAdmin): ?>
                                 <td class="px-4 py-3 text-sm">
                                     <div class="flex items-center gap-2">
-                                        <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/edit"
+                                        <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/edit?_return=<?= htmlspecialchars(rawurlencode($pageUrl($currentPage)), ENT_QUOTES, 'UTF-8') ?>"
                                            class="text-blue-600 hover:text-blue-800 text-sm font-medium transition">
                                             <?= htmlspecialchars($t('cron_edit'), ENT_QUOTES, 'UTF-8') ?>
                                         </a>

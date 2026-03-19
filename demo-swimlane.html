@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cronmanager – Schedule Swimlane (Demo)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a; color: #e2e8f0; min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────── */
+    header {
+      background: #1e293b; border-bottom: 1px solid #334155;
+      padding: 10px 20px;
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    }
+    header h1 { font-size: 1rem; font-weight: 700; color: #f1f5f9; flex-shrink: 0; }
+    header h1 em { color: #38bdf8; font-style: normal; }
+
+    .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: auto; }
+    select, button {
+      background: #334155; color: #e2e8f0;
+      border: 1px solid #475569; border-radius: 6px;
+      padding: 5px 10px; font-size: 0.78rem; cursor: pointer;
+    }
+    select:focus, button:focus { outline: 2px solid #38bdf8; outline-offset: 1px; }
+    label { font-size: 0.78rem; color: #94a3b8; white-space: nowrap; }
+
+    .sep { width: 1px; height: 22px; background: #334155; flex-shrink: 0; }
+
+    /* ── Info bar ───────────────────────────────── */
+    .infobar {
+      background: #162032; border-bottom: 1px solid #1e293b;
+      padding: 5px 20px; font-size: 0.74rem; color: #64748b;
+      display: flex; gap: 24px; align-items: center; flex-wrap: wrap; min-height: 28px;
+    }
+    .infobar strong { color: #94a3b8; }
+    .infobar .jobs-count { color: #64748b; }
+    .infobar .next-run  { margin-left: auto; color: #38bdf8; font-weight: 500; }
+
+    /* ── Swimlane wrapper ───────────────────────── */
+    .lane-wrapper {
+      display: flex;
+      overflow-x: auto;
+      overflow-y: auto;
+      max-height: calc(100vh - 84px);
+    }
+
+    /* Left label column */
+    .col-labels {
+      flex-shrink: 0; width: 240px;
+      border-right: 1px solid #334155;
+      background: #1e293b;
+      position: sticky; left: 0; z-index: 20;
+    }
+    .col-labels .axis-pad {
+      height: 44px; border-bottom: 1px solid #334155; background: #1e293b;
+      position: sticky; top: 0; z-index: 21;
+    }
+
+    .job-block { border-bottom: 2px solid #0f172a; }
+    .job-header-label {
+      height: 32px; padding: 0 10px;
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.82rem; font-weight: 600; color: #f1f5f9;
+      background: #1e293b; border-bottom: 1px solid #1a2535;
+      position: sticky; top: 44px;
+    }
+    .job-header-label .tag {
+      font-size: 0.62rem; padding: 1px 6px; border-radius: 9px;
+      font-weight: 500; flex-shrink: 0;
+    }
+    .job-header-label .cron {
+      margin-left: auto; font-size: 0.64rem;
+      font-family: 'Courier New', monospace; color: #475569; flex-shrink: 0;
+    }
+    .target-label-row {
+      height: 28px; padding: 0 10px 0 22px;
+      display: flex; align-items: center; gap: 5px;
+      font-size: 0.72rem; color: #94a3b8;
+      border-top: 1px solid #0f172a; background: #192334;
+    }
+
+    /* Right timeline */
+    .col-timeline { flex: 1; min-width: 700px; position: relative; }
+
+    .time-axis {
+      height: 44px; position: sticky; top: 0; z-index: 10;
+      background: #0f172a; border-bottom: 2px solid #334155; overflow: hidden;
+    }
+    .tick {
+      position: absolute; top: 0; bottom: 0;
+      border-left: 1px solid #1e293b;
+      padding: 6px 0 0 5px; white-space: nowrap;
+    }
+    .tick.major { border-left-color: #253347; }
+    .tick-time { display: block; font-size: 0.73rem; color: #64748b; font-weight: 500; }
+    .tick.major .tick-time { color: #7c94af; }
+
+    /* Grid */
+    .grid { position: absolute; inset: 44px 0 0 0; pointer-events: none; z-index: 0; }
+    .g { position: absolute; top: 0; bottom: 0; width: 1px; }
+    .g.major { background: #1a2c3e; }
+    .g.minor { background: #111e2b; }
+
+    /* Now line */
+    .now-line {
+      position: absolute; top: 44px; bottom: 0; width: 2px;
+      background: linear-gradient(to bottom, #f59e0b88, #f59e0b);
+      z-index: 8; pointer-events: none;
+    }
+    .now-cap {
+      position: absolute; top: -22px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.63rem; color: #f59e0b; font-weight: 700;
+      white-space: nowrap; background: #0f172a;
+      border: 1px solid #92400e; padding: 1px 5px; border-radius: 4px;
+    }
+
+    /* Job rows */
+    .tl-job-block { border-bottom: 2px solid #0a1525; }
+    .tl-job-header { height: 32px; background: #0a1525; border-bottom: 1px solid #0f1e2e; }
+    .tl-target-row {
+      height: 28px; position: relative;
+      border-top: 1px solid #0d1a28; background: #0c1826;
+    }
+    .tl-target-row:nth-child(odd) { background: #0e1c2c; }
+    .tl-target-row:hover { background: #14273a; }
+
+    /* Fire marker */
+    .fire {
+      position: absolute; top: 4px;
+      width: 10px; height: 20px;
+      margin-left: -5px;
+      border-radius: 3px; cursor: pointer; z-index: 3;
+      transition: transform 0.1s, filter 0.1s;
+    }
+    .fire:hover { transform: scaleY(1.15) scaleX(1.3); filter: brightness(1.3); z-index: 5; }
+
+    /* Tooltip */
+    #tip {
+      position: fixed; z-index: 999; display: none;
+      background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+      padding: 10px 14px; font-size: 0.78rem; color: #e2e8f0;
+      pointer-events: none; box-shadow: 0 6px 24px rgba(0,0,0,.6); min-width: 210px;
+    }
+    #tip .t-job { font-weight: 700; font-size: 0.9rem; margin-bottom: 6px; }
+    #tip .t-row { display: flex; justify-content: space-between; gap: 12px; margin-top: 3px; }
+    #tip .t-lbl { color: #64748b; }
+    #tip .t-val { color: #e2e8f0; }
+    #tip .t-cron { color: #38bdf8; font-family: monospace; }
+    #tip .t-days { color: #a78bfa; }
+
+    .empty-msg {
+      padding: 50px; text-align: center; color: #334155; display: none;
+      font-size: 0.9rem; line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Cron<em>manager</em> &nbsp;·&nbsp; Schedule Swimlane</h1>
+  <div class="controls">
+
+    <label>From</label>
+    <select id="selStart"></select>
+
+    <label>To</label>
+    <select id="selEnd"></select>
+
+    <div class="sep"></div>
+
+    <label>Day</label>
+    <select id="selDay">
+      <option value="-1">All days</option>
+      <option value="1">Monday</option>
+      <option value="2">Tuesday</option>
+      <option value="3">Wednesday</option>
+      <option value="4">Thursday</option>
+      <option value="5">Friday</option>
+      <option value="6">Saturday</option>
+      <option value="0">Sunday</option>
+    </select>
+
+    <div class="sep"></div>
+
+    <label>Tag</label>
+    <select id="selTag"><option value="">All tags</option></select>
+
+    <label>Target</label>
+    <select id="selTarget"><option value="">All targets</option></select>
+
+  </div>
+</header>
+
+<div class="infobar">
+  <span id="lblRange"></span>
+  <span id="lblDay"></span>
+  <span class="jobs-count" id="lblCount"></span>
+  <span class="next-run" id="lblNext"></span>
+</div>
+
+<div class="lane-wrapper">
+  <div class="col-labels" id="colLabels">
+    <div class="axis-pad"></div>
+  </div>
+  <div class="col-timeline" id="colTimeline">
+    <div class="time-axis" id="timeAxis"></div>
+    <div class="grid"      id="grid"></div>
+    <div class="now-line"  id="nowLine"><div class="now-cap">now</div></div>
+    <div id="tlRows"></div>
+    <div class="empty-msg" id="emptyMsg">
+      No jobs scheduled in this time range.<br>
+      <span style="font-size:.8rem;color:#475569">Try expanding the hours or switching to "All days".</span>
+    </div>
+  </div>
+</div>
+
+<div id="tip"></div>
+
+<script>
+"use strict";
+
+/* ═══════════════════════════════════════════
+   DATA MODEL
+   Each job has:
+     fireTimes  – [{h,m}] all unique time-of-day fire points within 24 h
+     daysOfWeek – null = every day | [0..6] = specific JS days (0=Sun)
+═══════════════════════════════════════════ */
+
+/** All multiples of stepMin within [0, 24*60) starting at offsetMin */
+function periodicTimes(stepMin, offsetMin = 0) {
+  const out = [];
+  for (let t = offsetMin % stepMin === 0 ? offsetMin : offsetMin + (stepMin - offsetMin % stepMin);
+       t < 24 * 60; t += stepMin) {
+    out.push({ h: Math.floor(t / 60), m: t % 60 });
+  }
+  // also include the anchor if it starts at 0
+  if (offsetMin < stepMin) {
+    const base = [];
+    for (let t = offsetMin; t < 24 * 60; t += stepMin)
+      base.push({ h: Math.floor(t / 60), m: t % 60 });
+    return base;
+  }
+  return out;
+}
+
+function at(h, m = 0) { return [{ h, m }]; }
+
+const TAG_COLOR = {
+  backup:      '#0284c7',
+  sync:        '#059669',
+  report:      '#7c3aed',
+  maintenance: '#b45309',
+  monitoring:  '#0d9488',
+  data:        '#db2777',
+};
+
+const DAY_NAME = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+const JOBS = [
+  {
+    id: 'backup-db',
+    name: 'backup-db',
+    tag: 'backup',
+    cron: '0 */6 * * *',
+    desc: 'Full database backup to S3',
+    targets: ['local'],
+    daysOfWeek: null,                         // every day
+    fireTimes: at(0).concat(at(6), at(12), at(18)),
+  },
+  {
+    id: 'sync-files',
+    name: 'sync-files',
+    tag: 'sync',
+    cron: '15 */2 * * *',
+    desc: 'Rsync content to replica nodes',
+    targets: ['local', 'server-01'],
+    daysOfWeek: null,
+    fireTimes: (() => {
+      const t = [];
+      for (let h = 0; h < 24; h += 2) t.push({ h, m: 15 });
+      return t;
+    })(),
+  },
+  {
+    id: 'health-check',
+    name: 'health-check',
+    tag: 'monitoring',
+    cron: '*/30 * * * *',
+    desc: 'HTTP health probe on all nodes',
+    targets: ['local', 'server-01', 'server-02'],
+    daysOfWeek: null,
+    fireTimes: (() => {
+      const t = [];
+      for (let h = 0; h < 24; h++)
+        t.push({ h, m: 0 }, { h, m: 30 });
+      return t;
+    })(),
+  },
+  {
+    id: 'cleanup-logs',
+    name: 'cleanup-logs',
+    tag: 'maintenance',
+    cron: '30 2 * * *',
+    desc: 'Rotate and compress old log files',
+    targets: ['local', 'server-01', 'server-02'],
+    daysOfWeek: null,
+    fireTimes: at(2, 30),
+  },
+  {
+    id: 'send-reports',
+    name: 'send-reports',
+    tag: 'report',
+    cron: '0 8 * * 1-5',
+    desc: 'Daily digest email to stakeholders',
+    targets: ['local'],
+    daysOfWeek: [1, 2, 3, 4, 5],             // Mon–Fri only
+    fireTimes: at(8, 0),
+  },
+  {
+    id: 'index-rebuild',
+    name: 'index-rebuild',
+    tag: 'data',
+    cron: '0 */4 * * *',
+    desc: 'Rebuild search index from database',
+    targets: ['local', 'server-01'],
+    daysOfWeek: null,
+    fireTimes: at(0).concat(at(4), at(8), at(12), at(16), at(20)),
+  },
+  {
+    id: 'cert-check',
+    name: 'cert-check',
+    tag: 'monitoring',
+    cron: '0 1 * * *',
+    desc: 'TLS certificate expiry check',
+    targets: ['server-01'],
+    daysOfWeek: null,
+    fireTimes: at(1, 0),
+  },
+  {
+    id: 'db-optimize',
+    name: 'db-optimize',
+    tag: 'maintenance',
+    cron: '0 3 * * 0',
+    desc: 'Weekly ANALYZE + vacuum tables',
+    targets: ['local'],
+    daysOfWeek: [0],                          // Sunday only
+    fireTimes: at(3, 0),
+  },
+  {
+    id: 'weekend-archive',
+    name: 'weekend-archive',
+    tag: 'backup',
+    cron: '0 4 * * 6,0',
+    desc: 'Full filesystem archive to NAS',
+    targets: ['local', 'server-01'],
+    daysOfWeek: [6, 0],                       // Sat + Sun
+    fireTimes: at(4, 0),
+  },
+  {
+    id: 'monthly-invoice',
+    name: 'monthly-invoice',
+    tag: 'report',
+    cron: '0 9 1 * *',
+    desc: 'Generate and mail monthly invoices',
+    targets: ['local'],
+    daysOfWeek: null,                         // 1st of month – any weekday
+    fireTimes: at(9, 0),
+  },
+  {
+    id: 'metrics-push',
+    name: 'metrics-push',
+    tag: 'monitoring',
+    cron: '*/5 * * * *',
+    desc: 'Push host metrics to Prometheus',
+    targets: ['local', 'server-01', 'server-02'],
+    daysOfWeek: null,
+    fireTimes: (() => {
+      const t = [];
+      for (let m = 0; m < 24 * 60; m += 5)
+        t.push({ h: Math.floor(m / 60), m: m % 60 });
+      return t;
+    })(),
+  },
+  {
+    id: 'weekday-report',
+    name: 'weekday-report',
+    tag: 'report',
+    cron: '30 17 * * 1-5',
+    desc: 'End-of-day summary for business hours',
+    targets: ['local'],
+    daysOfWeek: [1, 2, 3, 4, 5],
+    fireTimes: at(17, 30),
+  },
+  {
+    id: 'sat-maintenance',
+    name: 'sat-maintenance',
+    tag: 'maintenance',
+    cron: '0 22 * * 6',
+    desc: 'Saturday night OS patching window',
+    targets: ['server-01', 'server-02'],
+    daysOfWeek: [6],                          // Saturday only
+    fireTimes: at(22, 0),
+  },
+];
+
+/* ═══════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════ */
+let startH = 0;    // start hour (0–23)
+let endH   = 24;   // end hour  (1–24, where 24 = 24:00 = end of day)
+let selDay = -1;   // -1 = all days, 0-6 = JS day
+
+// Range expressed in minutes for precise positioning
+const startMin = () => startH * 60;
+const endMin   = () => endH   * 60;          // endH=24 → 1440 = midnight
+const rangeMin = () => endMin() - startMin();
+
+/** Convert {h,m} to an x-percentage within [startMin, endMin) */
+function toX(h, m) {
+  return ((h * 60 + m - startMin()) / rangeMin()) * 100;
+}
+
+function padH(n) { return String(n).padStart(2, '0') + ':00'; }
+
+/* ═══════════════════════════════════════════
+   POPULATE HOUR SELECTS
+═══════════════════════════════════════════ */
+function buildHourSelects() {
+  const ss = document.getElementById('selStart');
+  const es = document.getElementById('selEnd');
+
+  for (let h = 0; h <= 23; h++) {
+    const o = document.createElement('option');
+    o.value = h; o.textContent = padH(h);
+    if (h === 0) o.selected = true;
+    ss.appendChild(o);
+  }
+  // End hour goes to 24 ("24:00" = end of day / midnight)
+  for (let h = 1; h <= 24; h++) {
+    const o = document.createElement('option');
+    o.value = h;
+    o.textContent = h === 24 ? '24:00' : padH(h);
+    if (h === 24) o.selected = true;
+    es.appendChild(o);
+  }
+
+  ss.addEventListener('change', () => {
+    startH = Number(ss.value);
+    if (endH <= startH) {
+      endH = Math.min(24, startH + 1);
+      es.value = endH;
+    }
+    render();
+  });
+  es.addEventListener('change', () => {
+    endH = Number(es.value);
+    if (startH >= endH) {
+      startH = Math.max(0, endH - 1);
+      ss.value = startH;
+    }
+    render();
+  });
+}
+
+/* ═══════════════════════════════════════════
+   POPULATE TAG / TARGET FILTERS
+═══════════════════════════════════════════ */
+function buildFilters() {
+  const tags    = [...new Set(JOBS.map(j => j.tag))].sort();
+  const targets = [...new Set(JOBS.flatMap(j => j.targets))].sort();
+
+  const tagSel = document.getElementById('selTag');
+  tags.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t; o.textContent = t; tagSel.appendChild(o);
+  });
+
+  const tgtSel = document.getElementById('selTarget');
+  targets.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t; o.textContent = t; tgtSel.appendChild(o);
+  });
+
+  tagSel.addEventListener('change', render);
+  tgtSel.addEventListener('change', render);
+  document.getElementById('selDay').addEventListener('change', e => {
+    selDay = Number(e.target.value);
+    render();
+  });
+}
+
+/* ═══════════════════════════════════════════
+   BUILD TIME AXIS
+═══════════════════════════════════════════ */
+function buildAxis() {
+  const el = document.getElementById('timeAxis');
+  el.innerHTML = '';
+
+  const rh   = endH - startH;   // visible hours
+  const step = rh <= 2 ? 0.5 : rh <= 6 ? 1 : rh <= 12 ? 2 : 3;
+
+  for (let offset = 0; offset <= rh; offset += step) {
+    const h   = startH + offset;
+    if (h > endH) break;
+    const x   = (offset / rh) * 100;
+    const div = document.createElement('div');
+    div.className = 'tick' + (offset % 3 === 0 ? ' major' : '');
+    div.style.left = x + '%';
+
+    const hh = Math.floor(h) % 24;
+    const mm = Math.round((h % 1) * 60);
+    div.innerHTML = `<span class="tick-time">${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}</span>`;
+    el.appendChild(div);
+  }
+}
+
+function buildGrid() {
+  const el   = document.getElementById('grid');
+  el.innerHTML = '';
+  const rh   = endH - startH;
+  const step = rh <= 4 ? 0.5 : 1;
+
+  for (let offset = 0; offset <= rh; offset += step) {
+    const x   = (offset / rh) * 100;
+    const div = document.createElement('div');
+    div.className = 'g ' + (offset % 3 === 0 ? 'major' : 'minor');
+    div.style.left = x + '%';
+    el.appendChild(div);
+  }
+}
+
+function buildNowLine() {
+  const el  = document.getElementById('nowLine');
+  const now = new Date();
+  const h   = now.getHours();
+  const m   = now.getMinutes();
+
+  const nowMin = h * 60 + m;
+  if (nowMin >= startMin() && nowMin < endMin() && (selDay === -1 || selDay === now.getDay())) {
+    const x = toX(h, m);
+    el.style.left    = x + '%';
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+/* ═══════════════════════════════════════════
+   MAIN RENDER
+═══════════════════════════════════════════ */
+function render() {
+  const tagFilter = document.getElementById('selTag').value;
+  const tgtFilter = document.getElementById('selTarget').value;
+
+  buildAxis();
+  buildGrid();
+  buildNowLine();
+
+  const colLabels = document.getElementById('colLabels');
+  const tlRows    = document.getElementById('tlRows');
+  colLabels.innerHTML = '<div class="axis-pad"></div>';
+  tlRows.innerHTML    = '';
+
+  // Update infobar
+  const dayLabel = selDay === -1 ? 'Every day' : DAY_NAME[selDay] + 's';
+  document.getElementById('lblRange').innerHTML =
+    `Time: <strong>${padH(startH)} – ${endH === 24 ? '24:00' : padH(endH)}</strong>`;
+  document.getElementById('lblDay').innerHTML =
+    `Day: <strong>${dayLabel}</strong>`;
+
+  // Find next upcoming fire (within today, within the range, matching day filter)
+  const now = new Date();
+  const curH = now.getHours(), curM = now.getMinutes(), curDay = now.getDay();
+  let nextJob = null, nextTime = null;
+  JOBS.forEach(job => {
+    if (selDay !== -1 && job.daysOfWeek !== null && !job.daysOfWeek.includes(selDay)) return;
+    // Check if current day matches
+    const dayMatch = selDay === -1
+      ? (job.daysOfWeek === null || job.daysOfWeek.includes(curDay))
+      : (job.daysOfWeek === null || job.daysOfWeek.includes(selDay));
+    if (!dayMatch) return;
+    job.fireTimes.forEach(({ h, m }) => {
+      if (h < startH || h > endH) return;
+      if (h > curH || (h === curH && m > curM)) {
+        if (!nextTime || h * 60 + m < nextTime.h * 60 + nextTime.m) {
+          nextTime = { h, m };
+          nextJob  = job.name;
+        }
+      }
+    });
+  });
+  document.getElementById('lblNext').textContent =
+    nextJob
+      ? `Next in range: ${nextJob} at ${String(nextTime.h).padStart(2,'0')}:${String(nextTime.m).padStart(2,'0')}`
+      : '';
+
+  let visibleCount = 0;
+
+  JOBS.forEach(job => {
+    // Day filter
+    if (selDay !== -1 && job.daysOfWeek !== null && !job.daysOfWeek.includes(selDay)) return;
+
+    // Tag / target filters
+    if (tagFilter && job.tag !== tagFilter) return;
+    const targets = job.targets.filter(t => !tgtFilter || t === tgtFilter);
+    if (!targets.length) return;
+
+    // Which fire times fall within [startH, endH]?
+    const inRange = job.fireTimes.filter(({ h, m }) => h * 60 + m >= startMin() && h * 60 + m < endMin());
+    if (!inRange.length) return;  // job exists but fires outside the selected hours
+
+    visibleCount++;
+    const color = TAG_COLOR[job.tag] || '#475569';
+
+    /* ── Label column ── */
+    const lblBlock = document.createElement('div');
+    lblBlock.className = 'job-block';
+
+    const lhdr = document.createElement('div');
+    lhdr.className = 'job-header-label';
+    lhdr.innerHTML =
+      `<span>${job.name}</span>` +
+      `<span class="tag" style="background:${color}22;color:${color};border:1px solid ${color}55">${job.tag}</span>` +
+      `<span class="cron">${job.cron}</span>`;
+    lblBlock.appendChild(lhdr);
+
+    targets.forEach(target => {
+      const tr = document.createElement('div');
+      tr.className = 'target-label-row';
+      tr.innerHTML = `<span style="opacity:.65">${target === 'local' ? '🖥' : '🌐'}</span>${target}`;
+      lblBlock.appendChild(tr);
+    });
+    colLabels.appendChild(lblBlock);
+
+    /* ── Timeline column ── */
+    const tlBlock = document.createElement('div');
+    tlBlock.className = 'tl-job-block';
+
+    const hdrRow = document.createElement('div');
+    hdrRow.className = 'tl-job-header';
+    tlBlock.appendChild(hdrRow);
+
+    targets.forEach(target => {
+      const row = document.createElement('div');
+      row.className = 'tl-target-row';
+
+      inRange.forEach(({ h, m }) => {
+        const x = toX(h, m);
+
+        // Is this fire time in the past today?
+        const now2 = new Date();
+        const isPast = (selDay === -1 || selDay === now2.getDay())
+          && (h < now2.getHours() || (h === now2.getHours() && m <= now2.getMinutes()));
+
+        const el = document.createElement('div');
+        el.className = 'fire';
+        el.style.left       = x + '%';
+        el.style.background = color;
+        el.style.opacity    = isPast ? '0.28' : '0.9';
+        el.style.boxShadow  = isPast ? 'none' : `0 0 6px 1px ${color}77`;
+
+        el.dataset.job    = job.name;
+        el.dataset.desc   = job.desc;
+        el.dataset.cron   = job.cron;
+        el.dataset.tag    = job.tag;
+        el.dataset.target = target;
+        el.dataset.color  = color;
+        el.dataset.timeH  = h;
+        el.dataset.timeM  = m;
+        el.dataset.days   = job.daysOfWeek === null
+          ? 'Every day'
+          : job.daysOfWeek.map(d => DAY_NAME[d]).join(', ');
+
+        el.addEventListener('mouseenter', showTip);
+        el.addEventListener('mousemove',  moveTip);
+        el.addEventListener('mouseleave', hideTip);
+        row.appendChild(el);
+      });
+
+      tlBlock.appendChild(row);
+    });
+
+    tlRows.appendChild(tlBlock);
+  });
+
+  document.getElementById('lblCount').textContent =
+    `${visibleCount} job${visibleCount !== 1 ? 's' : ''} shown`;
+  document.getElementById('emptyMsg').style.display = visibleCount === 0 ? 'block' : 'none';
+}
+
+/* ═══════════════════════════════════════════
+   TOOLTIP
+═══════════════════════════════════════════ */
+const tip = document.getElementById('tip');
+
+function showTip(e) {
+  const d = e.currentTarget.dataset;
+  const hh = String(Number(d.timeH)).padStart(2, '0');
+  const mm = String(Number(d.timeM)).padStart(2, '0');
+  tip.innerHTML =
+    `<div class="t-job" style="color:${d.color}">${d.job}</div>` +
+    `<div class="t-row"><span class="t-lbl">Description</span><span class="t-val">${d.desc}</span></div>` +
+    `<div class="t-row"><span class="t-lbl">Cron</span><span class="t-cron">${d.cron}</span></div>` +
+    `<div class="t-row"><span class="t-lbl">Fires at</span><span class="t-val">${hh}:${mm} daily</span></div>` +
+    `<div class="t-row"><span class="t-lbl">Days</span><span class="t-days">${d.days}</span></div>` +
+    `<div class="t-row"><span class="t-lbl">Target</span><span class="t-val">${d.target}</span></div>` +
+    `<div class="t-row"><span class="t-lbl">Tag</span><span class="t-val">${d.tag}</span></div>`;
+  tip.style.display = 'block';
+  moveTip(e);
+}
+function moveTip(e) {
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > window.innerWidth)  x = e.clientX - w - pad;
+  if (y + h > window.innerHeight) y = e.clientY - h - pad;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+function hideTip() { tip.style.display = 'none'; }
+
+/* ═══════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════ */
+buildHourSelects();
+buildFilters();
+render();
+</script>
+</body>
+</html>

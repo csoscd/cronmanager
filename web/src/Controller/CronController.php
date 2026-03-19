@@ -199,6 +199,11 @@ class CronController extends BaseController
         // SSH host selector dynamically when the linux_user field changes.
         $sshHostsByUser = $this->fetchSshHostsByUser();
 
+        $returnUrl = trim((string) ($_GET['_return'] ?? ''));
+        if ($returnUrl !== '' && !str_starts_with($returnUrl, '/crons')) {
+            $returnUrl = '';
+        }
+
         $this->render('cron/form.php', $this->translator()->t('cron_add'), [
             'job'            => null,
             'tags'           => $tags,
@@ -206,6 +211,7 @@ class CronController extends BaseController
             'sshHostsByUser' => json_encode($sshHostsByUser, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'error'          => null,
             'isEdit'         => false,
+            'returnUrl'      => $returnUrl,
         ], '/crons');
     }
 
@@ -239,6 +245,11 @@ class CronController extends BaseController
 
             $sshHostsByUser = $this->fetchSshHostsByUser();
 
+            $postReturn = trim((string) ($_POST['_return'] ?? ''));
+            if ($postReturn !== '' && !str_starts_with($postReturn, '/crons')) {
+                $postReturn = '';
+            }
+
             $this->render('cron/form.php', $this->translator()->t('cron_add'), [
                 'job'            => $_POST,
                 'tags'           => $tags,
@@ -246,6 +257,7 @@ class CronController extends BaseController
                 'sshHostsByUser' => json_encode($sshHostsByUser, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'error'          => $e->getMessage(),
                 'isEdit'         => false,
+                'returnUrl'      => $postReturn,
             ], '/crons');
             return;
         }
@@ -255,7 +267,10 @@ class CronController extends BaseController
             'schedule'   => $data['schedule']   ?? '',
         ]);
 
-        (new Response())->redirect('/crons');
+        $returnUrl = trim((string) ($_POST['_return'] ?? ''));
+        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons';
+
+        (new Response())->redirect($safe);
     }
 
     /**
@@ -338,6 +353,14 @@ class CronController extends BaseController
             ? $job['targets']
             : ['local'];
 
+        // Capture the return URL (e.g. the cron list with active filters) so the
+        // form can redirect back to it after a successful save instead of to /crons/{id}.
+        $returnUrl = trim((string) ($_GET['_return'] ?? ''));
+        // Validate: must be a relative /crons URL to prevent open redirects
+        if ($returnUrl !== '' && !str_starts_with($returnUrl, '/crons')) {
+            $returnUrl = '';
+        }
+
         $this->render('cron/form.php', $this->translator()->t('cron_edit'), [
             'job'             => $job,
             'tags'            => $tags,
@@ -346,6 +369,7 @@ class CronController extends BaseController
             'sshHostsByUser'  => json_encode([], JSON_UNESCAPED_UNICODE),
             'error'           => null,
             'isEdit'          => true,
+            'returnUrl'       => $returnUrl,
         ], '/crons');
     }
 
@@ -392,6 +416,11 @@ class CronController extends BaseController
                 }
             }
 
+            $postReturn = trim((string) ($_POST['_return'] ?? ''));
+            if ($postReturn !== '' && !str_starts_with($postReturn, '/crons')) {
+                $postReturn = '';
+            }
+
             $this->render('cron/form.php', $this->translator()->t('cron_edit'), [
                 'job'            => $mergedJob,
                 'tags'           => $tags,
@@ -399,13 +428,19 @@ class CronController extends BaseController
                 'sshHostsByUser' => json_encode([], JSON_UNESCAPED_UNICODE),
                 'error'          => $e->getMessage(),
                 'isEdit'         => true,
+                'returnUrl'      => $postReturn,
             ], '/crons');
             return;
         }
 
         $this->logger->info('CronController::update: job updated', ['id' => $id]);
 
-        (new Response())->redirect('/crons/' . rawurlencode($id));
+        // Redirect back to the list page (preserving any active filters) if a
+        // validated return URL was passed through the form, otherwise show detail.
+        $returnUrl = trim((string) ($_POST['_return'] ?? ''));
+        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons/' . rawurlencode($id);
+
+        (new Response())->redirect($safe);
     }
 
     /**
@@ -565,14 +600,16 @@ class CronController extends BaseController
             'errors'   => $errorOccurred,
         ]);
 
-        // Store a flash success message with the count of imported jobs
+        // Store a flash message with the import result count
         SessionManager::set('_flash_success', str_replace(
             '{count}',
             (string) $imported,
             $this->translator()->t('import_success')
         ));
 
-        (new Response())->redirect('/crons');
+        // Redirect back to the import page for the same user so the success
+        // message is visible immediately and additional entries can be imported.
+        (new Response())->redirect('/crons/import?user=' . rawurlencode($user));
     }
 
     /**

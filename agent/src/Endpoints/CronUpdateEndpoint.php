@@ -26,6 +26,7 @@ declare(strict_types=1);
 namespace Cronmanager\Agent\Endpoints;
 
 use Cronmanager\Agent\Cron\CrontabManager;
+use Cron\CronExpression;
 use Monolog\Logger;
 use PDO;
 use PDOException;
@@ -586,34 +587,32 @@ final class CronUpdateEndpoint
     }
 
     /**
-     * Basic cron schedule expression validator.
+     * Validate a cron schedule expression using dragonmantank/cron-expression.
+     *
+     * Accepts standard 5-field cron expressions (including named day/month
+     * abbreviations such as "sat", "jan") as well as the @ shorthand forms
+     * supported by the library (@daily, @weekly, @monthly, @yearly, @annually,
+     * @midnight, @hourly, @reboot).
      *
      * @param string $schedule Cron expression to validate.
      *
-     * @return bool
+     * @return bool True when the expression is valid.
      */
     private function isValidCronSchedule(string $schedule): bool
     {
-        $fields = preg_split('/\s+/', trim($schedule));
+        $trimmed = trim($schedule);
 
-        if ($fields === false) {
+        // @reboot is a valid vixie-cron directive but is not a time expression
+        // and is therefore not supported by dragonmantank/cron-expression.
+        if (strtolower($trimmed) === '@reboot') {
+            return true;
+        }
+
+        try {
+            new CronExpression($trimmed);
+            return true;
+        } catch (\InvalidArgumentException) {
             return false;
         }
-
-        $count = count($fields);
-
-        if ($count < 5 || $count > 6) {
-            return false;
-        }
-
-        $fieldPattern = '/^[\d*\/,\-]+$/';
-
-        foreach ($fields as $field) {
-            if (!preg_match($fieldPattern, $field)) {
-                return false;
-            }
-        }
-
-        return true;
     }
 }

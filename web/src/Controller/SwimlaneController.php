@@ -126,7 +126,12 @@ class SwimlaneController extends BaseController
 
         // Normalise agent responses (may return {data:[...]} or plain array)
         $rawJobs = $jobsResponse['data'] ?? $jobsResponse;
-        $tags    = $tagsResponse['data']  ?? $tagsResponse;
+        $allTags = $tagsResponse['data']  ?? $tagsResponse;
+
+        // Only expose tags that are currently assigned to at least one job
+        $tags = is_array($allTags)
+            ? array_values(array_filter($allTags, static fn(array $t): bool => ($t['job_count'] ?? 0) > 0))
+            : [];
 
         if (!is_array($rawJobs)) {
             $rawJobs = [];

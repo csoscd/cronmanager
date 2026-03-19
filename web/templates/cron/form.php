@@ -28,6 +28,7 @@ $selectedTargets = isset($selectedTargets) && is_array($selectedTargets) ? $sele
 $sshHostsByUser  = isset($sshHostsByUser)  && is_string($sshHostsByUser) ? $sshHostsByUser  : '{}';
 $error           = isset($error)           && $error !== null            ? (string) $error  : null;
 $isEdit          = isset($isEdit)          && (bool) $isEdit;
+$returnUrl       = isset($returnUrl)       && is_string($returnUrl) ? $returnUrl : '';
 
 // Pre-fill form values from job data or from re-submitted POST data
 $val = static function (string $field, mixed $default = '') use ($job): string {
@@ -88,7 +89,10 @@ foreach ($tags as $tag) {
 
         <!-- Form -->
         <form method="POST" action="<?= htmlspecialchars($formAction, ENT_QUOTES, 'UTF-8') ?>" novalidate>
-            <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="_csrf"   value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
+            <?php if ($returnUrl !== ''): ?>
+            <input type="hidden" name="_return" value="<?= htmlspecialchars($returnUrl, ENT_QUOTES, 'UTF-8') ?>">
+            <?php endif; ?>
 
             <!-- Linux User -->
             <div class="mb-4">

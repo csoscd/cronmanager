@@ -47,7 +47,7 @@ class ExportController extends BaseController
         $agent = $this->agentClient();
 
         try {
-            $tags    = $agent->get('/tags')['data']  ?? [];
+            $allTags = $agent->get('/tags')['data']  ?? [];
             $allJobs = $agent->get('/crons')['data'] ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('ExportController::index: agent request failed', [
@@ -66,6 +66,12 @@ class ExportController extends BaseController
             }
         }
         sort($users);
+
+        // Only show tags that are in use (job_count > 0)
+        $tags = array_values(array_filter(
+            $allTags,
+            static fn(array $t): bool => ($t['job_count'] ?? 0) > 0
+        ));
 
         $this->render('export.php', $this->translator()->t('export_title'), [
             'tags'  => $tags,

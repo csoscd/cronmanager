@@ -23,7 +23,12 @@ use Cronmanager\Web\Session\SessionManager;
 $title       = isset($title)       ? (string) $title       : 'Cronmanager';
 $content     = isset($content)     ? (string) $content     : '';
 $currentPath = isset($currentPath) ? (string) $currentPath : '/';
-$user        = isset($user)        ? (array)  $user        : SessionManager::getUser();
+
+// Always read the user directly from the session here.
+// Sub-templates can define a loop variable named $user (e.g. foreach ($users as $user))
+// which would contaminate the shared variable scope and cause the wrong role to display.
+// Using SessionManager::getUser() directly guarantees we always show the real session user.
+$user = SessionManager::getUser();
 
 /** @var Translator $translator */
 $t = static fn(string $key, array $r = []): string => isset($translator) ? $translator->t($key, $r) : $key;
@@ -34,7 +39,7 @@ $lang = isset($translator) ? $translator->getLang() : 'en';
 $otherLang  = $lang === 'de' ? 'en' : 'de';
 $langLabel  = $t('lang_switch');
 
-// Build role badge label and colour
+// Build role badge label and colour – always from the session user
 $roleLabel = '';
 $roleBadge = '';
 if ($user !== null) {

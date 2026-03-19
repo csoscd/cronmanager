@@ -41,7 +41,21 @@ $byUser        = (array) ($stats['byUser']      ?? []);
         <?= htmlspecialchars($t('dashboard_title'), ENT_QUOTES, 'UTF-8') ?>
     </h1>
     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        <?= htmlspecialchars(date('l, F j, Y'), ENT_QUOTES, 'UTF-8') ?>
+        <?php
+            // Build a locale-aware date string using translated day/month names.
+            // PHP's date('N') returns 1 (Mon) … 7 (Sun); date('n') returns 1–12.
+            $dayKeys  = ['day_monday','day_tuesday','day_wednesday','day_thursday',
+                         'day_friday','day_saturday','day_sunday'];
+            $dayName  = $translator->t($dayKeys[(int) date('N') - 1]);
+            $monthName = $translator->t('month_' . date('n'));
+            $dayNum   = (int) date('j');
+            $year     = date('Y');
+            $lang     = $translator->getLang();
+            $dateStr  = $lang === 'de'
+                ? "{$dayName}, {$dayNum}. {$monthName} {$year}"
+                : "{$dayName}, {$monthName} {$dayNum}, {$year}";
+        ?>
+        <?= htmlspecialchars($dateStr, ENT_QUOTES, 'UTF-8') ?>
     </p>
 </div>
 

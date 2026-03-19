@@ -120,8 +120,8 @@ final class MailNotifier
         // ------------------------------------------------------------------
 
         // Truncate output to 10 000 characters to keep the mail readable
-        $truncatedOutput = mb_strlen($output) > 10000
-            ? mb_substr($output, 0, 10000) . "\n\n[... output truncated to 10 000 characters ...]"
+        $truncatedOutput = \mb_strlen($output) > 10000
+            ? \mb_substr($output, 0, 10000) . "\n\n[... output truncated to 10 000 characters ...]"
             : $output;
 
         $subject = sprintf(

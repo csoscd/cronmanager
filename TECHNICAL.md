@@ -33,13 +33,14 @@ see [README.md](README.md).
    - [Translator](#translator)
 7. [Database Schema](#database-schema)
 8. [Security Model](#security-model)
-9. [Configuration Reference](#configuration-reference)
-10. [Deployment Script](#deployment-script)
-11. [Logging](#logging)
-12. [Internationalisation](#internationalisation)
-13. [Adding a New Language](#adding-a-new-language)
-14. [Adding a New Agent Endpoint](#adding-a-new-agent-endpoint)
-15. [Database Migrations](#database-migrations)
+9. [Performance](#performance)
+10. [Configuration Reference](#configuration-reference)
+11. [Deployment Script](#deployment-script)
+12. [Logging](#logging)
+13. [Internationalisation](#internationalisation)
+14. [Adding a New Language](#adding-a-new-language)
+15. [Adding a New Agent Endpoint](#adding-a-new-agent-endpoint)
+16. [Database Migrations](#database-migrations)
 
 ---
 
@@ -134,6 +135,7 @@ provided by Docker's `extra_hosts: host-gateway` mechanism.
     │   ├── setup.php
     │   ├── dashboard.php
     │   ├── timeline.php
+    │   ├── swimlane.php
     │   ├── export.php
     │   ├── error.php
     │   ├── cron/
@@ -163,6 +165,7 @@ provided by Docker's `extra_hosts: host-gateway` mechanism.
             ├── DashboardController.php
             ├── CronController.php
             ├── TimelineController.php
+            ├── SwimlaneController.php
             ├── ExportController.php
             └── UserController.php
 ```
@@ -179,6 +182,9 @@ provided by Docker's `extra_hosts: host-gateway` mechanism.
 | HTTP client | `guzzlehttp/guzzle` | ^7.8 |
 | Email | `phpmailer/phpmailer` | ^6.8 |
 | Database | MariaDB LTS via PDO | LTS |
+| Cron parsing | `dragonmantank/cron-expression` | ^3.3 |
+| Cron translation | `lorisleiva/cron-translator` | ^0.4 |
+| In-memory cache | APCu (`php84-pecl-apcu`) | bundled |
 | Frontend | Tailwind CSS (local copy, no build step) | 3.4.x |
 | Containerisation | Docker + Docker Compose v2 | — |
 
@@ -692,6 +698,7 @@ for security-sensitive checks such as navigation visibility.
 | `DashboardController` | `GET /dashboard` | view |
 | `CronController` | `GET /crons`, `GET /crons/{id}`, `GET/POST /crons/new`, `GET/POST /crons/{id}/edit`, `POST /crons/{id}/delete`, `GET/POST /crons/import` | view/admin |
 | `TimelineController` | `GET /timeline` | view |
+| `SwimlaneController` | `GET /swimlane`, `GET /swimlane?debug=1` | view |
 | `ExportController` | `GET /export`, `GET /export/download` | view |
 | `UserController` | `GET /users`, `POST /users/{id}/role`, `POST /users/{id}/delete` | admin |
 
@@ -1038,6 +1045,61 @@ any requests are processed.
 - `code_challenge = base64url(sha256(code_verifier))`
 - `state` is a cryptographically random 16-byte hex string
 - Both are stored in the PHP session and verified during callback processing
+
+---
+
+## Performance
+
+### Swimlane view caching (APCu)
+
+The swimlane page is the most CPU-intensive page in the application because it
+pre-computes weekly fire-time patterns for every managed job using
+`dragonmantank/cron-expression`.  For a job running every minute, this
+produces up to 10 080 `DateTime` objects per page load without caching.
+
+APCu (PHP shared-memory cache) is used to eliminate redundant computation:
+
+| What is cached | APCu key | TTL |
+|---|---|---|
+| `computeSchedule()` result for a cron expression | `cronmgr_sched_<md5(expr)>` | 86 400 s (24 h) |
+| `translateCron()` result for a cron expression | `cronmgr_trans_<md5(expr)>` | 86 400 s (24 h) |
+
+The cache key is derived from the expression string only.  Because fire-time
+patterns are computed against a fixed reference week (`2024-01-01`), the cached
+value is permanently valid until the APCu segment is reset (container restart).
+
+**Fallback:** if APCu is unavailable (extension not loaded, `apc.enabled = 0`)
+the controller falls back to computing every pattern on every request.  No error
+is raised and the page still works — it is just slower.
+
+**Required Alpine package:** `php84-pecl-apcu`
+
+Verify that APCu is active:
+```bash
+docker exec <container> php -r "var_dump(extension_loaded('apcu'));"
+# → bool(true)
+```
+
+### Timing instrumentation
+
+Server-side timing is always written to the application log at `DEBUG` level:
+
+```
+[DEBUG] SwimlaneController::index timing {
+    agent_ms: 8.4,   compute_ms: 142.1,  json_ms: 2.3,
+    total_ms: 152.8, jobs: 12,            apcu: true,
+    cache_hits: 10,  cache_miss: 2,       payload_b: 48320
+}
+```
+
+To see the timing breakdown in the browser, append `?debug=1` to the URL:
+```
+https://your-host/swimlane?debug=1
+```
+
+This embeds the timing table as an HTML comment at the end of the page (visible
+in browser DevTools → Sources → Ctrl+U, or `curl … | tail`).  The output is
+only included when `debug=1` is present; normal requests are unaffected.
 
 ---
 

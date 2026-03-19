@@ -14,8 +14,19 @@ declare(strict_types=1);
  * is required.  All interactive filtering (hour range, day, tag, target) is
  * then handled client-side without additional HTTP round-trips.
  *
+ * Performance:
+ *   Fire-time patterns and human-readable translations are cached in APCu
+ *   (shared memory) keyed by cron expression string.  Because the patterns are
+ *   computed against a fixed reference week (2024-01-01), they are invariant
+ *   and can be cached for a full day without any staleness risk.  Agent calls
+ *   (/crons, /tags) are always live to reflect current job state.
+ *
+ *   If APCu is unavailable the controller falls back to computing everything
+ *   on every request without error.
+ *
  * Routes handled:
  *   GET /swimlane
+ *   GET /swimlane?debug=1  (includes server-side timing breakdown in HTML comment)
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
  * @license GNU General Public License version 3 or later
@@ -33,6 +44,14 @@ use Lorisleiva\CronTranslator\CronTranslator;
  * using dragonmantank/cron-expression, enriches each entry with a human-
  * readable schedule description via lorisleiva/cron-translator, then renders
  * the swimlane template with the result as an inline JSON payload.
+ *
+ * APCu caching is applied to the two most expensive per-expression operations:
+ *   - computeSchedule()  → cached under key "cronmgr_sched_<md5>"  TTL 86400 s
+ *   - translateCron()    → cached under key "cronmgr_trans_<md5>"  TTL 86400 s
+ *
+ * Timing instrumentation is written to the application log at DEBUG level on
+ * every request and is additionally embedded as an HTML comment when the
+ * query string contains `debug=1`.
  */
 class SwimlaneController extends BaseController
 {
@@ -45,6 +64,25 @@ class SwimlaneController extends BaseController
      */
     private const REFERENCE_WEEK_START = '2024-01-01';
 
+    /**
+     * APCu cache TTL in seconds.
+     *
+     * Fire-time patterns for a fixed reference week never change, so a 24-hour
+     * TTL is safe.  Increase or remove the TTL if memory pressure is not a
+     * concern.
+     */
+    private const CACHE_TTL = 86400;
+
+    /**
+     * APCu cache key prefix for computed schedules.
+     */
+    private const CACHE_PREFIX_SCHED = 'cronmgr_sched_';
+
+    /**
+     * APCu cache key prefix for cron-translator output.
+     */
+    private const CACHE_PREFIX_TRANS = 'cronmgr_trans_';
+
     // -------------------------------------------------------------------------
     // Actions
     // -------------------------------------------------------------------------
@@ -53,9 +91,14 @@ class SwimlaneController extends BaseController
      * Display the schedule swimlane view.
      *
      * Fetches the full job list and all tags from the host agent, pre-computes
-     * weekly fire-time patterns for every job, and renders the swimlane
-     * template.  The template receives the job data as a JSON-encoded string
-     * which the client-side renderer consumes directly.
+     * weekly fire-time patterns for every job (using APCu cache where
+     * available), and renders the swimlane template.  The template receives the
+     * job data as a JSON-encoded string which the client-side renderer consumes
+     * directly.
+     *
+     * Pass `?debug=1` to include a timing breakdown as an HTML comment in the
+     * rendered page.  Timing data is always written to the application log at
+     * DEBUG level regardless of the query parameter.
      *
      * @param array<string,string> $params Path parameters (unused for this route).
      *
@@ -63,6 +106,9 @@ class SwimlaneController extends BaseController
      */
     public function index(array $params): void
     {
+        $debugMode = isset($_GET['debug']) && $_GET['debug'] === '1';
+        $t0        = hrtime(true);
+
         $agent = $this->agentClient();
 
         try {
@@ -75,6 +121,8 @@ class SwimlaneController extends BaseController
             $this->renderError(503, 'error_agent_unavailable', '/swimlane');
             return;
         }
+
+        $tAfterAgent = hrtime(true);
 
         // Normalise agent responses (may return {data:[...]} or plain array)
         $rawJobs = $jobsResponse['data'] ?? $jobsResponse;
@@ -100,14 +148,23 @@ class SwimlaneController extends BaseController
         sort($allTargets);
 
         // Pre-compute schedule data for each active job
-        $swimlaneJobs = [];
+        $swimlaneJobs   = [];
+        $cacheHits      = 0;
+        $cacheMisses    = 0;
+        $apCuAvailable  = \function_exists('apcu_fetch') && \ini_get('apc.enabled');
+
         foreach ($rawJobs as $job) {
             $cronExpr = trim((string) ($job['schedule'] ?? ''));
             if ($cronExpr === '') {
                 continue;
             }
 
-            $schedule = $this->computeSchedule($cronExpr);
+            $schedule = $this->computeScheduleCached(
+                $cronExpr,
+                $apCuAvailable,
+                $cacheHits,
+                $cacheMisses
+            );
 
             // Skip jobs whose expression could not be parsed
             if (empty($schedule['allDays']) && empty($schedule['byDay'])) {
@@ -124,7 +181,7 @@ class SwimlaneController extends BaseController
                 'name'       => $description !== '' ? $description : $command,
                 'command'    => $command,
                 'cron'       => $cronExpr,
-                'cronHuman'  => $this->translateCron($cronExpr),
+                'cronHuman'  => $this->translateCronCached($cronExpr, $apCuAvailable),
                 'linuxUser'  => (string) ($job['linux_user'] ?? ''),
                 'tags'       => array_values((array) ($job['tags']    ?? [])),
                 'targets'    => array_values((array) ($job['targets'] ?? ['local'])),
@@ -134,6 +191,8 @@ class SwimlaneController extends BaseController
                 'activeDays' => $schedule['activeDays'],
             ];
         }
+
+        $tAfterCompute = hrtime(true);
 
         try {
             $jobsJson = json_encode(
@@ -147,15 +206,106 @@ class SwimlaneController extends BaseController
             $jobsJson = '[]';
         }
 
+        $tAfterJson = hrtime(true);
+
+        // Build timing breakdown
+        $timings = [
+            'agent_ms'   => round(($tAfterAgent   - $t0)            / 1e6, 2),
+            'compute_ms' => round(($tAfterCompute  - $tAfterAgent)   / 1e6, 2),
+            'json_ms'    => round(($tAfterJson     - $tAfterCompute) / 1e6, 2),
+            'total_ms'   => round(($tAfterJson     - $t0)            / 1e6, 2),
+            'jobs'       => count($swimlaneJobs),
+            'apcu'       => $apCuAvailable,
+            'cache_hits' => $cacheHits,
+            'cache_miss' => $cacheMisses,
+            'payload_b'  => strlen($jobsJson),
+        ];
+
+        $this->logger->debug('SwimlaneController::index timing', $timings);
+
         $this->render('swimlane.php', $this->translator()->t('swimlane_title'), [
             'swimlaneJobsJson' => $jobsJson,
             'tags'             => $tags,
             'allTargets'       => $allTargets,
+            'debugMode'        => $debugMode,
+            'timings'          => $timings,
         ], '/swimlane');
     }
 
     // -------------------------------------------------------------------------
-    // Private helpers
+    // Private helpers – caching wrappers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Return the computed schedule for a cron expression, using APCu cache.
+     *
+     * On a cache hit the pre-computed array is returned immediately.
+     * On a miss the schedule is computed, stored in APCu, and returned.
+     * If APCu is unavailable the schedule is computed directly.
+     *
+     * @param string $cronExpr     Five-field standard cron expression.
+     * @param bool   $apcu         Whether APCu is available.
+     * @param int    &$hits        Hit counter (incremented by reference).
+     * @param int    &$misses      Miss counter (incremented by reference).
+     *
+     * @return array{byDay:array<int,list<array{h:int,m:int}>>,allDays:list<array{h:int,m:int}>,activeDays:list<int>}
+     */
+    private function computeScheduleCached(
+        string $cronExpr,
+        bool   $apcu,
+        int    &$hits,
+        int    &$misses
+    ): array {
+        if (!$apcu) {
+            ++$misses;
+            return $this->computeSchedule($cronExpr);
+        }
+
+        $key    = self::CACHE_PREFIX_SCHED . md5($cronExpr);
+        $cached = apcu_fetch($key, $success);
+
+        if ($success && is_array($cached)) {
+            ++$hits;
+            /** @var array{byDay:array<int,list<array{h:int,m:int}>>,allDays:list<array{h:int,m:int}>,activeDays:list<int>} $cached */
+            return $cached;
+        }
+
+        ++$misses;
+        $schedule = $this->computeSchedule($cronExpr);
+        apcu_store($key, $schedule, self::CACHE_TTL);
+
+        return $schedule;
+    }
+
+    /**
+     * Return the human-readable translation of a cron expression, using APCu cache.
+     *
+     * @param string $cronExpr Five-field cron expression.
+     * @param bool   $apcu     Whether APCu is available.
+     *
+     * @return string Human-readable description in English.
+     */
+    private function translateCronCached(string $cronExpr, bool $apcu): string
+    {
+        if (!$apcu) {
+            return $this->translateCron($cronExpr);
+        }
+
+        $key    = self::CACHE_PREFIX_TRANS . md5($cronExpr);
+        $cached = apcu_fetch($key, $success);
+
+        if ($success && is_string($cached)) {
+            return $cached;
+        }
+
+        $translation = $this->translateCron($cronExpr);
+        apcu_store($key, $translation, self::CACHE_TTL);
+
+        return $translation;
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers – computation
     // -------------------------------------------------------------------------
 
     /**
@@ -236,7 +386,7 @@ class SwimlaneController extends BaseController
                 $byDay[$dow][] = ['h' => $h, 'm' => $m];
 
                 // Accumulate unique time-of-day values across all active days
-                $minuteKey           = $h * 60 + $m;
+                $minuteKey            = $h * 60 + $m;
                 $allTimes[$minuteKey] = ['h' => $h, 'm' => $m];
             }
         }

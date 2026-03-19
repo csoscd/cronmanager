@@ -42,6 +42,7 @@ history, email failure alerts, multi-host support, and SSO integration.
 | **Execution tracking** | Every job run is recorded: start time, end time, exit code, and captured output |
 | **Dashboard** | At-a-glance view of total jobs, active/inactive counts, and recent failures |
 | **Timeline** | Filterable, paginated history of all executions across all jobs |
+| **Swimlane** | Visual schedule overview: planned fire times per job across a time-of-day axis, filterable by hour range, day of week, tag, and target |
 | **Multi-host execution** | A single job can run on multiple targets (local + remote SSH) in parallel |
 | **Tags** | Label jobs to enable filtering and grouped export |
 | **Crontab import** | Detect and import existing unmanaged crontab entries |
@@ -110,6 +111,14 @@ includes PHP-FPM 8.4 and Nginx.
 > `curl`) is supported. Official images such as `php:8.4-fpm-alpine` combined with a separate
 > Nginx container, or community images like `webdevops/php-nginx:8.4-alpine`, are equally valid.
 > Update the `image:` field in `docker-compose.yml` accordingly.
+
+> **APCu extension**: The swimlane view uses APCu for in-memory caching of pre-computed cron
+> fire-time patterns.  Install the Alpine package `php84-pecl-apcu` in your Docker image for
+> best performance.  The swimlane view works without APCu but will recompute all patterns on
+> every page load.  Verify with:
+> ```bash
+> docker exec <container> php -r "var_dump(extension_loaded('apcu'));"
+> ```
 
 ---
 

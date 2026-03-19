@@ -14,6 +14,8 @@ declare(strict_types=1);
  *                              fire-time patterns (byDay, allDays, activeDays).
  *   array   $tags              All tag objects [{id, name}] for the filter dropdown.
  *   array   $allTargets        Sorted unique target strings for the filter dropdown.
+ *   bool    $debugMode         When true, a timing breakdown is rendered as an HTML comment.
+ *   array   $timings           Server-side timing data (only used when $debugMode is true).
  *
  * Variables injected by BaseController::render():
  *   Translator $translator     For i18n strings.
@@ -33,6 +35,8 @@ $t  = static fn(string $k, array $r = []): string =>
 $swimlaneJobsJson = isset($swimlaneJobsJson) ? (string) $swimlaneJobsJson : '[]';
 $tags             = isset($tags)             ? (array)  $tags             : [];
 $allTargets       = isset($allTargets)       ? (array)  $allTargets       : [];
+$debugMode        = isset($debugMode)        ? (bool)   $debugMode        : false;
+$timings          = isset($timings)          ? (array)  $timings          : [];
 ?>
 
 <style>
@@ -792,3 +796,25 @@ if (typeof origToggle === 'function') {
 
 })();
 </script>
+
+<?php if ($debugMode && !empty($timings)): ?>
+<!--
+  Swimlane – Server-side timing (debug=1)
+  ─────────────────────────────────────────────────────────────────
+  Agent HTTP calls : <?= number_format((float) ($timings['agent_ms']   ?? 0), 2) ?> ms
+  Schedule compute : <?= number_format((float) ($timings['compute_ms'] ?? 0), 2) ?> ms
+  JSON encode      : <?= number_format((float) ($timings['json_ms']    ?? 0), 2) ?> ms
+  Total (server)   : <?= number_format((float) ($timings['total_ms']   ?? 0), 2) ?> ms
+  ─────────────────────────────────────────────────────────────────
+  Jobs rendered    : <?= (int) ($timings['jobs']       ?? 0) ?>
+
+  APCu available   : <?= !empty($timings['apcu']) ? 'yes' : 'no' ?>
+
+  Cache hits       : <?= (int) ($timings['cache_hits'] ?? 0) ?>
+
+  Cache misses     : <?= (int) ($timings['cache_miss'] ?? 0) ?>
+
+  JSON payload     : <?= number_format((int) ($timings['payload_b']  ?? 0)) ?> bytes
+  ─────────────────────────────────────────────────────────────────
+-->
+<?php endif; ?>

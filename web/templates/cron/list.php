@@ -387,6 +387,10 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                                            class="text-blue-600 hover:text-blue-800 text-sm font-medium transition">
                                             <?= htmlspecialchars($t('cron_edit'), ENT_QUOTES, 'UTF-8') ?>
                                         </a>
+                                        <a href="/crons/new?copy_from=<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>&_return=<?= htmlspecialchars(rawurlencode($pageUrl($currentPage)), ENT_QUOTES, 'UTF-8') ?>"
+                                           class="text-green-600 hover:text-green-800 text-sm font-medium transition">
+                                            <?= htmlspecialchars($t('cron_copy'), ENT_QUOTES, 'UTF-8') ?>
+                                        </a>
                                         <form method="POST"
                                               action="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/delete"
                                               onsubmit="return confirm('<?= htmlspecialchars($t('cron_delete_confirm'), ENT_QUOTES, 'UTF-8') ?>')">

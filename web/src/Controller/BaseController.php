@@ -175,6 +175,54 @@ abstract class BaseController
         ], $currentPath);
     }
 
+    /**
+     * Resolve a filter parameter from GET, falling back to a persistent cookie.
+     *
+     * Resolution order:
+     *   1. If ?_reset is present in the request, expire the cookie and return $default.
+     *   2. If the named GET key is present, use its value (even empty) and save to cookie.
+     *   3. Otherwise fall back to the stored cookie value, or $default when absent.
+     *
+     * setcookie() silently fails when the browser blocks cookies, degrading
+     * gracefully to the previous stateless behaviour.
+     *
+     * @param string $get     Name of the GET query parameter.
+     * @param string $cookie  Cookie name to read from / write to.
+     * @param string $default Value returned when absent from both GET and cookie.
+     *
+     * @return string Resolved, trimmed filter value.
+     */
+    protected function filterParam(string $get, string $cookie, string $default = ''): string
+    {
+        // User clicked "reset filters" – clear the cookie and return the default.
+        if (isset($_GET['_reset'])) {
+            setcookie($cookie, '', [
+                'expires'  => time() - 1,
+                'path'     => '/',
+                'samesite' => 'Lax',
+                'httponly' => true,
+            ]);
+            return $default;
+        }
+
+        // Explicit GET value (including empty string) takes precedence over cookie.
+        if (array_key_exists($get, $_GET)) {
+            $value = trim((string) $_GET[$get]);
+        } else {
+            $value = isset($_COOKIE[$cookie]) ? (string) $_COOKIE[$cookie] : $default;
+        }
+
+        // Persist the resolved value for the next page load.
+        setcookie($cookie, $value, [
+            'expires'  => time() + 30 * 24 * 3600,
+            'path'     => '/',
+            'samesite' => 'Lax',
+            'httponly' => true,
+        ]);
+
+        return $value;
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------

@@ -8,13 +8,14 @@ declare(strict_types=1);
  * Displays a paginated, filterable execution history across all jobs.
  *
  * Variables available in this template:
- *   array  $history – execution history records from the agent
- *   array  $tags    – all known tags (for filter dropdown)
- *   array  $users   – unique linux_users (for filter dropdown)
- *   int    $total   – total number of matching records (for pagination)
- *   int    $limit   – records per page
- *   int    $offset  – current page offset
- *   array  $filters – active filter values: tag, user, status, from, to
+ *   array  $history    – execution history records from the agent
+ *   array  $tags       – all known tags (for filter dropdown)
+ *   array  $users      – unique linux_users (for filter dropdown)
+ *   array  $allTargets – unique execution targets (for filter dropdown)
+ *   int    $total      – total number of matching records (for pagination)
+ *   int    $limit      – records per page
+ *   int    $offset     – current page offset
+ *   array  $filters    – active filter values: tag, user, target, status, from, to
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
  * @license GNU General Public License version 3 or later
@@ -23,19 +24,24 @@ declare(strict_types=1);
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
-$history = isset($history) && is_array($history) ? $history : [];
-$tags    = isset($tags)    && is_array($tags)    ? $tags    : [];
-$users   = isset($users)   && is_array($users)   ? $users   : [];
-$total   = isset($total)   ? (int) $total   : 0;
-$limit   = isset($limit)   ? max(1, (int) $limit)  : 50;
-$offset  = isset($offset)  ? max(0, (int) $offset) : 0;
-$filters = isset($filters) && is_array($filters) ? $filters : [];
+$history    = isset($history)    && is_array($history)    ? $history    : [];
+$tags       = isset($tags)       && is_array($tags)       ? $tags       : [];
+$users      = isset($users)      && is_array($users)      ? $users      : [];
+$allTargets = isset($allTargets) && is_array($allTargets) ? $allTargets : [];
+$total      = isset($total)  ? (int) $total              : 0;
+$limit      = isset($limit)  ? max(1, (int) $limit)      : 50;
+$offset     = isset($offset) ? max(0, (int) $offset)     : 0;
+$filters    = isset($filters) && is_array($filters) ? $filters : [];
 
 $activeStatus = (string) ($filters['status'] ?? '');
 $activeTag    = (string) ($filters['tag']    ?? '');
 $activeUser   = (string) ($filters['user']   ?? '');
+$activeTarget = (string) ($filters['target'] ?? '');
 $activeFrom   = (string) ($filters['from']   ?? '');
 $activeTo     = (string) ($filters['to']     ?? '');
+
+$hasActiveFilter = $activeTag !== '' || $activeUser !== '' || $activeTarget !== ''
+    || $activeStatus !== '' || $activeFrom !== '' || $activeTo !== '';
 
 // Pagination helpers
 $prevOffset  = max(0, $offset - $limit);
@@ -54,6 +60,7 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
     $params = array_filter([
         'tag'    => $filters['tag']    ?? '',
         'user'   => $filters['user']   ?? '',
+        'target' => $filters['target'] ?? '',
         'status' => $filters['status'] ?? '',
         'from'   => $filters['from']   ?? '',
         'to'     => $filters['to']     ?? '',
@@ -143,6 +150,27 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
             </select>
         </div>
 
+        <!-- Target filter (shown only when more than one unique target exists) -->
+        <?php if (count($allTargets) > 1): ?>
+        <div class="flex-1 min-w-32">
+            <label for="filter-target" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                <?= htmlspecialchars($t('cron_targets'), ENT_QUOTES, 'UTF-8') ?>
+            </label>
+            <select id="filter-target" name="target"
+                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                           focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value=""><?= htmlspecialchars($t('filter_all_targets'), ENT_QUOTES, 'UTF-8') ?></option>
+                <?php foreach ($allTargets as $tgt): ?>
+                    <?php $sel = $activeTarget === $tgt ? ' selected' : ''; ?>
+                    <option value="<?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>"<?= $sel ?>>
+                        <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <?php endif; ?>
+
         <!-- From date -->
         <div class="flex-1 min-w-32">
             <label for="filter-from" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -167,8 +195,20 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
                           focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
 
-        <!-- Hidden limit to preserve page size -->
-        <input type="hidden" name="limit" value="<?= htmlspecialchars((string) $limit, ENT_QUOTES, 'UTF-8') ?>">
+        <!-- Page size selector -->
+        <div class="flex-1 min-w-28">
+            <label for="filter-limit" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                <?= htmlspecialchars($t('pagination_page_size'), ENT_QUOTES, 'UTF-8') ?>
+            </label>
+            <select id="filter-limit" name="limit"
+                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                           focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <?php foreach ([10, 25, 50, 100, 500] as $sz): ?>
+                    <option value="<?= $sz ?>"<?= $limit === $sz ? ' selected' : '' ?>><?= $sz ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
 
         <!-- Apply -->
         <div>
@@ -179,6 +219,16 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
                 <?= htmlspecialchars($t('filter_apply'), ENT_QUOTES, 'UTF-8') ?>
             </button>
         </div>
+
+        <!-- Reset filters link -->
+        <?php if ($hasActiveFilter): ?>
+        <div>
+            <a href="/timeline?_reset=1"
+               class="text-sm text-gray-500 hover:text-gray-700 underline py-2 block">
+                &times; <?= htmlspecialchars($t('cancel'), ENT_QUOTES, 'UTF-8') ?>
+            </a>
+        </div>
+        <?php endif; ?>
 
     </form>
 </div>
@@ -223,6 +273,9 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
                             <?= htmlspecialchars($t('cron_tags'), ENT_QUOTES, 'UTF-8') ?>
                         </th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            <?= htmlspecialchars($t('cron_targets'), ENT_QUOTES, 'UTF-8') ?>
+                        </th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             <?= htmlspecialchars($t('duration'), ENT_QUOTES, 'UTF-8') ?>
                         </th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -245,7 +298,8 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
                             $duration   = isset($entry['duration_seconds'])
                                 ? round((float) $entry['duration_seconds'], 1) . 's'
                                 : '–';
-                            $output     = (string) ($entry['output'] ?? '');
+                            $entryTarget = (string) ($entry['target'] ?? '');
+                            $output      = (string) ($entry['output'] ?? '');
                             $outputTrunc = mb_strlen($output) > 120
                                 ? mb_substr($output, 0, 120) . '…'
                                 : $output;
@@ -293,6 +347,15 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
                                         </span>
                                     <?php endforeach; ?>
                                 </div>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                                <?php if ($entryTarget !== ''): ?>
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                                        <?= htmlspecialchars($entryTarget, ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                <?php else: ?>
+                                    <span class="text-gray-300 dark:text-gray-600">—</span>
+                                <?php endif; ?>
                             </td>
                             <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
                                 <?= htmlspecialchars($duration, ENT_QUOTES, 'UTF-8') ?>

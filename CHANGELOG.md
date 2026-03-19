@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `copy`
+
+### Added
+
+- **Copy job** – Each job row in the cron list now has a "Copy" link (green, next to Edit). Clicking it opens the Add Job form with all fields (user, schedule, command, description, tags, targets, active, notify) pre-filled from the source job. A blue notice banner explains that the form is pre-filled and saving creates a new independent job. The `_return` URL is preserved so the user lands back on the same filtered list after saving.
+
+---
+
 ## [Unreleased] – branch: `filter_improve`
 
 ### Added

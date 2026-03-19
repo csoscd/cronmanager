@@ -28,6 +28,7 @@ $selectedTargets = isset($selectedTargets) && is_array($selectedTargets) ? $sele
 $sshHostsByUser  = isset($sshHostsByUser)  && is_string($sshHostsByUser) ? $sshHostsByUser  : '{}';
 $error           = isset($error)           && $error !== null            ? (string) $error  : null;
 $isEdit          = isset($isEdit)          && (bool) $isEdit;
+$isCopy          = isset($isCopy)          && (bool) $isCopy;
 $returnUrl       = isset($returnUrl)       && is_string($returnUrl) ? $returnUrl : '';
 
 // Pre-fill form values from job data or from re-submitted POST data
@@ -42,8 +43,9 @@ $val = static function (string $field, mixed $default = '') use ($job): string {
     return (string) $default;
 };
 
-$jobId         = $job !== null ? (string) ($job['id'] ?? '') : '';
-$formAction    = $isEdit && $jobId !== '' ? '/crons/' . rawurlencode($jobId) . '/edit' : '/crons';
+// When copying, treat the form as a create (no job ID, action = POST /crons)
+$jobId         = ($isEdit && !$isCopy) ? (string) ($job['id'] ?? '') : '';
+$formAction    = ($isEdit && $jobId !== '') ? '/crons/' . rawurlencode($jobId) . '/edit' : '/crons';
 $isActiveVal   = $job !== null ? !empty($job['active']) : true;
 $isNotifyVal   = $job !== null ? !empty($job['notify_on_failure']) : true;
 $pageTitle     = $isEdit ? $t('cron_edit') : $t('cron_add');
@@ -73,6 +75,19 @@ foreach ($tags as $tag) {
 
 <div class="max-w-2xl">
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+
+        <!-- Copy notice -->
+        <?php if ($isCopy): ?>
+            <div class="mb-5 flex items-start gap-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300
+                        rounded-lg px-4 py-3 text-sm" role="note">
+                <svg class="w-5 h-5 mt-0.5 flex-shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24"
+                     stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-4 10h6a2 2 0 002-2v-8a2 2 0 00-2-2h-6a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                <span><?= htmlspecialchars($t('cron_copy_notice'), ENT_QUOTES, 'UTF-8') ?></span>
+            </div>
+        <?php endif; ?>
 
         <!-- Error message -->
         <?php if ($error !== null): ?>

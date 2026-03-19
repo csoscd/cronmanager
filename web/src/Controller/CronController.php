@@ -182,14 +182,20 @@ class CronController extends BaseController
     /**
      * Show the create-new-job form.
      *
+     * When the optional ?copy_from={id} query parameter is present the form is
+     * pre-filled with all field values of the referenced job so the user can
+     * quickly create a similar job without re-typing everything.
+     *
      * @param array<string,string> $params Path parameters (unused).
      *
      * @return void
      */
     public function create(array $params): void
     {
+        $agent = $this->agentClient();
+
         try {
-            $tags = $this->agentClient()->get('/tags')['data'] ?? [];
+            $tags = $agent->get('/tags')['data'] ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('CronController::create: agent request failed', [
                 'message' => $e->getMessage(),
@@ -198,22 +204,61 @@ class CronController extends BaseController
             return;
         }
 
-        // Fetch SSH hosts for all known users so the JS can populate the
-        // SSH host selector dynamically when the linux_user field changes.
-        $sshHostsByUser = $this->fetchSshHostsByUser();
-
         $returnUrl = trim((string) ($_GET['_return'] ?? ''));
         if ($returnUrl !== '' && !str_starts_with($returnUrl, '/crons')) {
             $returnUrl = '';
         }
 
-        $this->render('cron/form.php', $this->translator()->t('cron_add'), [
-            'job'            => null,
+        // ------------------------------------------------------------------
+        // Copy mode: pre-fill form from an existing job when ?copy_from is set
+        // ------------------------------------------------------------------
+        $copyFromId = trim((string) ($_GET['copy_from'] ?? ''));
+        $sourceJob  = null;
+        $sshHosts   = [];
+
+        if ($copyFromId !== '') {
+            try {
+                $fetched = $agent->get('/crons/' . rawurlencode($copyFromId));
+                if (!empty($fetched)) {
+                    $sourceJob = $fetched;
+
+                    // Pre-load SSH hosts for the source job's user so that the
+                    // target checkboxes can be rendered server-side and pre-checked.
+                    $sshHostsResponse = $agent->get('/ssh-hosts', ['user' => $sourceJob['linux_user']]);
+                    $sshHosts         = $sshHostsResponse['data'] ?? [];
+                }
+            } catch (\RuntimeException $e) {
+                $this->logger->warning('CronController::create: could not fetch source job for copy', [
+                    'copy_from' => $copyFromId,
+                    'message'   => $e->getMessage(),
+                ]);
+                // Non-fatal: fall through to a blank form
+            }
+        }
+
+        // Selected targets come from the source job when copying; default to ['local']
+        $selectedTargets = ($sourceJob !== null && isset($sourceJob['targets']) && is_array($sourceJob['targets']) && $sourceJob['targets'] !== [])
+            ? $sourceJob['targets']
+            : ['local'];
+
+        // Fetch SSH hosts for all known users so JS can rebuild the checkboxes
+        // when the user changes the linux_user field.
+        $sshHostsByUser = $this->fetchSshHostsByUser();
+
+        $isCopy    = $sourceJob !== null;
+        $pageTitle = $isCopy
+            ? $this->translator()->t('cron_copy_title', ['name' => (string) ($sourceJob['description'] ?? "Job #{$copyFromId}")])
+            : $this->translator()->t('cron_add');
+
+        $this->render('cron/form.php', $pageTitle, [
+            'job'            => $sourceJob,   // null on blank form, array when copying
             'tags'           => $tags,
-            'sshHosts'       => [],
+            'sshHosts'       => $sshHosts,
+            'selectedTargets'=> $selectedTargets,
             'sshHostsByUser' => json_encode($sshHostsByUser, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'error'          => null,
-            'isEdit'         => false,
+            'isEdit'         => false,        // always POST to /crons (new job)
+            'isCopy'         => $isCopy,
             'returnUrl'      => $returnUrl,
         ], '/crons');
     }

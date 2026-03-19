@@ -40,6 +40,7 @@ return [
     'nav_dashboard'           => 'Dashboard',
     'nav_crons'               => 'Cron Jobs',
     'nav_timeline'            => 'Timeline',
+    'nav_swimlane'            => 'Swimlane',
     'nav_export'              => 'Export',
     'nav_users'               => 'Users',
 
@@ -118,6 +119,26 @@ return [
     // -------------------------------------------------------------------------
     'timeline_title'          => 'Timeline',
     'timeline_no_results'     => 'No executions found.',
+
+    // -------------------------------------------------------------------------
+    // Swimlane
+    // -------------------------------------------------------------------------
+    'swimlane_title'          => 'Schedule Swimlane',
+    'swimlane_from'           => 'From',
+    'swimlane_to'             => 'To',
+    'swimlane_day'            => 'Day',
+    'swimlane_tag'            => 'Tag',
+    'swimlane_target'         => 'Target',
+    'swimlane_all_days'       => 'All days',
+    'swimlane_no_results'     => 'No jobs scheduled in this time range.',
+    'swimlane_no_results_hint'=> 'Try expanding the hours or switching to "All days".',
+    'day_monday'              => 'Monday',
+    'day_tuesday'             => 'Tuesday',
+    'day_wednesday'           => 'Wednesday',
+    'day_thursday'            => 'Thursday',
+    'day_friday'              => 'Friday',
+    'day_saturday'            => 'Saturday',
+    'day_sunday'              => 'Sunday',
 
     // -------------------------------------------------------------------------
     // Export

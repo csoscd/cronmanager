@@ -109,6 +109,9 @@ $navClass = static function (string $path) use ($currentPath): string {
                         <a href="/timeline" class="<?= $navClass('/timeline') ?>">
                             <?= htmlspecialchars($t('nav_timeline'), ENT_QUOTES, 'UTF-8') ?>
                         </a>
+                        <a href="/swimlane" class="<?= $navClass('/swimlane') ?>">
+                            <?= htmlspecialchars($t('nav_swimlane'), ENT_QUOTES, 'UTF-8') ?>
+                        </a>
                         <a href="/export" class="<?= $navClass('/export') ?>">
                             <?= htmlspecialchars($t('nav_export'), ENT_QUOTES, 'UTF-8') ?>
                         </a>
@@ -174,6 +177,7 @@ $navClass = static function (string $path) use ($currentPath): string {
             <a href="/dashboard" class="<?= $navClass('/dashboard') ?>"><?= htmlspecialchars($t('nav_dashboard'), ENT_QUOTES, 'UTF-8') ?></a>
             <a href="/crons"     class="<?= $navClass('/crons') ?>"><?= htmlspecialchars($t('nav_crons'), ENT_QUOTES, 'UTF-8') ?></a>
             <a href="/timeline"  class="<?= $navClass('/timeline') ?>"><?= htmlspecialchars($t('nav_timeline'), ENT_QUOTES, 'UTF-8') ?></a>
+            <a href="/swimlane"  class="<?= $navClass('/swimlane') ?>"><?= htmlspecialchars($t('nav_swimlane'), ENT_QUOTES, 'UTF-8') ?></a>
             <a href="/export"    class="<?= $navClass('/export') ?>"><?= htmlspecialchars($t('nav_export'), ENT_QUOTES, 'UTF-8') ?></a>
             <?php if (SessionManager::hasRole('admin')): ?>
                 <a href="/users" class="<?= $navClass('/users') ?>"><?= htmlspecialchars($t('nav_users'), ENT_QUOTES, 'UTF-8') ?></a>

@@ -34,6 +34,7 @@ use Cronmanager\Web\Controller\CronController;
 use Cronmanager\Web\Controller\DashboardController;
 use Cronmanager\Web\Controller\ExportController;
 use Cronmanager\Web\Controller\SetupController;
+use Cronmanager\Web\Controller\SwimlaneController;
 use Cronmanager\Web\Controller\TimelineController;
 use Cronmanager\Web\Controller\UserController;
 use Cronmanager\Web\Database\Connection;
@@ -165,11 +166,12 @@ try {
     // -------------------------------------------------------------------------
     // Protected routes (authenticated + role check)
     // -------------------------------------------------------------------------
-    $dashboardCtrl = new DashboardController($config, $logger);
-    $cronCtrl      = new CronController($config, $logger);
-    $timelineCtrl  = new TimelineController($config, $logger);
-    $exportCtrl    = new ExportController($config, $logger);
-    $userCtrl      = new UserController($config, $logger);
+    $dashboardCtrl  = new DashboardController($config, $logger);
+    $cronCtrl       = new CronController($config, $logger);
+    $timelineCtrl   = new TimelineController($config, $logger);
+    $swimlaneCtrl   = new SwimlaneController($config, $logger);
+    $exportCtrl     = new ExportController($config, $logger);
+    $userCtrl       = new UserController($config, $logger);
 
     $router->addProtectedRoute('GET',  '/',                    fn(array $p) => (new Response())->redirect('/dashboard'));
     $router->addProtectedRoute('GET',  '/dashboard',           [$dashboardCtrl, 'index']);
@@ -184,7 +186,8 @@ try {
     $router->addProtectedRoute('POST', '/crons/{id}/edit',     [$cronCtrl, 'update'],  'admin');
     $router->addProtectedRoute('POST', '/crons/{id}/delete',   [$cronCtrl, 'destroy'], 'admin');
 
-    $router->addProtectedRoute('GET',  '/timeline',            [$timelineCtrl, 'index']);
+    $router->addProtectedRoute('GET',  '/timeline',            [$timelineCtrl,  'index']);
+    $router->addProtectedRoute('GET',  '/swimlane',            [$swimlaneCtrl,  'index']);
 
     $router->addProtectedRoute('GET',  '/export',              [$exportCtrl, 'index']);
     $router->addProtectedRoute('GET',  '/export/download',     [$exportCtrl, 'download']);

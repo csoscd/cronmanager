@@ -1,0 +1,794 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Cronmanager Web UI – Schedule Swimlane Template
+ *
+ * Renders an interactive swimlane diagram showing the planned fire times of
+ * all managed cron jobs within a user-selected time-of-day window and
+ * optional day-of-week filter.
+ *
+ * Variables injected by SwimlaneController:
+ *   string  $swimlaneJobsJson  JSON-encoded array of job objects with pre-computed
+ *                              fire-time patterns (byDay, allDays, activeDays).
+ *   array   $tags              All tag objects [{id, name}] for the filter dropdown.
+ *   array   $allTargets        Sorted unique target strings for the filter dropdown.
+ *
+ * Variables injected by BaseController::render():
+ *   Translator $translator     For i18n strings.
+ *   string     $csrf_token     Current session CSRF token.
+ *
+ * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+ * @license GNU General Public License version 3 or later
+ */
+
+use Cronmanager\Web\I18n\Translator;
+
+/** @var Translator $translator */
+$t  = static fn(string $k, array $r = []): string =>
+    htmlspecialchars($translator->t($k, $r), ENT_QUOTES, 'UTF-8');
+
+// Ensure variables are defined even when template is included standalone
+$swimlaneJobsJson = isset($swimlaneJobsJson) ? (string) $swimlaneJobsJson : '[]';
+$tags             = isset($tags)             ? (array)  $tags             : [];
+$allTargets       = isset($allTargets)       ? (array)  $allTargets       : [];
+?>
+
+<style>
+/* ── Swimlane-specific styles ─────────────────────────────────────────────── */
+/* These cannot be expressed as Tailwind utilities because they involve        */
+/* dynamic percentage positions set by JS and custom colour tokens.            */
+
+/* Light mode defaults */
+.sw-labels      { background: #ffffff; border-right-color: #e5e7eb; }
+.sw-axis        { background: #f9fafb; border-bottom-color: #d1d5db; }
+.sw-axis-pad    { background: #ffffff; border-bottom-color: #e5e7eb; }
+.sw-job-hdr-lbl { background: #ffffff; border-bottom-color: #e5e7eb; color: #111827; }
+.sw-target-lbl  { background: #f9fafb; border-top-color: #f3f4f6; color: #6b7280; }
+.sw-tl-row-even { background: #ffffff; border-top-color: #f3f4f6; }
+.sw-tl-row-odd  { background: #f9fafb; border-top-color: #f3f4f6; }
+.sw-tl-row:hover { background: #eff6ff !important; }
+.sw-job-tl-hdr  { background: #f3f4f6; border-bottom-color: #e5e7eb; }
+.sw-job-block   { border-bottom-color: #e5e7eb; }
+.sw-tick-time   { color: #6b7280; }
+.sw-tick-major .sw-tick-time { color: #374151; }
+.sw-grid-major  { background: #e5e7eb; }
+.sw-grid-minor  { background: #f3f4f6; }
+
+/* Dark mode overrides via .dark parent class */
+.dark .sw-labels      { background: #1e293b; border-right-color: #334155; }
+.dark .sw-axis        { background: #0f172a; border-bottom-color: #334155; }
+.dark .sw-axis-pad    { background: #1e293b; border-bottom-color: #334155; }
+.dark .sw-job-hdr-lbl { background: #1e293b; border-bottom-color: #1a2535; color: #f1f5f9; }
+.dark .sw-target-lbl  { background: #192334; border-top-color: #0f172a; color: #94a3b8; }
+.dark .sw-tl-row-even { background: #0c1826; border-top-color: #0d1a28; }
+.dark .sw-tl-row-odd  { background: #0e1c2c; border-top-color: #0d1a28; }
+.dark .sw-tl-row:hover { background: #14273a !important; }
+.dark .sw-job-tl-hdr  { background: #0a1525; border-bottom-color: #0f1e2e; }
+.dark .sw-job-block   { border-bottom-color: #0f172a; }
+.dark .sw-tick-time   { color: #64748b; }
+.dark .sw-tick-major .sw-tick-time { color: #7c94af; }
+.dark .sw-grid-major  { background: #1a2c3e; }
+.dark .sw-grid-minor  { background: #111e2b; }
+
+/* Layout */
+.sw-wrapper {
+    display: flex;
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: calc(100vh - 320px);
+    min-height: 320px;
+}
+.sw-labels {
+    flex-shrink: 0;
+    width: 240px;
+    border-right-width: 1px;
+    border-right-style: solid;
+    position: sticky;
+    left: 0;
+    z-index: 20;
+}
+.sw-axis-pad {
+    height: 44px;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+    position: sticky;
+    top: 0;
+    z-index: 21;
+}
+.sw-job-hdr-lbl {
+    height: 30px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+    position: sticky;
+    top: 44px;
+    overflow: hidden;
+}
+.sw-job-hdr-lbl .sw-cron {
+    margin-left: auto;
+    font-size: 0.62rem;
+    font-family: 'Courier New', monospace;
+    color: #6b7280;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.dark .sw-job-hdr-lbl .sw-cron { color: #475569; }
+.sw-tag-badge {
+    font-size: 0.6rem;
+    padding: 1px 6px;
+    border-radius: 9px;
+    font-weight: 600;
+    flex-shrink: 0;
+    white-space: nowrap;
+    border-width: 1px;
+    border-style: solid;
+}
+.sw-target-lbl {
+    height: 26px;
+    padding: 0 10px 0 22px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.7rem;
+    border-top-width: 1px;
+    border-top-style: solid;
+}
+.sw-job-block { border-bottom-width: 2px; border-bottom-style: solid; }
+
+/* Timeline column */
+.sw-timeline {
+    flex: 1;
+    min-width: 700px;
+    position: relative;
+}
+.sw-axis {
+    height: 44px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom-width: 2px;
+    border-bottom-style: solid;
+    overflow: hidden;
+}
+.sw-tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left-width: 1px;
+    border-left-style: solid;
+    border-left-color: transparent;
+    padding: 6px 0 0 4px;
+    white-space: nowrap;
+}
+.sw-tick-time { display: block; font-size: 0.7rem; font-weight: 500; }
+
+.sw-grid {
+    position: absolute;
+    inset: 44px 0 0 0;
+    pointer-events: none;
+    z-index: 0;
+}
+.sw-grid-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+}
+.sw-now-line {
+    position: absolute;
+    top: 44px;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, #f59e0b88, #d97706);
+    z-index: 8;
+    pointer-events: none;
+}
+.sw-now-cap {
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    color: #f59e0b;
+    font-weight: 700;
+    white-space: nowrap;
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: 1px solid #92400e;
+}
+.dark  .sw-now-cap { background: #0f172a; }
+.light .sw-now-cap { background: #f9fafb; }
+.sw-now-cap:not(.dark .sw-now-line .sw-now-cap) { background: #f9fafb; }
+
+.sw-job-tl-hdr {
+    height: 30px;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+}
+.sw-tl-row {
+    height: 26px;
+    position: relative;
+    border-top-width: 1px;
+    border-top-style: solid;
+}
+
+/* Fire marker */
+.sw-fire {
+    position: absolute;
+    top: 4px;
+    width: 10px;
+    height: 18px;
+    margin-left: -5px;
+    border-radius: 3px;
+    cursor: pointer;
+    z-index: 3;
+    transition: transform 0.1s, filter 0.1s, opacity 0.1s;
+}
+.sw-fire:hover {
+    transform: scaleY(1.18) scaleX(1.3);
+    filter: brightness(1.25);
+    z-index: 5;
+}
+</style>
+
+<!-- ── Page title ──────────────────────────────────────────────────────────── -->
+<div class="mb-4 flex items-center justify-between">
+    <h1 class="text-2xl font-bold text-gray-800 dark:text-white">
+        <?= $t('swimlane_title') ?>
+    </h1>
+</div>
+
+<!-- ── Filter bar ─────────────────────────────────────────────────────────── -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow px-4 py-3 mb-3
+            flex flex-wrap gap-x-4 gap-y-2 items-center">
+
+    <!-- From hour -->
+    <div class="flex items-center gap-2">
+        <label for="selStart" class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+            <?= $t('swimlane_from') ?>
+        </label>
+        <select id="selStart"
+                class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600
+                       text-gray-800 dark:text-gray-200 text-sm rounded-md px-2 py-1.5 cursor-pointer
+                       focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </select>
+    </div>
+
+    <!-- To hour -->
+    <div class="flex items-center gap-2">
+        <label for="selEnd" class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+            <?= $t('swimlane_to') ?>
+        </label>
+        <select id="selEnd"
+                class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600
+                       text-gray-800 dark:text-gray-200 text-sm rounded-md px-2 py-1.5 cursor-pointer
+                       focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </select>
+    </div>
+
+    <!-- Divider -->
+    <div class="w-px h-6 bg-gray-200 dark:bg-gray-600 hidden sm:block"></div>
+
+    <!-- Day of week -->
+    <div class="flex items-center gap-2">
+        <label for="selDay" class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+            <?= $t('swimlane_day') ?>
+        </label>
+        <select id="selDay"
+                class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600
+                       text-gray-800 dark:text-gray-200 text-sm rounded-md px-2 py-1.5 cursor-pointer
+                       focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="-1"><?= $t('swimlane_all_days') ?></option>
+            <option value="1"><?= $t('day_monday') ?></option>
+            <option value="2"><?= $t('day_tuesday') ?></option>
+            <option value="3"><?= $t('day_wednesday') ?></option>
+            <option value="4"><?= $t('day_thursday') ?></option>
+            <option value="5"><?= $t('day_friday') ?></option>
+            <option value="6"><?= $t('day_saturday') ?></option>
+            <option value="0"><?= $t('day_sunday') ?></option>
+        </select>
+    </div>
+
+    <!-- Divider -->
+    <div class="w-px h-6 bg-gray-200 dark:bg-gray-600 hidden sm:block"></div>
+
+    <!-- Tag filter -->
+    <div class="flex items-center gap-2">
+        <label for="selTag" class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+            <?= $t('swimlane_tag') ?>
+        </label>
+        <select id="selTag"
+                class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600
+                       text-gray-800 dark:text-gray-200 text-sm rounded-md px-2 py-1.5 cursor-pointer
+                       focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value=""><?= $t('filter_all_tags') ?></option>
+            <?php foreach ($tags as $tag): ?>
+                <option value="<?= htmlspecialchars((string) ($tag['name'] ?? $tag), ENT_QUOTES, 'UTF-8') ?>">
+                    <?= htmlspecialchars((string) ($tag['name'] ?? $tag), ENT_QUOTES, 'UTF-8') ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+
+    <!-- Target filter -->
+    <?php if (count($allTargets) > 1): ?>
+    <div class="flex items-center gap-2">
+        <label for="selTarget" class="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+            <?= $t('swimlane_target') ?>
+        </label>
+        <select id="selTarget"
+                class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600
+                       text-gray-800 dark:text-gray-200 text-sm rounded-md px-2 py-1.5 cursor-pointer
+                       focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value=""><?= $t('filter_all_targets') ?></option>
+            <?php foreach ($allTargets as $target): ?>
+                <option value="<?= htmlspecialchars($target, ENT_QUOTES, 'UTF-8') ?>">
+                    <?= htmlspecialchars($target, ENT_QUOTES, 'UTF-8') ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    <?php endif; ?>
+</div>
+
+<!-- ── Swimlane card ──────────────────────────────────────────────────────── -->
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+
+    <!-- Info bar -->
+    <div class="px-4 py-2 text-xs border-b border-gray-200 dark:border-gray-700
+                flex gap-5 flex-wrap items-center
+                text-gray-500 dark:text-gray-400">
+        <span id="lblRange"></span>
+        <span id="lblDay"></span>
+        <span id="lblCount" class="text-gray-400 dark:text-gray-500"></span>
+        <span id="lblNext" class="ml-auto text-blue-500 dark:text-blue-400 font-medium"></span>
+    </div>
+
+    <!-- Swimlane -->
+    <div class="sw-wrapper" id="swWrapper">
+
+        <!-- Labels column -->
+        <div class="sw-labels" id="colLabels">
+            <div class="sw-axis-pad"></div>
+        </div>
+
+        <!-- Timeline column -->
+        <div class="sw-timeline" id="colTimeline">
+            <div class="sw-axis" id="swAxis"></div>
+            <div class="sw-grid" id="swGrid"></div>
+            <div class="sw-now-line" id="swNow" style="display:none">
+                <div class="sw-now-cap">now</div>
+            </div>
+            <div id="tlRows"></div>
+            <div id="swEmpty"
+                 class="hidden text-center py-16 text-gray-400 dark:text-gray-500 text-sm">
+                <?= $t('swimlane_no_results') ?><br>
+                <span class="text-xs text-gray-300 dark:text-gray-600">
+                    <?= $t('swimlane_no_results_hint') ?>
+                </span>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ── Tooltip ────────────────────────────────────────────────────────────── -->
+<div id="swTip"
+     class="fixed z-50 hidden bg-white dark:bg-gray-900
+            border border-gray-200 dark:border-gray-700
+            rounded-lg shadow-xl px-4 py-3 text-sm
+            pointer-events-none min-w-[210px] max-w-[280px]">
+</div>
+
+<!-- ── Swimlane JavaScript ────────────────────────────────────────────────── -->
+<script>
+(function () {
+"use strict";
+
+/* ─── Job data from PHP ──────────────────────────────────────────────────── */
+/** @type {Array} */
+const JOBS = <?= $swimlaneJobsJson ?>;
+
+/* ─── Colour palette for tags (assigned on first encounter) ─────────────── */
+const PALETTE = [
+    '#0284c7', '#059669', '#7c3aed', '#b45309',
+    '#0d9488', '#db2777', '#ea580c', '#64748b',
+    '#0891b2', '#65a30d', '#9333ea', '#dc2626',
+];
+const tagColorMap = {};
+function tagColor(tag) {
+    if (!tagColorMap[tag]) {
+        tagColorMap[tag] = PALETTE[Object.keys(tagColorMap).length % PALETTE.length];
+    }
+    return tagColorMap[tag];
+}
+// Pre-assign colours in stable order so colours are consistent across renders
+JOBS.forEach(j => j.tags.forEach(t => tagColor(t)));
+
+/* ─── State ──────────────────────────────────────────────────────────────── */
+let startH = 0;    // inclusive hour (0–23)
+let endH   = 24;   // exclusive end, where 24 means 24:00 = end of day
+let selDay = -1;   // -1 = all days; 0–6 = JS getDay() value
+
+const startMin = () => startH * 60;
+const endMin   = () => endH   * 60;
+const rangeMin = () => endMin() - startMin();
+
+/** Map a fire time {h,m} to an x-position percentage. */
+function toX(h, m) {
+    return ((h * 60 + m - startMin()) / rangeMin()) * 100;
+}
+
+function padH(n) { return String(n).padStart(2, '0') + ':00'; }
+function padT(h, m) {
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
+/* ─── Dark mode helper ───────────────────────────────────────────────────── */
+const isDark = () => document.documentElement.classList.contains('dark');
+
+/* ─── Build time axis ────────────────────────────────────────────────────── */
+function buildAxis() {
+    const el = document.getElementById('swAxis');
+    el.innerHTML = '';
+    const rh   = endH - startH;
+    const step = rh <= 2 ? 0.5 : rh <= 6 ? 1 : rh <= 12 ? 2 : 3;
+
+    for (let offset = 0; offset <= rh; offset += step) {
+        const h = startH + offset;
+        if (h > endH) break;
+
+        const x   = (offset / rh) * 100;
+        const hh  = Math.floor(h) % 24;
+        const mm  = Math.round((h % 1) * 60);
+        const div = document.createElement('div');
+        div.className = 'sw-tick' + (offset % 3 === 0 ? ' sw-tick-major' : '');
+        div.style.left = x + '%';
+        const span = document.createElement('span');
+        span.className = 'sw-tick-time';
+        span.textContent = String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+        div.appendChild(span);
+        el.appendChild(div);
+    }
+}
+
+/* ─── Build grid lines ───────────────────────────────────────────────────── */
+function buildGrid() {
+    const el   = document.getElementById('swGrid');
+    el.innerHTML = '';
+    const rh   = endH - startH;
+    const step = rh <= 4 ? 0.5 : 1;
+
+    for (let offset = 0; offset <= rh; offset += step) {
+        const x   = (offset / rh) * 100;
+        const div = document.createElement('div');
+        div.className = 'sw-grid-line ' + (offset % 3 === 0 ? 'sw-grid-major' : 'sw-grid-minor');
+        div.style.left = x + '%';
+        el.appendChild(div);
+    }
+}
+
+/* ─── Now line ───────────────────────────────────────────────────────────── */
+function buildNowLine() {
+    const el  = document.getElementById('swNow');
+    const now = new Date();
+    const h   = now.getHours();
+    const m   = now.getMinutes();
+    const nowMin = h * 60 + m;
+
+    const dayOk = selDay === -1 || selDay === now.getDay();
+    if (nowMin >= startMin() && nowMin < endMin() && dayOk) {
+        el.style.left    = toX(h, m) + '%';
+        el.style.display = 'block';
+    } else {
+        el.style.display = 'none';
+    }
+}
+
+/* ─── Info bar ───────────────────────────────────────────────────────────── */
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+function updateInfoBar(visibleCount) {
+    const endLabel = endH === 24 ? '24:00' : padH(endH);
+    document.getElementById('lblRange').textContent =
+        'Time: ' + padH(startH) + ' – ' + endLabel;
+
+    document.getElementById('lblDay').textContent =
+        'Day: ' + (selDay === -1 ? 'All days' : DAY_NAMES[selDay] + 's');
+
+    document.getElementById('lblCount').textContent =
+        visibleCount + ' job' + (visibleCount !== 1 ? 's' : '') + ' shown';
+
+    // Find the next upcoming fire time today (within the selected range)
+    const now = new Date();
+    const curMin = now.getHours() * 60 + now.getMinutes();
+    let nextJob = null, nextMin = Infinity;
+
+    JOBS.forEach(job => {
+        const fireTimes = selDay === -1 ? job.allDays : (job.byDay[selDay] || []);
+        fireTimes.forEach(({ h, m }) => {
+            const tm = h * 60 + m;
+            if (tm >= startMin() && tm < endMin() && tm > curMin && tm < nextMin) {
+                nextMin = tm;
+                nextJob = job.name;
+            }
+        });
+    });
+
+    const lblNext = document.getElementById('lblNext');
+    if (nextJob) {
+        const hh = Math.floor(nextMin / 60), mm = nextMin % 60;
+        const diff = nextMin - curMin;
+        const diffStr = diff < 60 ? diff + ' min' : (diff / 60).toFixed(1) + ' h';
+        lblNext.textContent = 'Next: ' + nextJob + ' at ' + padT(hh, mm) + ' (in ' + diffStr + ')';
+    } else {
+        lblNext.textContent = '';
+    }
+}
+
+/* ─── Main render ────────────────────────────────────────────────────────── */
+function render() {
+    const tagFilter = document.getElementById('selTag').value;
+    const tgtFilter = document.getElementById('selTarget') ? document.getElementById('selTarget').value : '';
+
+    buildAxis();
+    buildGrid();
+    buildNowLine();
+
+    const colLabels = document.getElementById('colLabels');
+    const tlRows    = document.getElementById('tlRows');
+
+    // Reset (keep the axis-pad spacer)
+    colLabels.innerHTML = '<div class="sw-axis-pad"></div>';
+    tlRows.innerHTML    = '';
+
+    let visibleCount = 0;
+
+    JOBS.forEach(job => {
+        // ── Tag filter
+        if (tagFilter && !job.tags.includes(tagFilter)) return;
+
+        // ── Target filter
+        const visibleTargets = job.targets.filter(t => !tgtFilter || t === tgtFilter);
+        if (!visibleTargets.length) return;
+
+        // ── Day filter: select the right fire-time array
+        const fireTimes = selDay === -1 ? job.allDays : (job.byDay[selDay] || []);
+
+        // ── Hour range filter: keep only fires within [startMin, endMin)
+        const inRange = fireTimes.filter(({ h, m }) => {
+            const tm = h * 60 + m;
+            return tm >= startMin() && tm < endMin();
+        });
+        if (!inRange.length) return;
+
+        visibleCount++;
+
+        // Primary colour: first tag of the job, or grey if no tags
+        const primaryTag   = job.tags[0] || '';
+        const color        = primaryTag ? tagColor(primaryTag) : '#64748b';
+        const colorAlpha22 = color + '22';
+        const colorAlpha55 = color + '55';
+        const inactive     = !job.active;
+
+        /* ── Labels column entry ── */
+        const lblBlock = document.createElement('div');
+        lblBlock.className = 'sw-job-block';
+
+        const lhdr = document.createElement('div');
+        lhdr.className = 'sw-job-hdr-lbl';
+        lhdr.title = job.cronHuman || job.cron;
+        if (inactive) lhdr.style.opacity = '0.55';
+
+        // Job name (truncated via overflow:hidden on parent)
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = job.name;
+        nameSpan.style.overflow = 'hidden';
+        nameSpan.style.textOverflow = 'ellipsis';
+        nameSpan.style.whiteSpace = 'nowrap';
+        lhdr.appendChild(nameSpan);
+
+        // First tag badge
+        if (primaryTag) {
+            const badge = document.createElement('span');
+            badge.className = 'sw-tag-badge';
+            badge.textContent = primaryTag;
+            badge.style.background = colorAlpha22;
+            badge.style.color = color;
+            badge.style.borderColor = colorAlpha55;
+            lhdr.appendChild(badge);
+        }
+
+        // Cron expression
+        const cronSpan = document.createElement('span');
+        cronSpan.className = 'sw-cron';
+        cronSpan.textContent = job.cron;
+        lhdr.appendChild(cronSpan);
+
+        lblBlock.appendChild(lhdr);
+
+        visibleTargets.forEach(target => {
+            const tRow = document.createElement('div');
+            tRow.className = 'sw-target-lbl';
+            tRow.innerHTML = '<span style="opacity:.65">' +
+                (target === 'local' ? '🖥' : '🌐') +
+                '</span>' + escHtml(target);
+            lblBlock.appendChild(tRow);
+        });
+        colLabels.appendChild(lblBlock);
+
+        /* ── Timeline column entry ── */
+        const tlBlock = document.createElement('div');
+        tlBlock.className = 'sw-job-block';
+
+        // Blank header row to align with label header
+        const hdrRow = document.createElement('div');
+        hdrRow.className = 'sw-job-tl-hdr';
+        tlBlock.appendChild(hdrRow);
+
+        const now = new Date();
+        const curMin = now.getHours() * 60 + now.getMinutes();
+        const todayDow = now.getDay();
+
+        visibleTargets.forEach((target, rowIdx) => {
+            const row = document.createElement('div');
+            row.className = 'sw-tl-row ' + (rowIdx % 2 === 0 ? 'sw-tl-row-even' : 'sw-tl-row-odd');
+
+            inRange.forEach(({ h, m }) => {
+                const x = toX(h, m);
+                if (x < -0.5 || x > 100.5) return;
+
+                // Dim fires that are already past today (only when showing today)
+                const fireMin = h * 60 + m;
+                const isPast  = (selDay === -1 || selDay === todayDow) && fireMin <= curMin;
+
+                const marker = document.createElement('div');
+                marker.className = 'sw-fire';
+                marker.style.left       = Math.max(0, Math.min(100, x)) + '%';
+                marker.style.background = color;
+                marker.style.opacity    = inactive ? '0.25' : (isPast ? '0.28' : '0.88');
+                marker.style.boxShadow  = (isPast || inactive)
+                    ? 'none'
+                    : '0 0 5px 1px ' + color + '66';
+
+                // Dataset for tooltip
+                marker.dataset.job       = job.name;
+                marker.dataset.command   = job.command;
+                marker.dataset.cronHuman = job.cronHuman || job.cron;
+                marker.dataset.cron      = job.cron;
+                marker.dataset.target    = target;
+                marker.dataset.user      = job.linuxUser;
+                marker.dataset.tags      = job.tags.join(', ');
+                marker.dataset.color     = color;
+                marker.dataset.h         = String(h);
+                marker.dataset.m         = String(m);
+                marker.dataset.active    = job.active ? '1' : '0';
+
+                marker.addEventListener('mouseenter', showTip);
+                marker.addEventListener('mousemove',  moveTip);
+                marker.addEventListener('mouseleave', hideTip);
+
+                row.appendChild(marker);
+            });
+
+            tlBlock.appendChild(row);
+        });
+
+        tlRows.appendChild(tlBlock);
+    });
+
+    updateInfoBar(visibleCount);
+
+    const empty = document.getElementById('swEmpty');
+    empty.classList.toggle('hidden', visibleCount > 0);
+}
+
+/* ─── HTML escape helper ─────────────────────────────────────────────────── */
+function escHtml(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+/* ─── Tooltip ────────────────────────────────────────────────────────────── */
+const tip = document.getElementById('swTip');
+
+function showTip(e) {
+    const d    = e.currentTarget.dataset;
+    const h    = Number(d.h), m = Number(d.m);
+    const time = padT(h, m);
+    const isActive = d.active === '1';
+
+    tip.innerHTML =
+        '<div style="font-weight:700;font-size:.9rem;color:' + escHtml(d.color) + ';margin-bottom:6px">' +
+            escHtml(d.job) +
+        '</div>' +
+        row('Schedule', '<span style="color:#38bdf8;font-family:monospace">' + escHtml(d.cron) + '</span>') +
+        row('Meaning',  escHtml(d.cronHuman)) +
+        row('Fires at', '<strong>' + time + '</strong>') +
+        row('Target',   escHtml(d.target)) +
+        row('User',     escHtml(d.user)) +
+        (d.tags ? row('Tags', escHtml(d.tags)) : '') +
+        (!isActive ? '<div style="margin-top:6px;color:#f97316;font-size:.75rem">⚠ Job is inactive</div>' : '');
+
+    tip.classList.remove('hidden');
+    moveTip(e);
+}
+function row(lbl, val) {
+    return '<div style="display:flex;justify-content:space-between;gap:12px;margin-top:3px">' +
+               '<span style="color:#6b7280">' + lbl + '</span>' +
+               '<span>' + val + '</span>' +
+           '</div>';
+}
+function moveTip(e) {
+    const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+    let x = e.clientX + pad, y = e.clientY + pad;
+    if (x + w > window.innerWidth)  x = e.clientX - w - pad;
+    if (y + h > window.innerHeight) y = e.clientY - h - pad;
+    tip.style.left = x + 'px';
+    tip.style.top  = y + 'px';
+}
+function hideTip() { tip.classList.add('hidden'); }
+
+/* ─── Build hour selects ─────────────────────────────────────────────────── */
+function buildHourSelects() {
+    const ss = document.getElementById('selStart');
+    const es = document.getElementById('selEnd');
+
+    for (let h = 0; h <= 23; h++) {
+        const o = document.createElement('option');
+        o.value = h; o.textContent = padH(h);
+        if (h === 0) o.selected = true;
+        ss.appendChild(o);
+    }
+    for (let h = 1; h <= 24; h++) {
+        const o = document.createElement('option');
+        o.value = h;
+        o.textContent = h === 24 ? '24:00' : padH(h);
+        if (h === 24) o.selected = true;
+        es.appendChild(o);
+    }
+
+    ss.addEventListener('change', () => {
+        startH = Number(ss.value);
+        if (endH <= startH) { endH = Math.min(24, startH + 1); es.value = endH; }
+        render();
+    });
+    es.addEventListener('change', () => {
+        endH = Number(es.value);
+        if (startH >= endH) { startH = Math.max(0, endH - 1); ss.value = startH; }
+        render();
+    });
+}
+
+/* ─── Init ───────────────────────────────────────────────────────────────── */
+buildHourSelects();
+render();
+
+document.getElementById('selDay').addEventListener('change', e => {
+    selDay = Number(e.target.value); render();
+});
+document.getElementById('selTag').addEventListener('change', render);
+const selTarget = document.getElementById('selTarget');
+if (selTarget) selTarget.addEventListener('change', render);
+
+// Re-render when dark mode is toggled so grid/axis colours update
+const origToggle = window.toggleDarkMode;
+if (typeof origToggle === 'function') {
+    window.toggleDarkMode = function () {
+        origToggle();
+        render();
+    };
+}
+
+})();
+</script>

@@ -36,11 +36,13 @@ class TimelineController extends BaseController
      * Supported GET parameters:
      *   ?tag=     – filter by tag name
      *   ?user=    – filter by linux_user
+     *   ?target=  – filter by execution target
      *   ?status=  – filter by execution status (success | failed | running)
      *   ?from=    – filter from date (YYYY-MM-DD)
      *   ?to=      – filter to date (YYYY-MM-DD)
-     *   ?limit=   – number of results per page (default: 50)
+     *   ?limit=   – number of results per page (10 | 25 | 50 | 100 | 500, default: 50)
      *   ?offset=  – pagination offset (default: 0)
+     *   ?_reset=1 – clear all stored filter cookies and reset to defaults
      *
      * @param array<string,string> $params Path parameters (unused).
      *
@@ -51,20 +53,30 @@ class TimelineController extends BaseController
         $agent = $this->agentClient();
 
         // ------------------------------------------------------------------
-        // Read and sanitise filter / pagination parameters from the request
+        // Read and sanitise filter / pagination parameters.
+        // filterParam() reads from GET first, falls back to a persistent cookie,
+        // and saves the resolved value back to the cookie for next time.
         // ------------------------------------------------------------------
-        $filterTag    = trim((string) ($_GET['tag']    ?? ''));
-        $filterUser   = trim((string) ($_GET['user']   ?? ''));
-        $filterStatus = trim((string) ($_GET['status'] ?? ''));
-        $filterFrom   = trim((string) ($_GET['from']   ?? ''));
-        $filterTo     = trim((string) ($_GET['to']     ?? ''));
-        $limit        = max(1, (int) ($_GET['limit']  ?? 50));
-        $offset       = max(0, (int) ($_GET['offset'] ?? 0));
+        $filterTag    = $this->filterParam('tag',    'cronmgr_tl_tag');
+        $filterUser   = $this->filterParam('user',   'cronmgr_tl_user');
+        $filterTarget = $this->filterParam('target', 'cronmgr_tl_target');
+        $filterStatus = $this->filterParam('status', 'cronmgr_tl_status');
+        $filterFrom   = $this->filterParam('from',   'cronmgr_tl_from');
+        $filterTo     = $this->filterParam('to',     'cronmgr_tl_to');
+
+        // Page size: validate against the allowed set; persist via cookie.
+        $allowedLimits = [10, 25, 50, 100, 500];
+        $limitRaw      = (int) $this->filterParam('limit', 'cronmgr_tl_limit', '50');
+        $limit         = in_array($limitRaw, $allowedLimits, strict: true) ? $limitRaw : 50;
+
+        // Offset is pure pagination state – never stored in a cookie.
+        $offset = max(0, (int) ($_GET['offset'] ?? 0));
 
         // Build agent query params – only include non-empty filters
         $query = ['limit' => $limit, 'offset' => $offset];
         if ($filterTag    !== '') { $query['tag']    = $filterTag; }
         if ($filterUser   !== '') { $query['user']   = $filterUser; }
+        if ($filterTarget !== '') { $query['target'] = $filterTarget; }
         if ($filterStatus !== '') { $query['status'] = $filterStatus; }
         if ($filterFrom   !== '') { $query['from']   = $filterFrom; }
         if ($filterTo     !== '') { $query['to']     = $filterTo; }
@@ -98,16 +110,24 @@ class TimelineController extends BaseController
         }
 
         // ------------------------------------------------------------------
-        // Build unique user list from all jobs (for filter dropdown)
+        // Build unique user and target lists from all jobs (for filter dropdowns)
         // ------------------------------------------------------------------
-        $users = [];
+        $users      = [];
+        $allTargets = [];
         foreach ($allJobs as $job) {
             $u = (string) ($job['linux_user'] ?? '');
             if ($u !== '' && !in_array($u, $users, strict: true)) {
                 $users[] = $u;
             }
+            foreach ((array) ($job['targets'] ?? []) as $tgt) {
+                $tgt = (string) $tgt;
+                if ($tgt !== '' && !in_array($tgt, $allTargets, strict: true)) {
+                    $allTargets[] = $tgt;
+                }
+            }
         }
         sort($users);
+        sort($allTargets);
 
         // Only show tags that are in use (job_count > 0)
         $tags = array_values(array_filter(
@@ -119,6 +139,7 @@ class TimelineController extends BaseController
         $filters = [
             'tag'    => $filterTag,
             'user'   => $filterUser,
+            'target' => $filterTarget,
             'status' => $filterStatus,
             'from'   => $filterFrom,
             'to'     => $filterTo,
@@ -128,13 +149,14 @@ class TimelineController extends BaseController
         // Render
         // ------------------------------------------------------------------
         $this->render('timeline.php', $this->translator()->t('timeline_title'), [
-            'history' => $history,
-            'tags'    => $tags,
-            'users'   => $users,
-            'total'   => $total,
-            'limit'   => $limit,
-            'offset'  => $offset,
-            'filters' => $filters,
+            'history'    => $history,
+            'tags'       => $tags,
+            'users'      => $users,
+            'allTargets' => $allTargets,
+            'total'      => $total,
+            'limit'      => $limit,
+            'offset'     => $offset,
+            'filters'    => $filters,
         ], '/timeline');
     }
 }

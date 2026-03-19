@@ -56,11 +56,14 @@ class CronController extends BaseController
      */
     public function index(array $params): void
     {
-        $agent         = $this->agentClient();
-        $filterTag    = trim((string) ($_GET['tag']    ?? ''));
-        $filterUser   = trim((string) ($_GET['user']   ?? ''));
-        $filterTarget = trim((string) ($_GET['target'] ?? ''));
-        $filterSearch = trim((string) ($_GET['search'] ?? ''));
+        $agent = $this->agentClient();
+
+        // filterParam() reads from GET first, falls back to a persistent cookie,
+        // and saves the resolved value back to the cookie for next time.
+        $filterTag    = $this->filterParam('tag',    'cronmgr_crons_tag');
+        $filterUser   = $this->filterParam('user',   'cronmgr_crons_user');
+        $filterTarget = $this->filterParam('target', 'cronmgr_crons_target');
+        $filterSearch = $this->filterParam('search', 'cronmgr_crons_search');
 
         // ------------------------------------------------------------------
         // Resolve page-size preference

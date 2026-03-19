@@ -20,6 +20,7 @@ declare(strict_types=1);
  *   - offset  (int, ≥ 0)       Pagination offset (default 0).
  *   - from    (YYYY-MM-DD)     Only executions started on or after this date.
  *   - to      (YYYY-MM-DD)     Only executions started on or before this date.
+ *   - target  (string)         Filter by execution target (e.g. "local" or SSH host alias).
  *
  * This class relies on the global `jsonResponse()` function being available
  * in the calling scope (defined in agent.php).
@@ -116,8 +117,9 @@ final class HistoryEndpoint
         // ------------------------------------------------------------------
 
         $jobId  = $this->parsePositiveInt($_GET['job_id'] ?? null);
-        $tag    = isset($_GET['tag'])  && $_GET['tag']  !== '' ? (string) $_GET['tag']  : null;
-        $user   = isset($_GET['user']) && $_GET['user'] !== '' ? (string) $_GET['user'] : null;
+        $tag    = isset($_GET['tag'])    && $_GET['tag']    !== '' ? (string) $_GET['tag']    : null;
+        $user   = isset($_GET['user'])   && $_GET['user']   !== '' ? (string) $_GET['user']   : null;
+        $target = isset($_GET['target']) && $_GET['target'] !== '' ? (string) $_GET['target'] : null;
         $status = isset($_GET['status']) && $_GET['status'] !== '' ? (string) $_GET['status'] : null;
         $limit  = $this->parseLimit($_GET['limit']   ?? null);
         $offset = $this->parseOffset($_GET['offset'] ?? null);
@@ -171,6 +173,11 @@ final class HistoryEndpoint
         if ($user !== null) {
             $conditions[]           = 'j.linux_user = :user';
             $queryParams[':user']   = $user;
+        }
+
+        if ($target !== null) {
+            $conditions[]             = 'el.target = :target';
+            $queryParams[':target']   = $target;
         }
 
         if ($tag !== null) {

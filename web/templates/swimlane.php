@@ -340,6 +340,14 @@ $timings          = isset($timings)          ? (array)  $timings          : [];
         </select>
     </div>
     <?php endif; ?>
+
+    <!-- Reset all filters -->
+    <div class="ml-auto">
+        <button type="button" id="btnResetFilters"
+                class="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 underline">
+            &times; <?= $t('cancel') ?>
+        </button>
+    </div>
 </div>
 
 <!-- ── Swimlane card ──────────────────────────────────────────────────────── -->
@@ -431,6 +439,35 @@ const I18N = <?= json_encode([
         $translator->t('day_saturday'),
     ],
 ], JSON_HEX_TAG | JSON_UNESCAPED_UNICODE) ?>;
+
+/* ─── Cookie helpers ─────────────────────────────────────────────────────── */
+/**
+ * Read a cookie value by name. Returns null when absent or when the browser
+ * does not expose document.cookie (e.g. strict blocking).
+ * @param {string} name
+ * @returns {string|null}
+ */
+function getCookie(name) {
+    try {
+        const match = document.cookie.match(
+            new RegExp('(?:^|; )' + name.replace(/([.*+?^=!:${}()|[\]/\\])/g, '\\$1') + '=([^;]*)')
+        );
+        return match ? decodeURIComponent(match[1]) : null;
+    } catch (_) { return null; }
+}
+
+/**
+ * Persist a cookie for 30 days. Silently fails when the browser blocks cookies.
+ * @param {string} name
+ * @param {string} value
+ */
+function setCookie(name, value) {
+    try {
+        const exp = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toUTCString();
+        document.cookie = name + '=' + encodeURIComponent(value)
+            + '; expires=' + exp + '; path=/; SameSite=Lax';
+    } catch (_) { /* cookies blocked – degrade gracefully */ }
+}
 
 /* ─── Colour palette for tags (assigned on first encounter) ─────────────── */
 const PALETTE = [
@@ -795,25 +832,99 @@ function buildHourSelects() {
     ss.addEventListener('change', () => {
         startH = Number(ss.value);
         if (endH <= startH) { endH = Math.min(24, startH + 1); es.value = endH; }
+        setCookie('cronmgr_sl_start', String(startH));
+        setCookie('cronmgr_sl_end',   String(endH));
         render();
     });
     es.addEventListener('change', () => {
         endH = Number(es.value);
         if (startH >= endH) { startH = Math.max(0, endH - 1); ss.value = startH; }
+        setCookie('cronmgr_sl_start', String(startH));
+        setCookie('cronmgr_sl_end',   String(endH));
         render();
     });
 }
 
+/* ─── Cookie-backed state restore ────────────────────────────────────────── */
+/**
+ * After the hour selects have been built, restore all filter values from
+ * cookies (if present). State variables (startH, endH, selDay) are updated
+ * to match so the first render() call reflects the restored state.
+ */
+function restoreFromCookies() {
+    const ss = document.getElementById('selStart');
+    const es = document.getElementById('selEnd');
+
+    const savedStart = getCookie('cronmgr_sl_start');
+    const savedEnd   = getCookie('cronmgr_sl_end');
+    const savedDay   = getCookie('cronmgr_sl_day');
+    const savedTag   = getCookie('cronmgr_sl_tag');
+    const savedTgt   = getCookie('cronmgr_sl_target');
+
+    if (savedStart !== null) {
+        const v = Math.max(0, Math.min(23, Number(savedStart)));
+        if (!isNaN(v)) { startH = v; ss.value = v; }
+    }
+    if (savedEnd !== null) {
+        const v = Math.max(1, Math.min(24, Number(savedEnd)));
+        if (!isNaN(v) && v > startH) { endH = v; es.value = v; }
+    }
+    if (savedDay !== null) {
+        const v = Number(savedDay);
+        if (!isNaN(v) && v >= -1 && v <= 6) {
+            selDay = v;
+            document.getElementById('selDay').value = v;
+        }
+    }
+    if (savedTag !== null) {
+        const el = document.getElementById('selTag');
+        if ([...el.options].some(o => o.value === savedTag)) el.value = savedTag;
+    }
+    const selTargetEl = document.getElementById('selTarget');
+    if (selTargetEl && savedTgt !== null) {
+        if ([...selTargetEl.options].some(o => o.value === savedTgt)) selTargetEl.value = savedTgt;
+    }
+}
+
 /* ─── Init ───────────────────────────────────────────────────────────────── */
 buildHourSelects();
+restoreFromCookies();
 render();
 
 document.getElementById('selDay').addEventListener('change', e => {
-    selDay = Number(e.target.value); render();
+    selDay = Number(e.target.value);
+    setCookie('cronmgr_sl_day', String(selDay));
+    render();
 });
-document.getElementById('selTag').addEventListener('change', render);
+document.getElementById('selTag').addEventListener('change', e => {
+    setCookie('cronmgr_sl_tag', e.target.value);
+    render();
+});
 const selTarget = document.getElementById('selTarget');
-if (selTarget) selTarget.addEventListener('change', render);
+if (selTarget) {
+    selTarget.addEventListener('change', e => {
+        setCookie('cronmgr_sl_target', e.target.value);
+        render();
+    });
+}
+
+// Reset button – clears all swimlane filter cookies and resets controls
+document.getElementById('btnResetFilters').addEventListener('click', () => {
+    const ss = document.getElementById('selStart');
+    const es = document.getElementById('selEnd');
+
+    startH = 0; endH = 24; selDay = -1;
+    ss.value = 0; es.value = 24;
+    document.getElementById('selDay').value = -1;
+    document.getElementById('selTag').value = '';
+    const selTargetEl = document.getElementById('selTarget');
+    if (selTargetEl) selTargetEl.value = '';
+
+    ['cronmgr_sl_start','cronmgr_sl_end','cronmgr_sl_day',
+     'cronmgr_sl_tag','cronmgr_sl_target'].forEach(n => setCookie(n, ''));
+
+    render();
+});
 
 // Re-render when dark mode is toggled so grid/axis colours update
 const origToggle = window.toggleDarkMode;

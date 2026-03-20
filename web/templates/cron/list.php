@@ -290,6 +290,7 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                             $jobTags   = (array)  ($job['tags']    ?? []);
                             $jobTargets    = (array)  ($job['targets'] ?? ['local']);
                             $isActive      = !empty($job['active']);
+                            $crontabOk     = !isset($job['crontab_ok']) || (bool) $job['crontab_ok'];
                             $lastRun       = (string) ($job['last_run'] ?? '');
                             $exitCode      = isset($job['last_exit_code']) ? (int) $job['last_exit_code'] : null;
 
@@ -358,15 +359,26 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
 
                             <!-- Status badge -->
                             <td class="px-4 py-3 text-sm">
+                                <div class="flex flex-col gap-1">
                                 <?php if ($isActive): ?>
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                         <?= htmlspecialchars($t('cron_active'), ENT_QUOTES, 'UTF-8') ?>
                                     </span>
+                                    <?php if (!$crontabOk): ?>
+                                        <span title="<?= htmlspecialchars($t('cron_crontab_missing_hint'), ENT_QUOTES, 'UTF-8') ?>"
+                                              class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 cursor-help">
+                                            <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+                                            </svg>
+                                            <?= htmlspecialchars($t('cron_crontab_missing'), ENT_QUOTES, 'UTF-8') ?>
+                                        </span>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
                                         <?= htmlspecialchars($t('cron_inactive'), ENT_QUOTES, 'UTF-8') ?>
                                     </span>
                                 <?php endif; ?>
+                                </div>
                             </td>
 
                             <!-- Last run -->

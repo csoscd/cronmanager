@@ -167,7 +167,7 @@ try {
     $wrapperScript = (string) $config->get('cron.wrapper_script', '/opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh');
     $crontabManager = new \Cronmanager\Agent\Cron\CrontabManager($logger, $wrapperScript);
 
-    $cronList   = new \Cronmanager\Agent\Endpoints\CronListEndpoint($pdo, $logger);
+    $cronList   = new \Cronmanager\Agent\Endpoints\CronListEndpoint($pdo, $logger, $crontabManager);
     $cronGet    = new \Cronmanager\Agent\Endpoints\CronGetEndpoint($pdo, $logger);
     $cronCreate = new \Cronmanager\Agent\Endpoints\CronCreateEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
     $cronUpdate = new \Cronmanager\Agent\Endpoints\CronUpdateEndpoint($pdo, $logger, $crontabManager, $wrapperScript);

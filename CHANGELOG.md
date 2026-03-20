@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `consistency`
+
+### Added
+
+- **Crontab consistency check in job list** – Each active job now carries a `crontab_ok` flag returned by the agent. The list endpoint reads each unique Linux user's crontab once (via `CrontabManager::getManagedJobIds()`) and cross-checks all active jobs against it. Jobs that are active in the database but have no matching crontab entry show a red "No crontab entry" warning badge (with a tooltip explaining the situation) directly in the status column of the cron list. Inactive jobs are always considered consistent.
+
+---
+
 ## [Unreleased] – branch: `delete_consistency`
 
 ### Fixed

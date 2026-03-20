@@ -516,6 +516,44 @@ final class CrontabManager
     }
 
     /**
+     * Return all Cronmanager-managed job IDs present in the given user's crontab.
+     *
+     * Scans the crontab for marker comment lines matching the pattern
+     * `# cronmanager:{jobId}` or `# cronmanager:{jobId}:{target}` and extracts
+     * the unique job IDs. One `crontab -l` call is issued per invocation,
+     * making it efficient for bulk checks across many jobs.
+     *
+     * @param string $user Linux user name.
+     *
+     * @return int[] Array of unique managed job IDs (unordered).
+     *
+     * @throws InvalidArgumentException When $user contains disallowed characters.
+     */
+    public function getManagedJobIds(string $user): array
+    {
+        $this->validateUser($user);
+
+        $raw  = $this->readCrontab($user);
+        $ids  = [];
+
+        // Match "# cronmanager:42" and "# cronmanager:42:target"
+        if (preg_match_all('/^#\s*cronmanager:(\d+)/m', $raw, $matches)) {
+            foreach ($matches[1] as $id) {
+                $ids[(int) $id] = true;
+            }
+        }
+
+        $result = array_keys($ids);
+
+        $this->logger->debug('CrontabManager: getManagedJobIds result', [
+            'user'    => $user,
+            'job_ids' => $result,
+        ]);
+
+        return $result;
+    }
+
+    /**
      * Check whether a cronmanager-managed entry for the given job ID exists in
      * the given user's crontab.
      *

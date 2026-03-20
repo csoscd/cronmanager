@@ -20,6 +20,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Cron\CrontabManager;
 use Monolog\Logger;
 use PDO;
 use PDOException;
@@ -61,12 +62,15 @@ final class CronListEndpoint
     /**
      * CronListEndpoint constructor.
      *
-     * @param PDO    $pdo    Active PDO database connection.
-     * @param Logger $logger Monolog logger instance.
+     * @param PDO            $pdo            Active PDO database connection.
+     * @param Logger         $logger         Monolog logger instance.
+     * @param CrontabManager $crontabManager Used to verify that active jobs have
+     *                                        a crontab entry (consistency check).
      */
     public function __construct(
-        private readonly PDO    $pdo,
-        private readonly Logger $logger,
+        private readonly PDO            $pdo,
+        private readonly Logger         $logger,
+        private readonly CrontabManager $crontabManager,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -104,6 +108,7 @@ final class CronListEndpoint
 
         try {
             $jobs = $this->fetchJobs($userFilter, $tagFilter, $targetFilter);
+            $jobs = $this->attachCrontabStatus($jobs);
 
             jsonResponse(200, [
                 'data'  => $jobs,
@@ -125,6 +130,69 @@ final class CronListEndpoint
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Add a `crontab_ok` boolean to each job record.
+     *
+     * For active jobs the field is true when the crontab entry actually exists,
+     * false when it is missing (DB/crontab out of sync).
+     * For inactive jobs the field is always true (no entry is expected).
+     *
+     * Crontab reads are batched per unique Linux user to minimise shell calls.
+     *
+     * @param array<int, array<string, mixed>> $jobs Normalised job records.
+     *
+     * @return array<int, array<string, mixed>> The same records with `crontab_ok` added.
+     */
+    private function attachCrontabStatus(array $jobs): array
+    {
+        // Collect unique linux users that have at least one active job
+        $activeUsers = [];
+        foreach ($jobs as $job) {
+            if ($job['active']) {
+                $activeUsers[$job['linux_user']] = true;
+            }
+        }
+
+        // One crontab read per user → map user → set of managed job IDs
+        /** @var array<string, array<int, bool>> $managedByUser */
+        $managedByUser = [];
+        foreach (array_keys($activeUsers) as $user) {
+            try {
+                $ids = $this->crontabManager->getManagedJobIds($user);
+                $managedByUser[$user] = array_fill_keys($ids, true);
+            } catch (\Throwable $e) {
+                // If we cannot read the crontab, assume unknown → mark as ok
+                // to avoid false-positive warnings rather than hiding real ones.
+                $this->logger->warning('CronListEndpoint: could not read crontab for consistency check', [
+                    'user'    => $user,
+                    'message' => $e->getMessage(),
+                ]);
+                $managedByUser[$user] = null; // null = unknown
+            }
+        }
+
+        foreach ($jobs as &$job) {
+            if (!$job['active']) {
+                // Inactive jobs are not expected to have a crontab entry
+                $job['crontab_ok'] = true;
+            } else {
+                $user = $job['linux_user'];
+                if (!isset($managedByUser[$user])) {
+                    // Should not happen (we pre-populated), but be safe
+                    $job['crontab_ok'] = true;
+                } elseif ($managedByUser[$user] === null) {
+                    // Crontab unreadable – treat as unknown, surface as ok
+                    $job['crontab_ok'] = true;
+                } else {
+                    $job['crontab_ok'] = isset($managedByUser[$user][$job['id']]);
+                }
+            }
+        }
+        unset($job);
+
+        return $jobs;
+    }
 
     /**
      * Execute the jobs query and return a normalised result array.

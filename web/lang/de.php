@@ -253,6 +253,38 @@ return [
     'import_success'         => '{count} Job(s) erfolgreich importiert.',
 
     // -------------------------------------------------------------------------
+    // Monitor-Seite (Job-Statistiken)
+    // -------------------------------------------------------------------------
+    'monitor_title'          => 'Monitor',
+    'monitor_period'         => 'Zeitraum',
+    'monitor_success_rate'   => 'Erfolgsrate',
+    'monitor_avg_duration'   => 'Ø Dauer',
+    'monitor_executions'     => 'Ausführungen',
+    'monitor_alerts'         => 'Benachrichtigungen',
+    'monitor_duration_chart' => 'Ausführungsdauer',
+    'monitor_activity_chart' => 'Ausführungen pro Zeitabschnitt',
+    'monitor_recent_title'   => 'Letzte Ausführungen',
+    'monitor_no_data'        => 'Keine Ausführungen in diesem Zeitraum.',
+    'monitor_min'            => 'Min',
+    'monitor_max'            => 'Max',
+    'monitor_seconds'        => 's',
+    'monitor_success_label'  => 'Erfolgreich',
+    'monitor_failed_label'   => 'Fehlgeschlagen',
+    'monitor_notify_enabled' => 'Benachrichtigungen aktiv',
+    'monitor_notify_disabled'=> 'Benachrichtigungen inaktiv',
+    'monitor_link'           => 'Monitor',
+    // Zeitraum-Schaltflächen
+    'monitor_period_1h'      => '1 Std.',
+    'monitor_period_6h'      => '6 Std.',
+    'monitor_period_12h'     => '12 Std.',
+    'monitor_period_24h'     => '24 Std.',
+    'monitor_period_7d'      => '7 Tage',
+    'monitor_period_30d'     => '30 Tage',
+    'monitor_period_3m'      => '3 Monate',
+    'monitor_period_6m'      => '6 Monate',
+    'monitor_period_1y'      => '1 Jahr',
+
+    // -------------------------------------------------------------------------
     // Allgemein / geteilt
     // -------------------------------------------------------------------------
     'exit_code'               => 'Exit-Code',

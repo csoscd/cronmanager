@@ -121,7 +121,8 @@ provided by Docker's `extra_hosts: host-gateway` mechanism.
 │           ├── TagDeleteEndpoint.php
 │           ├── SshHostsEndpoint.php
 │           ├── HistoryEndpoint.php
-│           └── ExportEndpoint.php
+│           ├── ExportEndpoint.php
+│           └── MonitorEndpoint.php
 │
 └── web/                       ← web application source
     ├── index.php              ← front controller
@@ -142,7 +143,8 @@ provided by Docker's `extra_hosts: host-gateway` mechanism.
     │   │   ├── list.php
     │   │   ├── detail.php
     │   │   ├── form.php
-    │   │   └── import.php
+    │   │   ├── import.php
+    │   │   └── monitor.php
     │   └── users/list.php
     └── src/
         ├── Bootstrap.php
@@ -185,7 +187,8 @@ provided by Docker's `extra_hosts: host-gateway` mechanism.
 | Cron parsing | `dragonmantank/cron-expression` | ^3.3 |
 | Cron translation | `lorisleiva/cron-translator` | ^0.4 |
 | In-memory cache | APCu (`php84-pecl-apcu`) | bundled |
-| Frontend | Tailwind CSS (local copy, no build step) | 3.4.x |
+| Frontend CSS | Tailwind CSS (local copy, no build step) | 3.4.x |
+| Frontend charts | Chart.js 4 UMD build (self-hosted, downloaded by `deploy.sh`) | 4.x |
 | Containerisation | Docker + Docker Compose v2 | — |
 
 PHP libraries are installed into the shared directory `/opt/phplib/vendor` via Composer
@@ -597,6 +600,72 @@ Paginated execution history.
 
 ---
 
+### GET /crons/{id}/monitor
+
+Per-job execution statistics for the monitor page.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `period` | string | `30d` | Time window: `1h`, `6h`, `12h`, `24h`, `7d`, `30d`, `3m`, `6m`, `1y` |
+
+**Response:**
+```json
+{
+    "job": {
+        "id": 42,
+        "description": "Data sync",
+        "schedule": "*/5 * * * *",
+        "linux_user": "deploy",
+        "command": "/usr/bin/php /opt/scripts/sync.php",
+        "active": 1,
+        "notify_on_failure": 1,
+        "tags": ["sync"],
+        "targets": ["local"]
+    },
+    "stats": {
+        "execution_count": 288,
+        "success_count":   281,
+        "failure_count":   7,
+        "success_rate":    97.57,
+        "alert_count":     7,
+        "avg_duration":    2.34,
+        "min_duration":    1.1,
+        "max_duration":    9.8
+    },
+    "duration_series": [
+        { "started_at": "2026-03-18 10:00:00", "duration_seconds": 2.1, "success": true },
+        { "started_at": "2026-03-18 10:05:00", "duration_seconds": 3.4, "success": false }
+    ],
+    "bar_buckets": [
+        { "label": "18 Mar 10:00", "success": 11, "failed": 1 },
+        { "label": "18 Mar 11:00", "success": 12, "failed": 0 }
+    ],
+    "recent": [
+        {
+            "started_at":   "2026-03-18 10:25:00",
+            "finished_at":  "2026-03-18 10:25:02",
+            "duration_seconds": 2.0,
+            "target":       "local",
+            "exit_code":    0
+        }
+    ],
+    "period": "30d",
+    "from":   "2026-02-16 00:00:00",
+    "to":     "2026-03-18 23:59:59"
+}
+```
+
+**Notes:**
+
+- `alert_count` is approximated as `failure_count` when `notify_on_failure = 1`; the `execution_log` table has no dedicated `alert_sent` column.
+- `duration_series` contains at most 500 entries (most recent), ordered chronologically.
+- `bar_buckets` use adaptive bucket intervals so approximately 12–30 bars are always shown regardless of the selected period (5 min for `1h`, ~30 days for `1y`).
+- Only completed executions (non-NULL `finished_at`) are included in duration and bar data.
+
+---
+
 ### GET /export
 
 Export managed jobs in crontab or JSON format.
@@ -696,7 +765,7 @@ for security-sensitive checks such as navigation visibility.
 | `AuthController` | `GET/POST /login`, `GET /logout`, `GET /auth/callback`, `GET /auth/oidc` | public |
 | `SetupController` | `GET/POST /setup` | public |
 | `DashboardController` | `GET /dashboard` | view |
-| `CronController` | `GET /crons`, `GET /crons/{id}`, `GET/POST /crons/new`, `GET/POST /crons/{id}/edit`, `POST /crons/{id}/delete`, `GET/POST /crons/import` | view/admin |
+| `CronController` | `GET /crons`, `GET /crons/{id}`, `GET /crons/{id}/monitor`, `GET/POST /crons/new`, `GET/POST /crons/{id}/edit`, `POST /crons/{id}/delete`, `GET/POST /crons/import` | view/admin |
 | `TimelineController` | `GET /timeline` | view |
 | `SwimlaneController` | `GET /swimlane`, `GET /swimlane?debug=1` | view |
 | `ExportController` | `GET /export`, `GET /export/download` | view |
@@ -1153,6 +1222,19 @@ exists on the target:
   `composer install` is printed
 - **Present:** the required libraries from the project's `composer.json` are printed
   as informational output so the operator can verify they are installed
+
+### Static asset downloads
+
+During deployment `deploy.sh` automatically downloads static assets that are not
+checked into the repository (to keep the repo lean and avoid CDN dependencies at runtime):
+
+| Asset | Target path | Condition |
+|---|---|---|
+| Tailwind CSS | `assets/css/tailwind.min.css` | Downloaded if absent |
+| Chart.js 4 UMD | `assets/js/chart.min.js` | Downloaded if absent |
+
+Both files are excluded from `rsync --delete` so re-deployments never remove them.
+They must be present for the swimlane and monitor pages to render correctly.
 
 ### SSH host override
 

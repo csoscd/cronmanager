@@ -40,6 +40,7 @@ history, email failure alerts, multi-host support, and SSO integration.
 |---|---|
 | **Job management** | Create, edit, and delete cron jobs with schedule, description, and tags |
 | **Execution tracking** | Every job run is recorded: start time, end time, exit code, and captured output |
+| **Job monitor** | Per-job statistics page with KPI cards (success rate, avg/min/max duration, alerts), an execution duration line chart, and a stacked bar chart – selectable time window from 1 hour to 1 year |
 | **Dashboard** | At-a-glance view of total jobs, active/inactive counts, and recent failures |
 | **Timeline** | Filterable, paginated history of all executions across all jobs |
 | **Swimlane** | Visual schedule overview: planned fire times per job across a time-of-day axis, filterable by hour range, day of week, tag, and target |

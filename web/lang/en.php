@@ -253,6 +253,38 @@ return [
     'import_success'         => '{count} job(s) imported successfully.',
 
     // -------------------------------------------------------------------------
+    // Monitor page (per-job statistics)
+    // -------------------------------------------------------------------------
+    'monitor_title'          => 'Monitor',
+    'monitor_period'         => 'Period',
+    'monitor_success_rate'   => 'Success Rate',
+    'monitor_avg_duration'   => 'Avg Duration',
+    'monitor_executions'     => 'Executions',
+    'monitor_alerts'         => 'Alerts',
+    'monitor_duration_chart' => 'Execution Duration',
+    'monitor_activity_chart' => 'Executions per Bucket',
+    'monitor_recent_title'   => 'Recent Executions',
+    'monitor_no_data'        => 'No executions in this period.',
+    'monitor_min'            => 'Min',
+    'monitor_max'            => 'Max',
+    'monitor_seconds'        => 's',
+    'monitor_success_label'  => 'Success',
+    'monitor_failed_label'   => 'Failed',
+    'monitor_notify_enabled' => 'Notifications on',
+    'monitor_notify_disabled'=> 'Notifications off',
+    'monitor_link'           => 'Monitor',
+    // Period labels shown on the selector buttons
+    'monitor_period_1h'      => '1h',
+    'monitor_period_6h'      => '6h',
+    'monitor_period_12h'     => '12h',
+    'monitor_period_24h'     => '24h',
+    'monitor_period_7d'      => '7 days',
+    'monitor_period_30d'     => '30 days',
+    'monitor_period_3m'      => '3 months',
+    'monitor_period_6m'      => '6 months',
+    'monitor_period_1y'      => '1 year',
+
+    // -------------------------------------------------------------------------
     // Generic / shared
     // -------------------------------------------------------------------------
     'exit_code'               => 'Exit Code',

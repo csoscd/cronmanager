@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `monitor`
+
+### Added
+
+- **Per-job monitor page** – New route `GET /crons/{id}/monitor` (web + agent) that shows interactive statistics for a single cron job over a selectable time window. A "Monitor" button with a bar-chart icon is added to the job detail page, accessible to all users (not admin-only).
+  - **Period selector**: 1h, 6h, 12h, 24h, 7d, 30d (default), 3m, 6m, 1y — tab-style buttons that reload the page.
+  - **KPI cards**: Success Rate (colour-coded ≥ 95 % green / ≥ 80 % yellow / < 80 % red), Average Duration (with min/max), Execution Count, Alert Count.
+  - **Execution duration line chart** (Chart.js 4): individual execution times plotted chronologically; points coloured green (success) / red (failure); dashed orange average line.
+  - **Activity stacked bar chart** (Chart.js 4): success/failure counts per time bucket; bucket granularity adapts to the selected period (5 min → 1 y).
+  - **Recent executions table**: last 20 finished executions with timestamp, duration, target, exit code; failed rows highlighted in red.
+  - **Dark mode support**: chart colours adapt to the current Tailwind dark mode state on page load.
+- **`MonitorEndpoint`** (agent) – new `GET /crons/{id}/monitor?period=…` endpoint; returns job metadata, aggregated stats (success rate, avg/min/max duration, alert count), duration series, bucketed bar data and recent executions. Alert count is derived from `exit_code != 0 AND notify_on_failure = 1` (no `alert_sent` column in schema).
+- **Chart.js self-hosted** – `deploy.sh` downloads Chart.js 4 UMD build to `assets/js/chart.min.js` during deployment (CSP blocks CDN scripts). Skipped if the file already exists.
+- **i18n** – New translation keys `monitor_*` added to both `en.php` and `de.php`.
+
+---
+
 ## [Unreleased] – branch: `consistency`
 
 ### Added

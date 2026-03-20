@@ -435,9 +435,10 @@ if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
     log "Deploying web application to ${WEB_WWW_TARGET}..."
 
     if [[ "${DEPLOY_MODE}" == "full" ]]; then
-        # Exclude tailwind so --delete does not wipe a previously downloaded copy
+        # Exclude self-hosted JS libs so --delete does not wipe previously downloaded copies
         # shellcheck disable=SC2086
         ${RSYNC_FULL} --exclude='config/' --exclude='assets/css/tailwind.min.css' \
+            --exclude='assets/js/tailwind.min.js' --exclude='assets/js/chart.min.js' \
             ${RSYNC_TRANSPORT} "${WEB_SRC}/" "${TARGET_PREFIX}${WEB_WWW_TARGET}/"
     else
         # shellcheck disable=SC2086
@@ -470,6 +471,23 @@ if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
             || log "WARNING: Tailwind download failed – download manually to ${TAILWIND_TARGET}"
     else
         log "Tailwind already present – skipping."
+    fi
+
+    # -------------------------------------------------------------------------
+    # Download Chart.js (required by the monitor page; skip if already present)
+    # The UMD build is used so it works as a plain <script> tag without bundler.
+    # -------------------------------------------------------------------------
+
+    CHARTJS_TARGET="${WEB_WWW_TARGET}/assets/js/chart.min.js"
+    if ! run_on_target "test -f '${CHARTJS_TARGET}'" 2>/dev/null; then
+        log "Downloading Chart.js 4 (UMD build)..."
+        run_on_target "mkdir -p '$(dirname "${CHARTJS_TARGET}")' && \
+            curl -sL 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js' \
+                 -o '${CHARTJS_TARGET}'" \
+            && log "Chart.js downloaded to ${CHARTJS_TARGET}." \
+            || log "WARNING: Chart.js download failed – download manually to ${CHARTJS_TARGET}"
+    else
+        log "Chart.js already present – skipping."
     fi
 fi
 

@@ -15,6 +15,7 @@ declare(strict_types=1);
  *   POST /crons/import         – bulk-import selected unmanaged entries [admin]
  *   GET  /crons/new            – show create form  [admin]
  *   POST /crons                – process create form [admin]
+ *   GET  /crons/{id}/monitor   – per-job statistics and chart page
  *   GET  /crons/{id}           – show job detail + execution history
  *   GET  /crons/{id}/edit      – show edit form  [admin]
  *   POST /crons/{id}/edit      – process edit form [admin]
@@ -658,6 +659,64 @@ class CronController extends BaseController
         // Redirect back to the import page for the same user so the success
         // message is visible immediately and additional entries can be imported.
         (new Response())->redirect('/crons/import?user=' . rawurlencode($user));
+    }
+
+    /**
+     * Show the statistics and performance monitor page for a single job.
+     *
+     * Fetches pre-aggregated stats, chart data and recent execution records
+     * from the agent's GET /crons/{id}/monitor endpoint and renders them in
+     * the monitor template with Chart.js visualisations.
+     *
+     * Query parameters:
+     *   ?period=  One of: 1h, 6h, 12h, 24h, 7d, 30d (default), 3m, 6m, 1y
+     *
+     * @param array<string,string> $params Path parameters: ['id' => string].
+     *
+     * @return void
+     */
+    public function monitor(array $params): void
+    {
+        $id           = (string) ($params['id'] ?? '');
+        $validPeriods = ['1h', '6h', '12h', '24h', '7d', '30d', '3m', '6m', '1y'];
+        $period       = trim((string) ($_GET['period'] ?? '30d'));
+        if (!in_array($period, $validPeriods, true)) {
+            $period = '30d';
+        }
+
+        $agent = $this->agentClient();
+
+        try {
+            $data = $agent->get('/crons/' . rawurlencode($id) . '/monitor', ['period' => $period]);
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::monitor: agent request failed', [
+                'id'      => $id,
+                'message' => $e->getMessage(),
+            ]);
+            $this->renderError(503, 'error_agent_unavailable', '/crons');
+            return;
+        }
+
+        if (empty($data) || empty($data['job'])) {
+            $this->renderError(404, 'error_404', '/crons');
+            return;
+        }
+
+        $job   = $data['job'];
+        $stats = $data['stats'] ?? [];
+        $desc  = (string) ($job['description'] ?? "Job #{$id}");
+
+        $this->render('cron/monitor.php', $desc . ' – ' . $this->translator()->t('monitor_title'), [
+            'job'            => $job,
+            'stats'          => $stats,
+            'durationSeries' => json_encode($data['duration_series'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'barBuckets'     => json_encode($data['bar_buckets']     ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'recent'         => $data['recent'] ?? [],
+            'period'         => $period,
+            'validPeriods'   => $validPeriods,
+            'fromStr'        => $data['from'] ?? '',
+            'toStr'          => $data['to']   ?? '',
+        ], '/crons');
     }
 
     /**

@@ -181,6 +181,9 @@ try {
     $router->addProtectedRoute('POST', '/crons/import',        [$cronCtrl, 'importStore'], 'admin');
     $router->addProtectedRoute('GET',  '/crons/new',           [$cronCtrl, 'create'],  'admin');
     $router->addProtectedRoute('POST', '/crons',               [$cronCtrl, 'store'],   'admin');
+    // /crons/{id}/monitor must come before /crons/{id} so that the router does
+    // not accidentally match the "monitor" sub-path as a job ID.
+    $router->addProtectedRoute('GET',  '/crons/{id}/monitor',  [$cronCtrl, 'monitor']);
     $router->addProtectedRoute('GET',  '/crons/{id}',          [$cronCtrl, 'show']);
     $router->addProtectedRoute('GET',  '/crons/{id}/edit',     [$cronCtrl, 'edit'],    'admin');
     $router->addProtectedRoute('POST', '/crons/{id}/edit',     [$cronCtrl, 'update'],  'admin');

@@ -91,9 +91,24 @@ $lastRun    = (string) ($job['last_run']       ?? '');
             </div>
         </div>
 
+        <!-- Actions: Monitor (all users) + Edit/Delete (admin) -->
+        <div class="flex items-center gap-2 flex-shrink-0">
+            <?php if ($jobId !== ''): ?>
+                <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/monitor"
+                   class="inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700
+                          text-sm font-medium px-4 py-2 rounded-lg border border-indigo-200 transition
+                          focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2">
+                    <!-- Chart bar icon -->
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                    <?= htmlspecialchars($t('monitor_link'), ENT_QUOTES, 'UTF-8') ?>
+                </a>
+            <?php endif; ?>
+
         <!-- Admin: Edit + Delete -->
         <?php if ($isAdmin && $jobId !== ''): ?>
-            <div class="flex items-center gap-2 flex-shrink-0">
                 <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/edit"
                    class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white
                           text-sm font-medium px-4 py-2 rounded-lg transition focus:outline-none
@@ -111,8 +126,8 @@ $lastRun    = (string) ($job['last_run']       ?? '');
                         <?= htmlspecialchars($t('cron_delete'), ENT_QUOTES, 'UTF-8') ?>
                     </button>
                 </form>
-            </div>
         <?php endif; ?>
+        </div>
     </div>
 
     <!-- Detail grid -->

@@ -167,22 +167,26 @@ try {
     $wrapperScript = (string) $config->get('cron.wrapper_script', '/opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh');
     $crontabManager = new \Cronmanager\Agent\Cron\CrontabManager($logger, $wrapperScript);
 
-    $cronList   = new \Cronmanager\Agent\Endpoints\CronListEndpoint($pdo, $logger, $crontabManager);
-    $cronGet    = new \Cronmanager\Agent\Endpoints\CronGetEndpoint($pdo, $logger);
-    $cronCreate = new \Cronmanager\Agent\Endpoints\CronCreateEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
-    $cronUpdate = new \Cronmanager\Agent\Endpoints\CronUpdateEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
-    $cronDelete = new \Cronmanager\Agent\Endpoints\CronDeleteEndpoint($pdo, $logger, $crontabManager);
+    $cronList    = new \Cronmanager\Agent\Endpoints\CronListEndpoint($pdo, $logger, $crontabManager);
+    $cronGet     = new \Cronmanager\Agent\Endpoints\CronGetEndpoint($pdo, $logger);
+    $cronCreate  = new \Cronmanager\Agent\Endpoints\CronCreateEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
+    $cronUpdate  = new \Cronmanager\Agent\Endpoints\CronUpdateEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
+    $cronDelete  = new \Cronmanager\Agent\Endpoints\CronDeleteEndpoint($pdo, $logger, $crontabManager);
+    $cronMonitor = new \Cronmanager\Agent\Endpoints\MonitorEndpoint($pdo, $logger);
 
     $cronUnmanaged = new \Cronmanager\Agent\Endpoints\CronUnmanagedEndpoint($logger, $crontabManager);
     $cronUsers     = new \Cronmanager\Agent\Endpoints\CronUsersEndpoint($logger, $crontabManager);
 
-    $router->addRoute('GET',    '/crons',            [$cronList,      'handle']);
-    $router->addRoute('GET',    '/crons/users',      [$cronUsers,     'handle']);
-    $router->addRoute('GET',    '/crons/unmanaged',  [$cronUnmanaged, 'handle']);
-    $router->addRoute('GET',    '/crons/{id}',       [$cronGet,       'handle']);
-    $router->addRoute('POST',   '/crons',        [$cronCreate, 'handle']);
-    $router->addRoute('PUT',    '/crons/{id}',   [$cronUpdate, 'handle']);
-    $router->addRoute('DELETE', '/crons/{id}',   [$cronDelete, 'handle']);
+    $router->addRoute('GET',    '/crons',                [$cronList,      'handle']);
+    $router->addRoute('GET',    '/crons/users',          [$cronUsers,     'handle']);
+    $router->addRoute('GET',    '/crons/unmanaged',      [$cronUnmanaged, 'handle']);
+    // /crons/{id}/monitor must be registered before /crons/{id} so the router
+    // tries the more specific pattern first and does not mis-route the request.
+    $router->addRoute('GET',    '/crons/{id}/monitor',   [$cronMonitor,   'handle']);
+    $router->addRoute('GET',    '/crons/{id}',           [$cronGet,       'handle']);
+    $router->addRoute('POST',   '/crons',                [$cronCreate,    'handle']);
+    $router->addRoute('PUT',    '/crons/{id}',           [$cronUpdate,    'handle']);
+    $router->addRoute('DELETE', '/crons/{id}',           [$cronDelete,    'handle']);
 
     // -- Execution lifecycle --------------------------------------------------
 

@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `bugfix_jobcommand`
+
+### Fixed
+
+- **Job stuck in "running" state when command contains `exit` or `kill $$`** – `cron-wrapper.sh` executed the job command via `eval` in the current shell process. Any command that called `exit` (e.g. `echo "Test" && exit 1`) terminated the wrapper itself before the `/execution/finish` notification could be sent, leaving the execution record permanently in the `running` state. Additionally, `$$` inside a bash subshell resolves to the parent shell's PID, so a command containing `kill $$` would also kill the wrapper. Fixed by replacing `eval` with `bash -c "${COMMAND}"`: the command runs in a dedicated child process where `$$` is that child's own PID and `exit` only terminates the child; the wrapper captures the exit code and continues normally to report the finished execution.
+- **Agent hanging on SMTP timeout when `notify_on_failure` is enabled** – `MailNotifier` did not set a timeout on the PHPMailer SMTP connection, and mail was sent synchronously inside the HTTP request handler. PHPMailer's default socket timeout is 300 seconds; an unreachable or slow SMTP server would block the single-threaded PHP CLI agent for up to 5 minutes, making it unresponsive to all other requests. Fixed with two layers of protection: (1) `ExecutionFinishEndpoint` now writes the notification payload to a temporary file and spawns `agent/bin/send-notification.php` as a detached background process (`timeout 30 php send-notification.php &`), so the HTTP response is returned immediately and SMTP can never block the agent; (2) `MailNotifier` still applies a configurable `mail.smtp_timeout` (default: 15 s) via `$mail->Timeout` as a secondary safeguard within the background process. Falls back to synchronous sending when `exec()` is unavailable. The `/execution/finish` curl call in `cron-wrapper.sh` was also increased from 10 to 60 seconds for environments where synchronous fallback is active.
+
+---
+
 ## [Unreleased] – branch: `monitor`
 
 ### Added

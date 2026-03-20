@@ -164,12 +164,16 @@ hmac_sign() {
 #   $1  HTTP method (GET | POST)
 #   $2  Request path  (e.g. /execution/start)
 #   $3  Request body  (JSON string; pass empty string for GET)
+#   $4  Max total time in seconds for curl (optional; default: 10)
+#       Use a longer value for /execution/finish when mail notification is enabled,
+#       so the agent has time to attempt SMTP delivery before curl times out.
 _HTTP_CODE=0
 
 agent_request() {
     local method="$1"
     local path="$2"
     local body="${3:-}"
+    local max_time="${4:-10}"
 
     local signature
     signature="$(hmac_sign "${method}" "${path}" "${body}")"
@@ -181,7 +185,7 @@ agent_request() {
     local curl_args=(
         --silent
         --show-error
-        --max-time 10
+        --max-time "${max_time}"
         --connect-timeout 5
         --request "${method}"
         --header "X-Agent-Signature: ${signature}"
@@ -352,7 +356,7 @@ else
     # -------------------------------------------------------------------------
     log_info "Job ${JOB_ID}: local execution"
     # shellcheck disable=SC2094
-    eval "${COMMAND}" > "${TMP_OUTPUT}" 2>&1
+    bash -c "${COMMAND}" > "${TMP_OUTPUT}" 2>&1
     JOB_EXIT_CODE=$?
 fi
 
@@ -395,7 +399,9 @@ if [[ -z "${FINISH_BODY}" ]]; then
 elif [[ "$EXECUTION_ID" != "0" ]]; then
     log_info "Job ${JOB_ID}: notifying agent of execution finish (execution_id=${EXECUTION_ID})"
 
-    if ! agent_request "POST" "/execution/finish" "${FINISH_BODY}" >/dev/null; then
+    # Use a 60-second timeout for the finish call: the agent may need extra time
+    # to attempt SMTP delivery before responding (mail.smtp_timeout defaults to 15 s).
+    if ! agent_request "POST" "/execution/finish" "${FINISH_BODY}" 60 >/dev/null; then
         log_warn "Job ${JOB_ID}: could not reach agent for /execution/finish (curl transport error)"
     elif [[ "${_HTTP_CODE}" -lt 200 || "${_HTTP_CODE}" -ge 300 ]]; then
         log_warn "Job ${JOB_ID}: agent returned HTTP ${_HTTP_CODE} for /execution/finish"

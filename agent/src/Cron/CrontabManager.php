@@ -516,41 +516,54 @@ final class CrontabManager
     }
 
     /**
-     * Return all Cronmanager-managed job IDs present in the given user's crontab.
+     * Return all Cronmanager-managed crontab entries for a user, indexed by
+     * job ID and target.
      *
-     * Scans the crontab for marker comment lines matching the pattern
-     * `# cronmanager:{jobId}` or `# cronmanager:{jobId}:{target}` and extracts
-     * the unique job IDs. One `crontab -l` call is issued per invocation,
-     * making it efficient for bulk checks across many jobs.
+     * Scans the crontab for marker comment lines and returns a two-level map:
+     *
+     *   [jobId => [target => true, ...], ...]
+     *
+     * For the current multi-target format (`# cronmanager:{jobId}:{target}`)
+     * the target is stored as-is (e.g. "local", "ssh-alias").
+     * For the legacy single-target format (`# cronmanager:{jobId}`) the entry
+     * is stored under the special key `__legacy__`.
+     *
+     * One `crontab -l` call is issued per invocation, making it efficient for
+     * bulk per-target consistency checks across many jobs.
      *
      * @param string $user Linux user name.
      *
-     * @return int[] Array of unique managed job IDs (unordered).
+     * @return array<int, array<string, bool>> Map of jobId → [target → true].
      *
      * @throws InvalidArgumentException When $user contains disallowed characters.
      */
-    public function getManagedJobIds(string $user): array
+    public function getManagedEntries(string $user): array
     {
         $this->validateUser($user);
 
-        $raw  = $this->readCrontab($user);
-        $ids  = [];
+        $raw     = $this->readCrontab($user);
+        $entries = [];
 
-        // Match "# cronmanager:42" and "# cronmanager:42:target"
-        if (preg_match_all('/^#\s*cronmanager:(\d+)/m', $raw, $matches)) {
-            foreach ($matches[1] as $id) {
-                $ids[(int) $id] = true;
+        // Match "# cronmanager:42" (legacy) and "# cronmanager:42:target"
+        if (preg_match_all('/^#\s*cronmanager:(\d+)(?::(.+))?$/m', $raw, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $jobId  = (int) $match[1];
+                $target = (isset($match[2]) && $match[2] !== '') ? trim($match[2]) : '__legacy__';
+
+                if (!isset($entries[$jobId])) {
+                    $entries[$jobId] = [];
+                }
+
+                $entries[$jobId][$target] = true;
             }
         }
 
-        $result = array_keys($ids);
-
-        $this->logger->debug('CrontabManager: getManagedJobIds result', [
-            'user'    => $user,
-            'job_ids' => $result,
+        $this->logger->debug('CrontabManager: getManagedEntries result', [
+            'user'       => $user,
+            'job_count'  => count($entries),
         ]);
 
-        return $result;
+        return $entries;
     }
 
     /**

@@ -134,11 +134,12 @@ final class CronListEndpoint
     /**
      * Add a `crontab_ok` boolean to each job record.
      *
-     * For active jobs the field is true when the crontab entry actually exists,
-     * false when it is missing (DB/crontab out of sync).
+     * For active jobs the field is true only when ALL expected targets have a
+     * matching crontab entry. A single missing target entry (e.g. one of three
+     * SSH targets was removed) is enough to set the field to false.
      * For inactive jobs the field is always true (no entry is expected).
      *
-     * Crontab reads are batched per unique Linux user to minimise shell calls.
+     * Crontab reads are batched per unique Linux user (one shell call per user).
      *
      * @param array<int, array<string, mixed>> $jobs Normalised job records.
      *
@@ -154,38 +155,60 @@ final class CronListEndpoint
             }
         }
 
-        // One crontab read per user → map user → set of managed job IDs
-        /** @var array<string, array<int, bool>> $managedByUser */
+        // One crontab read per user → map user → [jobId => [target => true]]
+        // null means the crontab was unreadable (treat as unknown = ok)
+        /** @var array<string, array<int, array<string, bool>>|null> $managedByUser */
         $managedByUser = [];
         foreach (array_keys($activeUsers) as $user) {
             try {
-                $ids = $this->crontabManager->getManagedJobIds($user);
-                $managedByUser[$user] = array_fill_keys($ids, true);
+                $managedByUser[$user] = $this->crontabManager->getManagedEntries($user);
             } catch (\Throwable $e) {
-                // If we cannot read the crontab, assume unknown → mark as ok
-                // to avoid false-positive warnings rather than hiding real ones.
+                // Cannot read crontab – default to ok to avoid false-positive warnings
                 $this->logger->warning('CronListEndpoint: could not read crontab for consistency check', [
                     'user'    => $user,
                     'message' => $e->getMessage(),
                 ]);
-                $managedByUser[$user] = null; // null = unknown
+                $managedByUser[$user] = null;
             }
         }
 
         foreach ($jobs as &$job) {
             if (!$job['active']) {
-                // Inactive jobs are not expected to have a crontab entry
+                // Inactive jobs are not expected to have any crontab entry
                 $job['crontab_ok'] = true;
-            } else {
-                $user = $job['linux_user'];
-                if (!isset($managedByUser[$user])) {
-                    // Should not happen (we pre-populated), but be safe
-                    $job['crontab_ok'] = true;
-                } elseif ($managedByUser[$user] === null) {
-                    // Crontab unreadable – treat as unknown, surface as ok
-                    $job['crontab_ok'] = true;
-                } else {
-                    $job['crontab_ok'] = isset($managedByUser[$user][$job['id']]);
+                continue;
+            }
+
+            $user    = $job['linux_user'];
+            $entries = $managedByUser[$user] ?? null;
+
+            if ($entries === null) {
+                // Crontab unreadable – treat as unknown, show no warning
+                $job['crontab_ok'] = true;
+                continue;
+            }
+
+            $jobId  = $job['id'];
+            $targets = $job['targets'];
+
+            if (!isset($entries[$jobId])) {
+                // No crontab entry exists for this job at all
+                $job['crontab_ok'] = false;
+                continue;
+            }
+
+            // Legacy format (# cronmanager:{id} without target): covers any target
+            if (isset($entries[$jobId]['__legacy__'])) {
+                $job['crontab_ok'] = true;
+                continue;
+            }
+
+            // Check that every expected target has an entry
+            $job['crontab_ok'] = true;
+            foreach ($targets as $target) {
+                if (!isset($entries[$jobId][(string) $target])) {
+                    $job['crontab_ok'] = false;
+                    break;
                 }
             }
         }

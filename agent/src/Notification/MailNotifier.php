@@ -106,14 +106,15 @@ final class MailNotifier
         // Read mail configuration
         // ------------------------------------------------------------------
 
-        $host       = (string) $this->config->get('mail.host',       'smtp.example.com');
-        $port       = (int)    $this->config->get('mail.port',       587);
-        $username   = (string) $this->config->get('mail.username',   '');
-        $password   = (string) $this->config->get('mail.password',   '');
-        $from       = (string) $this->config->get('mail.from',       '');
-        $fromName   = (string) $this->config->get('mail.from_name',  'Cronmanager');
-        $to         = (string) $this->config->get('mail.to',         '');
-        $encryption = strtolower((string) $this->config->get('mail.encryption', 'tls'));
+        $host        = (string) $this->config->get('mail.host',         'smtp.example.com');
+        $port        = (int)    $this->config->get('mail.port',         587);
+        $username    = (string) $this->config->get('mail.username',     '');
+        $password    = (string) $this->config->get('mail.password',     '');
+        $from        = (string) $this->config->get('mail.from',         '');
+        $fromName    = (string) $this->config->get('mail.from_name',    'Cronmanager');
+        $to          = (string) $this->config->get('mail.to',           '');
+        $encryption  = strtolower((string) $this->config->get('mail.encryption',   'tls'));
+        $smtpTimeout = (int)    $this->config->get('mail.smtp_timeout', 15);
 
         // ------------------------------------------------------------------
         // Build message content
@@ -166,6 +167,7 @@ final class MailNotifier
             $mail->SMTPAuth   = true;
             $mail->Username   = $username;
             $mail->Password   = $password;
+            $mail->Timeout    = $smtpTimeout;
             $mail->SMTPSecure = ($encryption === 'ssl')
                 ? PHPMailer::ENCRYPTION_SMTPS
                 : PHPMailer::ENCRYPTION_STARTTLS;

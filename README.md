@@ -521,7 +521,8 @@ provider — the account will be re-created on the next login.
 | `mail.from` | | Sender address |
 | `mail.from_name` | `Cronmanager` | Sender display name |
 | `mail.to` | | Recipient address for alerts |
-| `mail.encryption` | `tls` | `tls`, `ssl`, or `""` (none) |
+| `mail.encryption` | `tls` | `tls` (STARTTLS, port 587) or `ssl` (SMTPS, port 465) |
+| `mail.smtp_timeout` | `15` | SMTP connection timeout in seconds |
 | `cron.wrapper_script` | `/opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh` | Wrapper script path |
 
 ---
@@ -536,7 +537,15 @@ Cronmanager can send an email when a cron job exits with a non-zero status code.
 2. Restart the agent: `sudo systemctl restart cronmanager-agent`
 3. Per job: check **"Notify on failure"** when creating or editing the job
 
-Alerts are sent by the host agent immediately after the job completes.
+Alerts are dispatched by the host agent asynchronously after the job completes — mail
+sending runs in a background process so a slow or unreachable SMTP server cannot block
+the agent.
+
+**Encryption settings:**
+- Port **465** (SMTPS / implicit TLS) → set `mail.encryption` to `ssl`
+- Port **587** (STARTTLS) → set `mail.encryption` to `tls`
+
+Mixing these will cause the connection to hang until the SMTP timeout is reached.
 
 ---
 

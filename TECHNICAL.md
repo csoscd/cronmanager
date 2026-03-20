@@ -90,9 +90,10 @@ provided by Docker's `extra_hosts: host-gateway` mechanism.
 │   ├── agent.php              ← CLI entry point
 │   ├── config/config.json     ← agent configuration
 │   ├── bin/
-│   │   ├── cron-wrapper.sh    ← injected into every crontab entry
-│   │   ├── start-agent.sh     ← manual start helper
-│   │   └── create-admin.php   ← CLI tool: create first admin
+│   │   ├── cron-wrapper.sh        ← injected into every crontab entry
+│   │   ├── send-notification.php  ← background SMTP dispatcher (spawned by ExecutionFinishEndpoint)
+│   │   ├── start-agent.sh         ← manual start helper
+│   │   └── create-admin.php       ← CLI tool: create first admin
 │   ├── sql/
 │   │   ├── schema.sql         ← full schema (run on first deploy)
 │   │   └── migrations/        ← incremental SQL migrations
@@ -311,10 +312,10 @@ complete crontab file from the current database state for the affected Linux use
 4. POST /execution/start  → receive execution_id
 5. GET  /crons/{job_id}   → fetch command string
 6. Execute command:
-     target = "local"          → eval "<command>"
+     target = "local"          → bash -c "<command>"  (dedicated child process)
      target = "<ssh-alias>"    → ssh -o BatchMode=yes <alias> -- <command>
 7. Capture stdout + stderr combined, truncate at 50,000 bytes
-8. POST /execution/finish  → report exit_code, output, finished_at
+8. POST /execution/finish  → report exit_code, output, finished_at  (60 s timeout)
 9. Exit with the original command's exit code
 ```
 
@@ -327,10 +328,24 @@ runs regardless and a best-effort finish report is sent.
 ### MailNotifier
 
 `src/Notification/MailNotifier.php` sends failure alerts via SMTP using PHPMailer.
-It is invoked by `ExecutionFinishEndpoint` when:
+It is invoked indirectly by `ExecutionFinishEndpoint` when:
 - The job's `notify_on_failure` flag is `1`, and
 - The exit code is non-zero, and
 - `mail.enabled` is `true` in the agent config
+
+**Async dispatch:** because the PHP built-in server is single-threaded, a blocking SMTP
+call in the request handler would make the agent unresponsive for the duration of the
+connection attempt. `ExecutionFinishEndpoint` therefore writes the notification payload
+to a temporary file and spawns `bin/send-notification.php` as a detached background
+process (`timeout 30 php send-notification.php <tempfile> &`). The HTTP response is
+returned immediately; the child process handles SMTP independently. If `exec()` is
+unavailable the endpoint falls back to synchronous sending.
+
+**SMTP timeout:** `MailNotifier` applies `mail.smtp_timeout` (default: 15 s) via
+`$mail->Timeout` as a secondary safeguard within the background process.
+
+**Encryption:** use `"ssl"` for port 465 (SMTPS / implicit TLS) and `"tls"` for
+port 587 (STARTTLS). Mixing these causes the connection to hang.
 
 ### SshConfigParser
 

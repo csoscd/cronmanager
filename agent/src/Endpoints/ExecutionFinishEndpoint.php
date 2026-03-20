@@ -219,7 +219,9 @@ final class ExecutionFinishEndpoint
                         ? (string) $job['description']
                         : (string) $job['command'];
 
-                    $notified = $this->mailNotifier->sendFailureAlert(
+                    // Dispatch mail sending to a detached background process so that
+                    // slow or unreachable SMTP servers cannot block the agent.
+                    $notified = $this->dispatchNotification(
                         jobId:       $jobId,
                         description: $label,
                         linuxUser:   (string) $job['linux_user'],
@@ -348,6 +350,125 @@ final class ExecutionFinishEndpoint
         $row = $stmt->fetch();
 
         return $row !== false ? (array) $row : null;
+    }
+
+    /**
+     * Dispatch a failure notification via a detached background process.
+     *
+     * Writes the notification payload to a temporary file and spawns
+     * agent/bin/send-notification.php as a background process (`&`).
+     * The HTTP response is returned immediately; the background process
+     * handles SMTP independently and cannot block the agent.
+     *
+     * Falls back to synchronous sending via MailNotifier when:
+     *   - send-notification.php cannot be located
+     *   - exec() is unavailable (disabled_functions)
+     *   - The temporary file cannot be written
+     *
+     * @param int    $jobId
+     * @param string $description
+     * @param string $linuxUser
+     * @param string $schedule
+     * @param int    $exitCode
+     * @param string $output
+     * @param string $startedAt
+     * @param string $finishedAt
+     *
+     * @return bool True if dispatched (or synchronously sent), false on error.
+     */
+    private function dispatchNotification(
+        int    $jobId,
+        string $description,
+        string $linuxUser,
+        string $schedule,
+        int    $exitCode,
+        string $output,
+        string $startedAt,
+        string $finishedAt
+    ): bool {
+        // Path: agent/src/Endpoints/ → up 2 levels → agent/ → bin/send-notification.php
+        $notifyScript = dirname(__DIR__, 2) . '/bin/send-notification.php';
+
+        // Check prerequisites for background dispatch
+        $execAvailable = function_exists('exec')
+            && !in_array('exec', array_map('trim', explode(',', (string) ini_get('disable_functions'))), true);
+
+        if (!file_exists($notifyScript) || !$execAvailable) {
+            $this->logger->warning('ExecutionFinishEndpoint: falling back to synchronous mail sending', [
+                'script_exists' => file_exists($notifyScript),
+                'exec_available' => $execAvailable,
+            ]);
+            return $this->mailNotifier->sendFailureAlert(
+                jobId:       $jobId,
+                description: $description,
+                linuxUser:   $linuxUser,
+                schedule:    $schedule,
+                exitCode:    $exitCode,
+                output:      $output,
+                startedAt:   $startedAt,
+                finishedAt:  $finishedAt
+            );
+        }
+
+        // Write payload to a temp file; the background script deletes it after reading
+        $tempFile = tempnam(sys_get_temp_dir(), 'cronmgr_notify_');
+
+        if ($tempFile === false) {
+            $this->logger->error('ExecutionFinishEndpoint: tempnam() failed – falling back to synchronous mail sending');
+            return $this->mailNotifier->sendFailureAlert(
+                jobId:       $jobId,
+                description: $description,
+                linuxUser:   $linuxUser,
+                schedule:    $schedule,
+                exitCode:    $exitCode,
+                output:      $output,
+                startedAt:   $startedAt,
+                finishedAt:  $finishedAt
+            );
+        }
+
+        $payload = json_encode([
+            'job_id'      => $jobId,
+            'description' => $description,
+            'linux_user'  => $linuxUser,
+            'schedule'    => $schedule,
+            'exit_code'   => $exitCode,
+            'output'      => $output,
+            'started_at'  => $startedAt,
+            'finished_at' => $finishedAt,
+        ], JSON_UNESCAPED_UNICODE);
+
+        if (file_put_contents($tempFile, $payload) === false) {
+            @unlink($tempFile);
+            $this->logger->error('ExecutionFinishEndpoint: failed to write notification temp file – falling back to synchronous mail sending');
+            return $this->mailNotifier->sendFailureAlert(
+                jobId:       $jobId,
+                description: $description,
+                linuxUser:   $linuxUser,
+                schedule:    $schedule,
+                exitCode:    $exitCode,
+                output:      $output,
+                startedAt:   $startedAt,
+                finishedAt:  $finishedAt
+            );
+        }
+
+        // Spawn the notification process in the background.
+        // `timeout 30` provides a hard OS-level kill if SMTP truly hangs.
+        // stdout/stderr are discarded; the script logs via the shared agent log file.
+        $cmd = sprintf(
+            'timeout 30 php %s %s > /dev/null 2>&1 &',
+            escapeshellarg($notifyScript),
+            escapeshellarg($tempFile)
+        );
+        exec($cmd);
+
+        $this->logger->info('ExecutionFinishEndpoint: failure notification dispatched to background process', [
+            'job_id'    => $jobId,
+            'exit_code' => $exitCode,
+        ]);
+
+        return true;
     }
 
     /**

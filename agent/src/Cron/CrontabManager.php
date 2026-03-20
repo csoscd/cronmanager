@@ -516,6 +516,57 @@ final class CrontabManager
     }
 
     /**
+     * Return all Cronmanager-managed crontab entries for a user, indexed by
+     * job ID and target.
+     *
+     * Scans the crontab for marker comment lines and returns a two-level map:
+     *
+     *   [jobId => [target => true, ...], ...]
+     *
+     * For the current multi-target format (`# cronmanager:{jobId}:{target}`)
+     * the target is stored as-is (e.g. "local", "ssh-alias").
+     * For the legacy single-target format (`# cronmanager:{jobId}`) the entry
+     * is stored under the special key `__legacy__`.
+     *
+     * One `crontab -l` call is issued per invocation, making it efficient for
+     * bulk per-target consistency checks across many jobs.
+     *
+     * @param string $user Linux user name.
+     *
+     * @return array<int, array<string, bool>> Map of jobId → [target → true].
+     *
+     * @throws InvalidArgumentException When $user contains disallowed characters.
+     */
+    public function getManagedEntries(string $user): array
+    {
+        $this->validateUser($user);
+
+        $raw     = $this->readCrontab($user);
+        $entries = [];
+
+        // Match "# cronmanager:42" (legacy) and "# cronmanager:42:target"
+        if (preg_match_all('/^#\s*cronmanager:(\d+)(?::(.+))?$/m', $raw, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $jobId  = (int) $match[1];
+                $target = (isset($match[2]) && $match[2] !== '') ? trim($match[2]) : '__legacy__';
+
+                if (!isset($entries[$jobId])) {
+                    $entries[$jobId] = [];
+                }
+
+                $entries[$jobId][$target] = true;
+            }
+        }
+
+        $this->logger->debug('CrontabManager: getManagedEntries result', [
+            'user'       => $user,
+            'job_count'  => count($entries),
+        ]);
+
+        return $entries;
+    }
+
+    /**
      * Check whether a cronmanager-managed entry for the given job ID exists in
      * the given user's crontab.
      *

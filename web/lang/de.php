@@ -116,6 +116,8 @@ return [
     'cron_host'               => 'Host',
     'cron_targets'            => 'Ausführungsziele',
     'cron_targets_hint'       => 'Wähle aus, wo dieser Job ausgeführt werden soll. Mindestens ein Ziel ist erforderlich.',
+    'cron_crontab_missing'    => 'Kein Crontab-Eintrag',
+    'cron_crontab_missing_hint' => 'Dieser Job ist in der Datenbank als aktiv markiert, hat aber keinen passenden Crontab-Eintrag – er wird nie ausgeführt. Bearbeite und speichere den Job erneut, um den Eintrag wiederherzustellen.',
 
     // -------------------------------------------------------------------------
     // Zeitachse

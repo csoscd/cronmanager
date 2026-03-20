@@ -20,6 +20,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Cron\CrontabManager;
 use Monolog\Logger;
 use PDO;
 use PDOException;
@@ -61,12 +62,15 @@ final class CronListEndpoint
     /**
      * CronListEndpoint constructor.
      *
-     * @param PDO    $pdo    Active PDO database connection.
-     * @param Logger $logger Monolog logger instance.
+     * @param PDO            $pdo            Active PDO database connection.
+     * @param Logger         $logger         Monolog logger instance.
+     * @param CrontabManager $crontabManager Used to verify that active jobs have
+     *                                        a crontab entry (consistency check).
      */
     public function __construct(
-        private readonly PDO    $pdo,
-        private readonly Logger $logger,
+        private readonly PDO            $pdo,
+        private readonly Logger         $logger,
+        private readonly CrontabManager $crontabManager,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -104,6 +108,7 @@ final class CronListEndpoint
 
         try {
             $jobs = $this->fetchJobs($userFilter, $tagFilter, $targetFilter);
+            $jobs = $this->attachCrontabStatus($jobs);
 
             jsonResponse(200, [
                 'data'  => $jobs,
@@ -125,6 +130,92 @@ final class CronListEndpoint
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Add a `crontab_ok` boolean to each job record.
+     *
+     * For active jobs the field is true only when ALL expected targets have a
+     * matching crontab entry. A single missing target entry (e.g. one of three
+     * SSH targets was removed) is enough to set the field to false.
+     * For inactive jobs the field is always true (no entry is expected).
+     *
+     * Crontab reads are batched per unique Linux user (one shell call per user).
+     *
+     * @param array<int, array<string, mixed>> $jobs Normalised job records.
+     *
+     * @return array<int, array<string, mixed>> The same records with `crontab_ok` added.
+     */
+    private function attachCrontabStatus(array $jobs): array
+    {
+        // Collect unique linux users that have at least one active job
+        $activeUsers = [];
+        foreach ($jobs as $job) {
+            if ($job['active']) {
+                $activeUsers[$job['linux_user']] = true;
+            }
+        }
+
+        // One crontab read per user → map user → [jobId => [target => true]]
+        // null means the crontab was unreadable (treat as unknown = ok)
+        /** @var array<string, array<int, array<string, bool>>|null> $managedByUser */
+        $managedByUser = [];
+        foreach (array_keys($activeUsers) as $user) {
+            try {
+                $managedByUser[$user] = $this->crontabManager->getManagedEntries($user);
+            } catch (\Throwable $e) {
+                // Cannot read crontab – default to ok to avoid false-positive warnings
+                $this->logger->warning('CronListEndpoint: could not read crontab for consistency check', [
+                    'user'    => $user,
+                    'message' => $e->getMessage(),
+                ]);
+                $managedByUser[$user] = null;
+            }
+        }
+
+        foreach ($jobs as &$job) {
+            if (!$job['active']) {
+                // Inactive jobs are not expected to have any crontab entry
+                $job['crontab_ok'] = true;
+                continue;
+            }
+
+            $user    = $job['linux_user'];
+            $entries = $managedByUser[$user] ?? null;
+
+            if ($entries === null) {
+                // Crontab unreadable – treat as unknown, show no warning
+                $job['crontab_ok'] = true;
+                continue;
+            }
+
+            $jobId  = $job['id'];
+            $targets = $job['targets'];
+
+            if (!isset($entries[$jobId])) {
+                // No crontab entry exists for this job at all
+                $job['crontab_ok'] = false;
+                continue;
+            }
+
+            // Legacy format (# cronmanager:{id} without target): covers any target
+            if (isset($entries[$jobId]['__legacy__'])) {
+                $job['crontab_ok'] = true;
+                continue;
+            }
+
+            // Check that every expected target has an entry
+            $job['crontab_ok'] = true;
+            foreach ($targets as $target) {
+                if (!isset($entries[$jobId][(string) $target])) {
+                    $job['crontab_ok'] = false;
+                    break;
+                }
+            }
+        }
+        unset($job);
+
+        return $jobs;
+    }
 
     /**
      * Execute the jobs query and return a normalised result array.

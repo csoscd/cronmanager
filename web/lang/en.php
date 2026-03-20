@@ -116,6 +116,8 @@ return [
     'cron_host'               => 'Host',
     'cron_targets'            => 'Execution Targets',
     'cron_targets_hint'       => 'Select where this job should run. At least one target is required.',
+    'cron_crontab_missing'    => 'No crontab entry',
+    'cron_crontab_missing_hint' => 'This job is marked active in the database but has no matching crontab entry – it will never run. Edit and re-save the job to restore the entry.',
 
     // -------------------------------------------------------------------------
     // Timeline

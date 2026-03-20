@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `notify_fix`
+
+### Fixed
+
+- **`mb_strlen` / `mb_substr` namespace error in `MailNotifier`** – When a job failed with `notify_on_failure` enabled and mail was active, the agent logged `Call to undefined function Cronmanager\Agent\Notification\mb_strlen()`. PHP resolves unqualified function calls in the current namespace first; since no such function exists there, the call failed. Fixed by prefixing both calls with `\` (`\mb_strlen`, `\mb_substr`) to force resolution in the global namespace.
+
+---
+
 ## [Unreleased] – branch: `copy`
 
 ### Added

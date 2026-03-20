@@ -9,7 +9,9 @@ declare(strict_types=1);
  *
  * Process:
  *   1. Fetch the existing job — return 404 if not found.
- *   2. If the job is active, remove its crontab entry via CrontabManager.
+ *   2. Remove ALL crontab entries for this job via CrontabManager (regardless of
+ *      the active flag, to also clean up stale entries). If this fails, return
+ *      HTTP 500 and abort — the DB row is NOT deleted to preserve consistency.
  *   3. DELETE the row from `cronjobs`; the ON DELETE CASCADE constraint on
  *      `cronjob_tags` and `execution_log` removes related rows automatically.
  *   4. Return HTTP 200 with a confirmation payload.
@@ -108,26 +110,31 @@ final class CronDeleteEndpoint
         }
 
         // ------------------------------------------------------------------
-        // 2. Remove crontab entry if the job is active
+        // 2. Remove crontab entries (always attempt, regardless of active flag,
+        //    to handle stale entries left by previous bugs).
+        //    Abort the entire delete if crontab cleanup fails – the DB row must
+        //    NOT be removed when the crontab entry still exists.
         // ------------------------------------------------------------------
 
-        if ((bool) $job['active']) {
-            try {
-                $this->crontabManager->removeEntry((string) $job['linux_user'], $jobId);
+        try {
+            $this->crontabManager->removeAllEntries((string) $job['linux_user'], $jobId);
 
-                $this->logger->info('CronDeleteEndpoint: crontab entry removed', [
-                    'job_id'     => $jobId,
-                    'linux_user' => $job['linux_user'],
-                ]);
-            } catch (\Throwable $e) {
-                // Log but do not abort: the DB row must still be deleted so the
-                // system remains consistent. The stale crontab entry can be
-                // cleaned up manually if necessary.
-                $this->logger->error('CronDeleteEndpoint: failed to remove crontab entry', [
-                    'job_id'  => $jobId,
-                    'message' => $e->getMessage(),
-                ]);
-            }
+            $this->logger->info('CronDeleteEndpoint: crontab entries removed', [
+                'job_id'     => $jobId,
+                'linux_user' => $job['linux_user'],
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('CronDeleteEndpoint: aborting delete – crontab removal failed', [
+                'job_id'  => $jobId,
+                'message' => $e->getMessage(),
+            ]);
+
+            jsonResponse(500, [
+                'error'   => 'Internal Server Error',
+                'message' => 'Failed to remove crontab entry. Job was not deleted to preserve consistency.',
+                'code'    => 500,
+            ]);
+            return;
         }
 
         // ------------------------------------------------------------------

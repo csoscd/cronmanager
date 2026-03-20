@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `delete_consistency`
+
+### Fixed
+
+- **Orphaned crontab entries on job delete** – `CronDeleteEndpoint` called the non-existent method `removeEntry()` on `CrontabManager`; PHP threw a fatal `Error` which was silently caught, and the job was deleted from the database while its crontab entry remained. Fixed by calling the correct method `removeAllEntries()`. Additionally, the catch block now returns HTTP 500 and aborts the operation instead of continuing — the DB row is only deleted after the crontab entry has been successfully removed. The `active` flag guard was also removed so that stale entries left by previous bugs are cleaned up even for inactive jobs.
+
+---
+
 ## [Unreleased] – branch: `notify_fix`
 
 ### Fixed

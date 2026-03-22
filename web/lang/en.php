@@ -273,6 +273,8 @@ return [
     'monitor_notify_enabled' => 'Notifications on',
     'monitor_notify_disabled'=> 'Notifications off',
     'monitor_link'           => 'Monitor',
+    'monitor_target'         => 'Target',
+    'monitor_all_targets'    => 'All',
     // Period labels shown on the selector buttons
     'monitor_period_1h'      => '1h',
     'monitor_period_6h'      => '6h',

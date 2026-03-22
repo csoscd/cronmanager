@@ -34,24 +34,16 @@ if ($errorKey !== null && $errorKey !== '') {
 }
 ?>
 <!DOCTYPE html>
-<html lang="<?= htmlspecialchars($lang, ENT_QUOTES, 'UTF-8') ?>">
+<html lang="<?= htmlspecialchars($lang, ENT_QUOTES, 'UTF-8') ?>" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($t('setup_title'), ENT_QUOTES, 'UTF-8') ?> – <?= htmlspecialchars($t('app_name'), ENT_QUOTES, 'UTF-8') ?></title>
-    <script>
-    (function () {
-        var stored = localStorage.getItem('darkMode');
-        var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (stored === 'true' || (stored === null && prefersDark)) {
-            document.documentElement.classList.add('dark');
-        }
-        window.tailwind = window.tailwind || {};
-        window.tailwind.config = { darkMode: 'class' };
-    })();
-    </script>
+    <script>window.tailwind = window.tailwind || {}; window.tailwind.config = { darkMode: 'class' };</script>
     <script src="/assets/js/tailwind.min.js"></script>
-    <script>tailwind.config = { darkMode: 'class' };</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="/assets/css/brand.css">
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 min-h-screen flex items-center justify-center px-4 transition-colors duration-200">
 
@@ -60,7 +52,7 @@ if ($errorKey !== null && $errorKey !== '') {
 
         <!-- App title -->
         <div class="text-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-100">
+            <h1 class="text-3xl font-bold cm-gradient-text">
                 <?= htmlspecialchars($t('app_name'), ENT_QUOTES, 'UTF-8') ?>
             </h1>
             <p class="mt-2 text-gray-500 dark:text-gray-400 text-sm">
@@ -158,9 +150,7 @@ if ($errorKey !== null && $errorKey !== '') {
                 <!-- Submit button -->
                 <button
                     type="submit"
-                    class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white
-                           font-medium py-2.5 px-4 rounded-lg text-sm transition focus:outline-none
-                           focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    class="w-full cm-btn-primary justify-center py-2.5">
                     <?= htmlspecialchars($t('setup_submit'), ENT_QUOTES, 'UTF-8') ?>
                 </button>
 

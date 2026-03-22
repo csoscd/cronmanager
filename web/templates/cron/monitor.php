@@ -59,15 +59,15 @@ $alertCount   = (int) ($stats['alert_count']     ?? 0);
 $successCount = (int) ($stats['success_count']   ?? 0);
 $failureCount = (int) ($stats['failure_count']   ?? 0);
 
-// Determine success rate colour
-$rateClass = 'text-gray-700 dark:text-gray-300';
+// Determine success rate colour via brand inline styles
+$rateStyle = 'color:var(--cm-muted)';
 if ($successRate !== null) {
     if ((float) $successRate >= 95) {
-        $rateClass = 'text-green-600 dark:text-green-400';
+        $rateStyle = 'color:var(--cm-success)';
     } elseif ((float) $successRate >= 80) {
-        $rateClass = 'text-yellow-600 dark:text-yellow-400';
+        $rateStyle = 'color:var(--cm-warning)';
     } else {
-        $rateClass = 'text-red-600 dark:text-red-400';
+        $rateStyle = 'color:var(--cm-danger)';
     }
 }
 ?>
@@ -121,16 +121,19 @@ if ($successRate !== null) {
                     $url .= '&target=' . rawurlencode($selectedTarget);
                 }
                 $btnClass = $isActive
-                    ? 'px-3 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white shadow-sm cursor-default'
-                    : 'px-3 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors';
+                    ? 'px-3 py-1.5 text-xs font-semibold rounded-md cursor-default text-white shadow-sm'
+                    : 'px-3 py-1.5 text-xs font-medium rounded-md border transition-colors';
+                $btnStyle = $isActive
+                    ? 'background:var(--cm-grad);border:none'
+                    : 'background:var(--cm-bg-card);border-color:var(--cm-border);color:var(--cm-muted)';
             ?>
             <?php if ($isActive): ?>
-                <span class="<?= $btnClass ?>">
+                <span class="<?= $btnClass ?>" style="<?= $btnStyle ?>">
                     <?= htmlspecialchars($t('monitor_period_' . $p), ENT_QUOTES, 'UTF-8') ?>
                 </span>
             <?php else: ?>
                 <a href="<?= htmlspecialchars($url, ENT_QUOTES, 'UTF-8') ?>"
-                   class="<?= $btnClass ?>">
+                   class="<?= $btnClass ?>" style="<?= $btnStyle ?>">
                     <?= htmlspecialchars($t('monitor_period_' . $p), ENT_QUOTES, 'UTF-8') ?>
                 </a>
             <?php endif; ?>
@@ -152,16 +155,19 @@ if ($successRate !== null) {
         $allActive   = $selectedTarget === null;
         $allUrl      = '/crons/' . rawurlencode($jobId) . '/monitor?period=' . rawurlencode($period);
         $allBtnClass = $allActive
-            ? 'px-3 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white shadow-sm cursor-default'
-            : 'px-3 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors';
+            ? 'px-3 py-1.5 text-xs font-semibold rounded-md cursor-default text-white shadow-sm'
+            : 'px-3 py-1.5 text-xs font-medium rounded-md border transition-colors';
+        $allBtnStyle = $allActive
+            ? 'background:var(--cm-grad);border:none'
+            : 'background:var(--cm-bg-card);border-color:var(--cm-border);color:var(--cm-muted)';
     ?>
     <?php if ($allActive): ?>
-        <span class="<?= $allBtnClass ?>">
+        <span class="<?= $allBtnClass ?>" style="<?= $allBtnStyle ?>">
             <?= htmlspecialchars($t('monitor_all_targets'), ENT_QUOTES, 'UTF-8') ?>
         </span>
     <?php else: ?>
         <a href="<?= htmlspecialchars($allUrl, ENT_QUOTES, 'UTF-8') ?>"
-           class="<?= $allBtnClass ?>">
+           class="<?= $allBtnClass ?>" style="<?= $allBtnStyle ?>">
             <?= htmlspecialchars($t('monitor_all_targets'), ENT_QUOTES, 'UTF-8') ?>
         </a>
     <?php endif; ?>
@@ -171,16 +177,19 @@ if ($successRate !== null) {
             $tgtActive   = $selectedTarget === $tgt;
             $tgtUrl      = '/crons/' . rawurlencode($jobId) . '/monitor?period=' . rawurlencode($period) . '&target=' . rawurlencode($tgt);
             $tgtBtnClass = $tgtActive
-                ? 'px-3 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white shadow-sm cursor-default font-mono'
-                : 'px-3 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors font-mono';
+                ? 'px-3 py-1.5 text-xs font-semibold rounded-md cursor-default text-white shadow-sm font-mono'
+                : 'px-3 py-1.5 text-xs font-medium rounded-md border transition-colors font-mono';
+            $tgtBtnStyle = $tgtActive
+                ? 'background:var(--cm-grad);border:none'
+                : 'background:var(--cm-bg-card);border-color:var(--cm-border);color:var(--cm-muted)';
         ?>
         <?php if ($tgtActive): ?>
-            <span class="<?= $tgtBtnClass ?>">
+            <span class="<?= $tgtBtnClass ?>" style="<?= $tgtBtnStyle ?>">
                 <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
             </span>
         <?php else: ?>
             <a href="<?= htmlspecialchars($tgtUrl, ENT_QUOTES, 'UTF-8') ?>"
-               class="<?= $tgtBtnClass ?>">
+               class="<?= $tgtBtnClass ?>" style="<?= $tgtBtnStyle ?>">
                 <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
             </a>
         <?php endif; ?>
@@ -198,7 +207,7 @@ if ($successRate !== null) {
         <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
             <?= htmlspecialchars($t('monitor_success_rate'), ENT_QUOTES, 'UTF-8') ?>
         </p>
-        <p class="text-3xl font-bold <?= $rateClass ?>">
+        <p class="text-3xl font-bold" style="<?= $rateStyle ?>">
             <?= $successRate !== null
                 ? htmlspecialchars(number_format((float) $successRate, 1) . ' %', ENT_QUOTES, 'UTF-8')
                 : '<span class="text-gray-300 dark:text-gray-600">—</span>' ?>
@@ -403,15 +412,14 @@ if ($successRate !== null) {
     var LABEL_AVG     = <?= json_encode($t('monitor_avg_duration')) ?>;
 
     // -------------------------------------------------------------------------
-    // Theme-aware colours
+    // Brand-token colours (always dark)
     // -------------------------------------------------------------------------
-    var isDark     = document.documentElement.classList.contains('dark');
-    var textColor  = isDark ? 'rgba(209,213,219,0.85)' : 'rgba(75,85,99,0.9)';
-    var gridColor  = isDark ? 'rgba(75,85,99,0.35)'    : 'rgba(229,231,235,0.9)';
-    var colorGreen = 'rgba(34,197,94,0.75)';
-    var colorRed   = 'rgba(239,68,68,0.75)';
-    var colorLine  = isDark ? 'rgba(129,140,248,0.7)'  : 'rgba(99,102,241,0.7)';
-    var colorAvg   = 'rgba(249,115,22,0.8)';
+    var textColor  = '#8888bb';   /* --cm-muted  */
+    var gridColor  = '#1e1e40';   /* --cm-border */
+    var colorGreen = '#34d399';   /* --cm-success */
+    var colorRed   = '#f87171';   /* --cm-danger  */
+    var colorLine  = '#818cf8';   /* --cm-indigo  */
+    var colorAvg   = 'rgba(251,191,36,0.8)'; /* --cm-warning (avg line) */
 
     // -------------------------------------------------------------------------
     // Duration line chart
@@ -427,7 +435,7 @@ if ($successRate !== null) {
             label: '<?= addslashes($t('duration')) ?>',
             data: DURATION_DATA.map(function (d) { return d.duration_seconds; }),
             borderColor: colorLine,
-            backgroundColor: isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.06)',
+            backgroundColor: 'rgba(129,140,248,.08)',
             pointBackgroundColor: pointColors,
             pointBorderColor: pointColors,
             pointRadius: DURATION_DATA.length > 100 ? 2 : 4,
@@ -491,6 +499,11 @@ if ($successRate !== null) {
                         labels: { color: textColor, boxWidth: 20, font: { size: 11 } },
                     },
                     tooltip: {
+                        backgroundColor: '#12122a',
+                        borderColor: '#1e1e40',
+                        borderWidth: 1,
+                        titleColor: '#f0f0ff',
+                        bodyColor: '#8888bb',
                         callbacks: {
                             label: function (ctx) {
                                 if (ctx.datasetIndex === 0) {
@@ -568,6 +581,13 @@ if ($successRate !== null) {
                 plugins: {
                     legend: {
                         labels: { color: textColor, boxWidth: 14, font: { size: 11 } },
+                    },
+                    tooltip: {
+                        backgroundColor: '#12122a',
+                        borderColor: '#1e1e40',
+                        borderWidth: 1,
+                        titleColor: '#f0f0ff',
+                        bodyColor: '#8888bb',
                     },
                 },
             },

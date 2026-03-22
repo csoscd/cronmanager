@@ -1,0 +1,314 @@
+/**
+ * Cronmanager Web UI – Brand CSS
+ *
+ * Defines the Cronmanager design system: CSS custom properties, base styles,
+ * Tailwind dark-mode overrides, and brand-specific component helpers.
+ *
+ * Rules use !important throughout to beat Tailwind's generated specificity.
+ *
+ * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+ * @license GNU General Public License version 3 or later
+ */
+
+/* ── Google Fonts ─────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+
+/* ── Brand tokens ─────────────────────────────────────────────────────────── */
+:root {
+    /* Accent colours */
+    --cm-violet:  #c084fc;
+    --cm-indigo:  #818cf8;
+    --cm-sky:     #38bdf8;
+    --cm-grad:    linear-gradient(135deg, #c084fc, #818cf8, #38bdf8);
+
+    /* Background layers (dark-first) */
+    --cm-bg-deep: #080812;
+    --cm-bg-dark: #0d0d1f;
+    --cm-bg-card: #12122a;
+    --cm-border:  #1e1e40;
+
+    /* Text */
+    --cm-text:    #f0f0ff;
+    --cm-muted:   #8888bb;
+    --cm-faint:   #44446a;
+
+    /* Status */
+    --cm-success: #34d399;
+    --cm-danger:  #f87171;
+    --cm-warning: #fbbf24;
+}
+
+/* ── Base styles ──────────────────────────────────────────────────────────── */
+html,
+body {
+    background-color: var(--cm-bg-deep) !important;
+    color: var(--cm-text) !important;
+    font-family: 'Outfit', sans-serif !important;
+}
+
+code,
+pre,
+.font-mono,
+kbd,
+samp {
+    font-family: 'JetBrains Mono', monospace !important;
+    color: var(--cm-sky) !important;
+}
+
+/* ── Tailwind dark-mode overrides (.dark is always on <html>) ─────────────── */
+
+/* Backgrounds */
+.dark .dark\:bg-gray-900   { background-color: var(--cm-bg-deep) !important; }
+.dark .dark\:bg-gray-800   { background-color: var(--cm-bg-card) !important; }
+.dark .dark\:bg-gray-950   { background-color: var(--cm-bg-dark) !important; }
+.dark .dark\:bg-gray-700   { background-color: var(--cm-bg-dark) !important; }
+
+/* Borders */
+.dark .dark\:border-gray-700 { border-color: var(--cm-border) !important; }
+.dark .dark\:border-gray-800 { border-color: var(--cm-border) !important; }
+
+/* Text */
+.dark .dark\:text-gray-100 { color: var(--cm-text) !important; }
+.dark .dark\:text-gray-200 { color: var(--cm-text) !important; }
+.dark .dark\:text-gray-300 { color: var(--cm-muted) !important; }
+.dark .dark\:text-gray-400 { color: var(--cm-muted) !important; }
+.dark .dark\:text-gray-500 { color: var(--cm-faint) !important; }
+.dark .dark\:text-gray-600 { color: var(--cm-faint) !important; }
+
+/* Hover backgrounds */
+.dark .dark\:hover\:bg-gray-700:hover { background-color: rgba(129,140,248,.06) !important; }
+.dark .dark\:hover\:bg-gray-600:hover { background-color: rgba(129,140,248,.1)  !important; }
+
+/* Dividers */
+.dark .dark\:divide-gray-700 > * + * { border-color: var(--cm-border) !important; }
+
+/* Blue accent (info / active) */
+.dark .dark\:bg-blue-900        { background-color: rgba(129,140,248,.12) !important; }
+.dark .dark\:text-blue-200      { color: var(--cm-indigo) !important; }
+.dark .dark\:bg-blue-900\/20    { background-color: rgba(129,140,248,.08) !important; }
+.dark .dark\:border-blue-700    { border-color: rgba(129,140,248,.25) !important; }
+
+/* Red accent (danger) */
+.dark .dark\:bg-red-900  { background-color: rgba(248,113,113,.12) !important; }
+.dark .dark\:text-red-200 { color: var(--cm-danger) !important; }
+
+/* Active nav (bg-gray-600 applied by navClass) */
+.dark .dark\:bg-gray-600 { background-color: rgba(255,255,255,.06) !important; }
+
+/* ── Non-dark Tailwind colour overrides (always applied) ─────────────────── */
+
+/* Text colours */
+.text-blue-600    { color: var(--cm-indigo) !important; }
+.text-blue-500    { color: var(--cm-indigo) !important; }
+.hover\:text-blue-800:hover { color: var(--cm-violet) !important; }
+.text-green-600   { color: var(--cm-success) !important; }
+.text-green-800   { color: var(--cm-success) !important; }
+.text-red-700     { color: var(--cm-danger) !important; }
+.text-red-800     { color: var(--cm-danger) !important; }
+.text-red-600     { color: var(--cm-danger) !important; }
+.text-yellow-800  { color: var(--cm-warning) !important; }
+.text-yellow-600  { color: var(--cm-warning) !important; }
+.text-purple-800  { color: var(--cm-violet) !important; }
+.text-purple-700  { color: var(--cm-violet) !important; }
+.text-blue-800    { color: var(--cm-indigo) !important; }
+.text-indigo-700  { color: var(--cm-indigo) !important; }
+
+/* Background colours */
+.bg-green-100  { background-color: rgba(52,211,153,.12) !important; }
+.bg-red-100    { background-color: rgba(248,113,113,.12) !important; }
+.bg-red-50     { background-color: rgba(248,113,113,.08) !important; }
+.bg-yellow-100 { background-color: rgba(251,191,36,.12)  !important; }
+.bg-purple-100 { background-color: rgba(192,132,252,.12) !important; }
+.bg-blue-100   { background-color: rgba(129,140,248,.12) !important; }
+.bg-blue-50    { background-color: rgba(129,140,248,.08) !important; }
+
+/* Border colours */
+.border-red-300   { border-color: rgba(248,113,113,.25) !important; }
+.border-red-200   { border-color: rgba(248,113,113,.2)  !important; }
+.border-blue-200  { border-color: rgba(129,140,248,.2)  !important; }
+.border-indigo-200 { border-color: rgba(129,140,248,.2) !important; }
+
+/* Primary button (bg-blue-600) */
+.bg-blue-600               { background: var(--cm-grad) !important; border: none !important; }
+.hover\:bg-blue-700:hover  { background: var(--cm-violet) !important; }
+
+/* Indigo accent */
+.bg-indigo-50                   { background-color: rgba(129,140,248,.08) !important; }
+.hover\:bg-indigo-100:hover     { background-color: rgba(129,140,248,.14) !important; }
+.hover\:bg-indigo-100           { background-color: rgba(129,140,248,.08) !important; }
+.border-indigo-200              { border-color: rgba(129,140,248,.2) !important; }
+
+/* Gray interactive */
+.bg-gray-600               { background-color: rgba(136,136,187,.15) !important; }
+.hover\:bg-gray-700:hover  { background-color: rgba(129,140,248,.08) !important; }
+.hover\:bg-gray-800:hover  { background-color: rgba(129,140,248,.12) !important; }
+
+/* Red interactive */
+.hover\:bg-red-100:hover { background-color: rgba(248,113,113,.14) !important; }
+.hover\:bg-red-100       { background-color: rgba(248,113,113,.08) !important; }
+
+/* Focus rings */
+.focus\:ring-blue-500:focus   { --tw-ring-color: var(--cm-indigo) !important; }
+.focus\:ring-gray-500:focus   { --tw-ring-color: var(--cm-border) !important; }
+.focus\:ring-indigo-400:focus { --tw-ring-color: var(--cm-indigo) !important; }
+
+/* ── Base Tailwind class overrides (no dark: prefix) ─────────────────────── */
+body.bg-gray-100 { background-color: var(--cm-bg-deep) !important; }
+
+.bg-white     { background-color: var(--cm-bg-card) !important; }
+.bg-gray-50   { background-color: var(--cm-bg-dark) !important; }
+
+.border-gray-200 { border-color: var(--cm-border) !important; }
+.border-gray-300 { border-color: var(--cm-border) !important; }
+.border-gray-600 { border-color: var(--cm-border) !important; }
+.border-gray-700 { border-color: var(--cm-border) !important; }
+
+.text-gray-300 { color: var(--cm-muted)  !important; }
+.text-gray-400 { color: var(--cm-faint)  !important; }
+.text-gray-500 { color: var(--cm-faint)  !important; }
+
+.divide-gray-100 > * + * { border-color: var(--cm-border) !important; }
+
+/* ── Status badges ────────────────────────────────────────────────────────── */
+
+/**
+ * Base badge: JetBrains Mono, small, pill-shaped.
+ * Status variants provide colours.
+ */
+.cm-badge {
+    display: inline-flex;
+    align-items: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+
+.cm-badge-success {
+    background: rgba(52,211,153,.12);
+    color: var(--cm-success);
+}
+
+.cm-badge-running {
+    background: rgba(129,140,248,.12);
+    color: var(--cm-indigo);
+}
+
+.cm-badge-danger {
+    background: rgba(248,113,113,.12);
+    color: var(--cm-danger);
+}
+
+.cm-badge-pending {
+    background: rgba(251,191,36,.12);
+    color: var(--cm-warning);
+}
+
+/* ── Button helpers ───────────────────────────────────────────────────────── */
+
+/**
+ * Primary CTA button: gradient background, white text.
+ */
+.cm-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--cm-grad);
+    border: none;
+    color: #fff;
+    font-weight: 600;
+    border-radius: 10px;
+    padding: 10px 22px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    text-decoration: none;
+}
+.cm-btn-primary:hover  { opacity: 0.88; }
+.cm-btn-primary:active { opacity: 0.75; }
+
+/**
+ * Ghost button: subdued border, muted text – used for SSO / secondary actions.
+ */
+.cm-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: transparent;
+    border: 1px solid var(--cm-border);
+    color: var(--cm-muted);
+    font-weight: 500;
+    border-radius: 10px;
+    padding: 10px 22px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    text-decoration: none;
+}
+.cm-btn-ghost:hover {
+    border-color: var(--cm-indigo);
+    color: var(--cm-text);
+    background: rgba(129,140,248,.06);
+}
+
+/* ── Card helper ──────────────────────────────────────────────────────────── */
+.cm-card {
+    background: var(--cm-bg-card);
+    border: 1px solid var(--cm-border);
+    border-radius: 14px;
+    padding: 24px;
+}
+
+/* ── Gradient text helpers ────────────────────────────────────────────────── */
+
+/**
+ * Apply brand gradient to any text element (page titles, etc.)
+ */
+.cm-gradient-text {
+    background: var(--cm-grad);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/**
+ * App name in the navigation bar.
+ */
+.cm-app-name {
+    font-weight: 700;
+    font-size: 1.125rem;
+    background: var(--cm-grad);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* ── Active navigation link ───────────────────────────────────────────────── */
+.cm-nav-active {
+    color: var(--cm-text) !important;
+    background: rgba(129,140,248,.15) !important;
+    border: 1px solid rgba(129,140,248,.2) !important;
+}
+
+/* ── Select / dropdown readability ───────────────────────────────────────── */
+/*
+ * Native <select> elements and their <option> children need explicit
+ * background + foreground colours so that both the closed widget and the
+ * open dropdown list are readable on all major browsers / OS themes.
+ */
+select {
+    background-color: var(--cm-bg-card) !important;
+    color: var(--cm-text) !important;
+}
+
+select option {
+    background-color: var(--cm-bg-card) !important;
+    color: var(--cm-text) !important;
+}
+
+/* ── Swimlane now-line override ───────────────────────────────────────────── */
+.sw-now-line {
+    background: linear-gradient(to bottom, rgba(192,132,252,.5), var(--cm-violet)) !important;
+}

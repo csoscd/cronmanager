@@ -273,6 +273,8 @@ return [
     'monitor_notify_enabled' => 'Benachrichtigungen aktiv',
     'monitor_notify_disabled'=> 'Benachrichtigungen inaktiv',
     'monitor_link'           => 'Monitor',
+    'monitor_target'         => 'Ziel',
+    'monitor_all_targets'    => 'Alle',
     // Zeitraum-Schaltflächen
     'monitor_period_1h'      => '1 Std.',
     'monitor_period_6h'      => '6 Std.',

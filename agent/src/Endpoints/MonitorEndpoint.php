@@ -16,6 +16,9 @@ declare(strict_types=1);
  *
  * Supported query parameters:
  *   - period  (string)  One of: 1h, 6h, 12h, 24h, 7d, 30d (default), 3m, 6m, 1y
+ *   - target  (string)  Optional. Filter stats to a single target (e.g. "local" or
+ *                       an SSH alias). Ignored when the job has only one target.
+ *                       Omit or leave blank to aggregate all targets.
  *
  * Alert count is derived: a failed execution (exit_code != 0) on a job with
  * notify_on_failure = 1 is counted as an alert, since the execution_log table
@@ -123,7 +126,7 @@ final class MonitorEndpoint
         $id = (int) $idRaw;
 
         // ------------------------------------------------------------------
-        // 2. Parse and validate ?period query parameter
+        // 2. Parse and validate query parameters
         // ------------------------------------------------------------------
 
         $periodParam = isset($_GET['period']) && $_GET['period'] !== ''
@@ -133,9 +136,15 @@ final class MonitorEndpoint
             ? $periodParam
             : self::DEFAULT_PERIOD;
 
+        // ?target= is validated against the job's configured targets after fetch
+        $targetParam = isset($_GET['target']) && $_GET['target'] !== ''
+            ? (string) $_GET['target']
+            : null;
+
         $this->logger->debug('MonitorEndpoint: handling GET /crons/{id}/monitor', [
             'id'     => $id,
             'period' => $period,
+            'target' => $targetParam,
         ]);
 
         // ------------------------------------------------------------------
@@ -158,11 +167,21 @@ final class MonitorEndpoint
             $fromStr = $from->format('Y-m-d H:i:s');
             $toStr   = $to->format('Y-m-d H:i:s');
 
-            $stats      = $this->fetchStats($id, $fromStr, $toStr, (bool) $job['notify_on_failure']);
-            $executions = $this->fetchExecutions($id, $fromStr, $toStr);
+            // Fetch all configured targets for this job for the filter UI
+            $targets = $this->fetchTargets($id);
+
+            // Validate the requested target filter; silently ignore unknown values
+            $selectedTarget = ($targetParam !== null && in_array($targetParam, $targets, true))
+                ? $targetParam
+                : null;
+
+            $stats      = $this->fetchStats($id, $fromStr, $toStr, (bool) $job['notify_on_failure'], $selectedTarget);
+            $executions = $this->fetchExecutions($id, $fromStr, $toStr, $selectedTarget);
 
             jsonResponse(200, [
                 'job'             => $job,
+                'targets'         => $targets,
+                'selected_target' => $selectedTarget,
                 'stats'           => $stats,
                 'duration_series' => $this->buildDurationSeries($executions),
                 'bar_buckets'     => $this->buildBarBuckets($from, $to, $period, $executions),
@@ -222,22 +241,44 @@ final class MonitorEndpoint
     }
 
     /**
+     * Fetch all configured targets for a job from the job_targets table.
+     *
+     * @param int $id Job ID.
+     *
+     * @return list<string> Sorted list of target strings (e.g. ["local", "webserver01"]).
+     *
+     * @throws PDOException On database errors.
+     */
+    private function fetchTargets(int $id): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT target FROM job_targets WHERE job_id = :id ORDER BY target'
+        );
+        $stmt->execute([':id' => $id]);
+
+        return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    }
+
+    /**
      * Fetch aggregated statistics for the specified job and time window.
      *
      * Alert count is approximated as the number of failed executions when
      * notify_on_failure is enabled on the job.
      *
-     * @param int    $id              Job ID.
-     * @param string $from            Start of window (YYYY-MM-DD HH:MM:SS).
-     * @param string $to              End of window (YYYY-MM-DD HH:MM:SS).
-     * @param bool   $notifyOnFailure Whether the job has failure notifications enabled.
+     * @param int         $id              Job ID.
+     * @param string      $from            Start of window (YYYY-MM-DD HH:MM:SS).
+     * @param string      $to              End of window (YYYY-MM-DD HH:MM:SS).
+     * @param bool        $notifyOnFailure Whether the job has failure notifications enabled.
+     * @param string|null $target          Optional target filter; null = all targets.
      *
      * @return array<string, mixed> Aggregated statistics.
      *
      * @throws PDOException On database errors.
      */
-    private function fetchStats(int $id, string $from, string $to, bool $notifyOnFailure): array
+    private function fetchStats(int $id, string $from, string $to, bool $notifyOnFailure, ?string $target = null): array
     {
+        $targetClause = $target !== null ? 'AND el.target = :target' : '';
+
         $stmt = $this->pdo->prepare(<<<SQL
             SELECT
                 COUNT(*)                                                                AS execution_count,
@@ -251,9 +292,15 @@ final class MonitorEndpoint
               AND el.finished_at IS NOT NULL
               AND el.started_at  >= :from
               AND el.started_at  <= :to
+              {$targetClause}
             SQL
         );
-        $stmt->execute([':id' => $id, ':from' => $from, ':to' => $to]);
+
+        $params = [':id' => $id, ':from' => $from, ':to' => $to];
+        if ($target !== null) {
+            $params[':target'] = $target;
+        }
+        $stmt->execute($params);
         $row = $stmt->fetch();
 
         $executionCount = (int) ($row['execution_count'] ?? 0);
@@ -281,16 +328,19 @@ final class MonitorEndpoint
      * Capped at MAX_EXECUTIONS rows to keep response size reasonable even for
      * very busy jobs over long periods.
      *
-     * @param int    $id   Job ID.
-     * @param string $from Start of window (YYYY-MM-DD HH:MM:SS).
-     * @param string $to   End of window (YYYY-MM-DD HH:MM:SS).
+     * @param int         $id     Job ID.
+     * @param string      $from   Start of window (YYYY-MM-DD HH:MM:SS).
+     * @param string      $to     End of window (YYYY-MM-DD HH:MM:SS).
+     * @param string|null $target Optional target filter; null = all targets.
      *
      * @return array<int, array<string, mixed>> Execution records, newest first.
      *
      * @throws PDOException On database errors.
      */
-    private function fetchExecutions(int $id, string $from, string $to): array
+    private function fetchExecutions(int $id, string $from, string $to, ?string $target = null): array
     {
+        $targetClause = $target !== null ? 'AND el.target = :target' : '';
+
         $stmt = $this->pdo->prepare(<<<SQL
             SELECT
                 el.id          AS execution_id,
@@ -304,6 +354,7 @@ final class MonitorEndpoint
               AND el.finished_at IS NOT NULL
               AND el.started_at  >= :from
               AND el.started_at  <= :to
+              {$targetClause}
             ORDER BY el.started_at DESC
             LIMIT :lim
             SQL
@@ -312,6 +363,9 @@ final class MonitorEndpoint
         $stmt->bindValue(':from', $from);
         $stmt->bindValue(':to',   $to);
         $stmt->bindValue(':lim',  self::MAX_EXECUTIONS, PDO::PARAM_INT);
+        if ($target !== null) {
+            $stmt->bindValue(':target', $target);
+        }
         $stmt->execute();
 
         $rows   = $stmt->fetchAll();

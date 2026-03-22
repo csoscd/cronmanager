@@ -18,6 +18,8 @@ declare(strict_types=1);
  *   array   $validPeriods   – list of all valid period strings
  *   string  $fromStr        – ISO 8601 start of current window
  *   string  $toStr          – ISO 8601 end of current window
+ *   array   $targets        – all configured targets for this job
+ *   string|null $selectedTarget – currently active target filter, or null for all
  *   bool    $isAdmin        – whether the current user has admin role
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
@@ -37,10 +39,15 @@ $fromStr       = isset($fromStr)       ? (string) $fromStr       : '';
 $toStr         = isset($toStr)         ? (string) $toStr         : '';
 $durationSeries = isset($durationSeries) ? (string) $durationSeries : '[]';
 $barBuckets    = isset($barBuckets)    ? (string) $barBuckets    : '[]';
+$targets        = isset($targets)        && is_array($targets)        ? $targets        : [];
+$selectedTarget = isset($selectedTarget) && is_string($selectedTarget) ? $selectedTarget : null;
 
 $jobId   = (string) ($job['id']          ?? '');
 $desc    = (string) ($job['description'] ?? "Job #{$jobId}");
 $isAdmin = isset($isAdmin) && (bool) $isAdmin;
+
+// Whether to show the target filter (only useful when the job has multiple targets)
+$showTargetFilter = count($targets) > 1;
 
 // Stats
 $successRate  = $stats['success_rate']    ?? null;
@@ -108,7 +115,11 @@ if ($successRate !== null) {
         <?php foreach ($validPeriods as $p): ?>
             <?php
                 $isActive = $p === $period;
-                $url      = '/crons/' . rawurlencode($jobId) . '/monitor?period=' . rawurlencode($p);
+                // Preserve active target filter when switching periods
+                $url = '/crons/' . rawurlencode($jobId) . '/monitor?period=' . rawurlencode($p);
+                if ($selectedTarget !== null) {
+                    $url .= '&target=' . rawurlencode($selectedTarget);
+                }
                 $btnClass = $isActive
                     ? 'px-3 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white shadow-sm cursor-default'
                     : 'px-3 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors';
@@ -126,6 +137,56 @@ if ($successRate !== null) {
         <?php endforeach; ?>
     </div>
 </div>
+
+<!-- ======================================================================
+     Target filter (only shown when the job has more than one target)
+     ====================================================================== -->
+<?php if ($showTargetFilter): ?>
+<div class="mb-6 flex flex-wrap items-center gap-1">
+    <span class="text-xs font-medium text-gray-500 dark:text-gray-400 mr-1">
+        <?= htmlspecialchars($t('monitor_target'), ENT_QUOTES, 'UTF-8') ?>:
+    </span>
+
+    <?php
+        // "All targets" button
+        $allActive   = $selectedTarget === null;
+        $allUrl      = '/crons/' . rawurlencode($jobId) . '/monitor?period=' . rawurlencode($period);
+        $allBtnClass = $allActive
+            ? 'px-3 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white shadow-sm cursor-default'
+            : 'px-3 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors';
+    ?>
+    <?php if ($allActive): ?>
+        <span class="<?= $allBtnClass ?>">
+            <?= htmlspecialchars($t('monitor_all_targets'), ENT_QUOTES, 'UTF-8') ?>
+        </span>
+    <?php else: ?>
+        <a href="<?= htmlspecialchars($allUrl, ENT_QUOTES, 'UTF-8') ?>"
+           class="<?= $allBtnClass ?>">
+            <?= htmlspecialchars($t('monitor_all_targets'), ENT_QUOTES, 'UTF-8') ?>
+        </a>
+    <?php endif; ?>
+
+    <?php foreach ($targets as $tgt): ?>
+        <?php
+            $tgtActive   = $selectedTarget === $tgt;
+            $tgtUrl      = '/crons/' . rawurlencode($jobId) . '/monitor?period=' . rawurlencode($period) . '&target=' . rawurlencode($tgt);
+            $tgtBtnClass = $tgtActive
+                ? 'px-3 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white shadow-sm cursor-default font-mono'
+                : 'px-3 py-1.5 text-xs font-medium rounded-md bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors font-mono';
+        ?>
+        <?php if ($tgtActive): ?>
+            <span class="<?= $tgtBtnClass ?>">
+                <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
+            </span>
+        <?php else: ?>
+            <a href="<?= htmlspecialchars($tgtUrl, ENT_QUOTES, 'UTF-8') ?>"
+               class="<?= $tgtBtnClass ?>">
+                <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
+            </a>
+        <?php endif; ?>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
 
 <!-- ======================================================================
      KPI cards

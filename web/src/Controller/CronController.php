@@ -670,6 +670,8 @@ class CronController extends BaseController
      *
      * Query parameters:
      *   ?period=  One of: 1h, 6h, 12h, 24h, 7d, 30d (default), 3m, 6m, 1y
+     *   ?target=  Optional target filter (e.g. "local" or SSH alias). Only shown
+     *             in the UI when the job has more than one configured target.
      *
      * @param array<string,string> $params Path parameters: ['id' => string].
      *
@@ -684,10 +686,17 @@ class CronController extends BaseController
             $period = '30d';
         }
 
+        $targetFilter = trim((string) ($_GET['target'] ?? ''));
+
         $agent = $this->agentClient();
 
+        $queryParams = ['period' => $period];
+        if ($targetFilter !== '') {
+            $queryParams['target'] = $targetFilter;
+        }
+
         try {
-            $data = $agent->get('/crons/' . rawurlencode($id) . '/monitor', ['period' => $period]);
+            $data = $agent->get('/crons/' . rawurlencode($id) . '/monitor', $queryParams);
         } catch (\RuntimeException $e) {
             $this->logger->error('CronController::monitor: agent request failed', [
                 'id'      => $id,
@@ -716,6 +725,8 @@ class CronController extends BaseController
             'validPeriods'   => $validPeriods,
             'fromStr'        => $data['from'] ?? '',
             'toStr'          => $data['to']   ?? '',
+            'targets'        => $data['targets']         ?? [],
+            'selectedTarget' => $data['selected_target'] ?? null,
         ], '/crons');
     }
 

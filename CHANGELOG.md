@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `monitor_filter`
+
+### Added
+
+- **Target filter on the monitor page** – When a job has more than one configured target, a target selector row is now shown on the monitor page. Users can switch between "All" (aggregated across all targets) and any individual target (e.g. `local`, `webserver01`). The selected target is preserved when switching time periods. The filter has no effect and is not shown for single-target jobs.
+  - `MonitorEndpoint`: accepts optional `?target=` query parameter; validates the value against `job_targets`, adds `AND el.target = :target` to both the stats and executions queries when a target is selected; returns `targets` (list of all configured targets) and `selected_target` (active filter or `null`) in the response.
+  - `CronController::monitor()`: reads `?target=` from the request, forwards it to the agent, passes `targets` and `selectedTarget` to the template.
+  - `monitor.php`: renders a target filter bar (styled identically to the period selector) when `count($targets) > 1`; period-selector links preserve the active target parameter.
+  - New translation keys: `monitor_target`, `monitor_all_targets` (EN + DE).
+
+---
+
 ## [Unreleased] – branch: `bugfix_jobcommand`
 
 ### Fixed

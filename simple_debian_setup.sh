@@ -172,8 +172,10 @@ target_copy() {
 
 # ── Temp directory – cleaned up on exit ──────────────────────────────────────
 CLONE_DIR=""
-cleanup() { [[ -n "$CLONE_DIR" && -d "$CLONE_DIR" ]] && rm -rf "$CLONE_DIR"; }
-trap cleanup EXIT INT TERM
+cleanup()     { [[ -n "$CLONE_DIR" && -d "$CLONE_DIR" ]] && rm -rf "$CLONE_DIR"; }
+interrupted() { echo; warn "Setup interrupted by user (CTRL-C). You can re-run the script at any time."; cleanup; exit 130; }
+trap cleanup EXIT
+trap interrupted INT TERM
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  1. WELCOME BANNER
@@ -954,34 +956,11 @@ target_exec "cat '${COMPOSE_DIR}/docker-compose.yml'" | sed 's/^/    /'
 blank; sep
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  14. START HOST AGENT + HEALTH CHECK  (on target)
+#  14. DOCKER STACK  (on target)
+#  Must run before the agent so MariaDB is already up when the agent starts.
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 13 – Start Host Agent"
-
-step "Starting cronmanager-agent service..."
-if target_exec "systemctl start cronmanager-agent.service" 2>&1; then
-    sleep 2
-    step "Health check: http://127.0.0.1:${AGENT_PORT}/health"
-    HTTP_CODE=$(target_exec \
-        "curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
-         http://127.0.0.1:${AGENT_PORT}/health 2>/dev/null || echo 000")
-    if [[ "$HTTP_CODE" == "200" ]]; then
-        ok "Agent health check passed  (HTTP ${HTTP_CODE})."
-    else
-        warn "Agent health check returned HTTP ${HTTP_CODE}."
-        warn "Check logs with:  journalctl -u cronmanager-agent -n 50"
-    fi
-else
-    warn "Agent service could not be started."
-    warn "Check logs with:  journalctl -u cronmanager-agent -n 50"
-fi
-
-# ═════════════════════════════════════════════════════════════════════════════
-#  15. DOCKER STACK  (on target)
-# ═════════════════════════════════════════════════════════════════════════════
-
-header "Step 14 – Docker Stack"
+header "Step 13 – Docker Stack"
 
 DOCKER_DEPLOYED=false
 ask_yn AUTO_DEPLOY "Start the Docker stack on target now?" "yes"
@@ -999,10 +978,10 @@ else
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  16. DATABASE SCHEMA  (on target via docker exec)
+#  15. DATABASE SCHEMA  (on target via docker exec)
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 15 – Database Schema"
+header "Step 14 – Database Schema"
 
 SCHEMA_FILE="${AGENT_DIR}/sql/schema.sql"
 MIGRATIONS_DIR="${AGENT_DIR}/sql/migrations"
@@ -1052,6 +1031,31 @@ SHELLSCRIPT
 else
     info "Docker stack not deployed – skipping schema setup."
     info "Apply manually:  docker exec -i cronmanager-db mariadb -u ${DB_USER} -p'<pw>' ${DB_NAME} < ${SCHEMA_FILE}"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  16. START HOST AGENT + HEALTH CHECK  (on target)
+#  Runs last so MariaDB is already up and the schema is applied.
+# ═════════════════════════════════════════════════════════════════════════════
+
+header "Step 15 – Start Host Agent"
+
+step "Starting cronmanager-agent service..."
+if target_exec "systemctl start cronmanager-agent.service" 2>&1; then
+    sleep 2
+    step "Health check: http://127.0.0.1:${AGENT_PORT}/health"
+    HTTP_CODE=$(target_exec \
+        "curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+         http://127.0.0.1:${AGENT_PORT}/health 2>/dev/null || echo 000")
+    if [[ "$HTTP_CODE" == "200" ]]; then
+        ok "Agent health check passed  (HTTP ${HTTP_CODE})."
+    else
+        warn "Agent health check returned HTTP ${HTTP_CODE}."
+        warn "Check logs with:  journalctl -u cronmanager-agent -n 50"
+    fi
+else
+    warn "Agent service could not be started."
+    warn "Check logs with:  journalctl -u cronmanager-agent -n 50"
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════

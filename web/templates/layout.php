@@ -59,30 +59,31 @@ $navClass = static function (string $path) use ($currentPath): string {
         || ($path !== '/' && str_starts_with($currentPath, $path));
 
     return $isActive
-        ? 'cm-nav-active text-white px-3 py-2 rounded-md text-sm font-medium'
-        : 'text-gray-300 hover:text-white hover:bg-gray-700 dark:hover:bg-gray-600 px-3 py-2 rounded-md text-sm font-medium transition-colors';
+        ? 'cm-nav-active px-3 py-2 rounded-md text-sm font-medium'
+        : 'cm-nav-link px-3 py-2 rounded-md text-sm font-medium';
 };
 ?>
 <!DOCTYPE html>
-<html lang="<?= htmlspecialchars($lang, ENT_QUOTES, 'UTF-8') ?>" class="dark">
+<html lang="<?= htmlspecialchars($lang, ENT_QUOTES, 'UTF-8') ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?> – <?= htmlspecialchars($t('app_name'), ENT_QUOTES, 'UTF-8') ?></title>
 
-    <script>window.tailwind = window.tailwind || {}; window.tailwind.config = { darkMode: 'class' };</script>
+    <!-- Theme IIFE: must run before any CSS paints to prevent flash -->
+    <script>(function(){var s=localStorage.getItem('cm-theme'),p=window.matchMedia('(prefers-color-scheme:dark)').matches,t=s||(p?'dark':'light');document.documentElement.classList.add('theme-'+t);})();</script>
     <script src="/assets/js/tailwind.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="/assets/css/brand.css">
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 min-h-screen transition-colors duration-200">
+<body class="bg-gray-100 min-h-screen">
 
 <?php if ($user !== null): ?>
     <!-- ------------------------------------------------------------------ -->
     <!-- Top Navigation Bar                                                  -->
     <!-- ------------------------------------------------------------------ -->
-    <nav class="bg-gray-800 dark:bg-gray-950 shadow-md border-b border-gray-700 dark:border-gray-800">
+    <nav class="bg-gray-800 border-b border-gray-700">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
 
@@ -118,16 +119,19 @@ $navClass = static function (string $path) use ($currentPath): string {
                     </div>
                 </div>
 
-                <!-- Right: language switch, username, role badge, logout -->
+                <!-- Right: theme toggle, language switch, username, role badge, logout -->
                 <div class="flex items-center space-x-2">
+
+                    <!-- Theme toggle -->
+                    <button onclick="cmToggleTheme()" aria-label="Theme wechseln" class="cm-theme-toggle">
+                        <span class="icon-sun">☀️</span>
+                        <span class="icon-moon">🌙</span>
+                    </button>
 
                     <!-- Language switch -->
                     <a href="/lang/<?= htmlspecialchars($otherLang, ENT_QUOTES, 'UTF-8') ?>"
                        title="<?= htmlspecialchars($langLabel, ENT_QUOTES, 'UTF-8') ?>"
-                       class="text-gray-300 hover:text-white hover:bg-gray-700 dark:hover:bg-gray-600
-                              px-2.5 py-1.5 rounded-md text-xs font-semibold tracking-wider
-                              border border-gray-600 transition-colors focus:outline-none
-                              focus:ring-2 focus:ring-gray-500">
+                       class="cm-nav-btn px-2.5 py-1.5 text-xs font-semibold tracking-wider">
                         <?= htmlspecialchars($langLabel, ENT_QUOTES, 'UTF-8') ?>
                     </a>
 
@@ -137,9 +141,7 @@ $navClass = static function (string $path) use ($currentPath): string {
                     <span class="<?= $roleBadge ?>">
                         <?= htmlspecialchars($roleLabel, ENT_QUOTES, 'UTF-8') ?>
                     </span>
-                    <a href="/logout"
-                       class="text-gray-300 hover:text-white hover:bg-gray-700 dark:hover:bg-gray-600
-                              px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                    <a href="/logout" class="cm-nav-link px-3 py-2 rounded-md text-sm font-medium">
                         <?= htmlspecialchars($t('logout'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
                 </div>
@@ -147,7 +149,7 @@ $navClass = static function (string $path) use ($currentPath): string {
         </div>
 
         <!-- Mobile menu (simple stack) -->
-        <div class="md:hidden border-t border-gray-700 dark:border-gray-800 px-4 pb-3 pt-2 flex flex-wrap gap-2">
+        <div class="md:hidden border-t border-gray-700 px-4 pb-3 pt-2 flex flex-wrap gap-2">
             <a href="/dashboard" class="<?= $navClass('/dashboard') ?>"><?= htmlspecialchars($t('nav_dashboard'), ENT_QUOTES, 'UTF-8') ?></a>
             <a href="/crons"     class="<?= $navClass('/crons') ?>"><?= htmlspecialchars($t('nav_crons'), ENT_QUOTES, 'UTF-8') ?></a>
             <a href="/timeline"  class="<?= $navClass('/timeline') ?>"><?= htmlspecialchars($t('nav_timeline'), ENT_QUOTES, 'UTF-8') ?></a>
@@ -168,5 +170,14 @@ $navClass = static function (string $path) use ($currentPath): string {
 </main>
 
 
+<script>
+function cmToggleTheme() {
+    var el = document.documentElement;
+    var isDark = el.classList.contains('theme-dark');
+    el.classList.toggle('theme-dark',  !isDark);
+    el.classList.toggle('theme-light',  isDark);
+    localStorage.setItem('cm-theme', isDark ? 'light' : 'dark');
+}
+</script>
 </body>
 </html>

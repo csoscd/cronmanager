@@ -41,6 +41,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `permfix`
+
+### Fixed
+
+- **Web log directory not writable by container** – The `${WEB_LOG}` directory was created as root, but the PHP-FPM process inside the `cs_php-nginx-fpm` container runs as `nobody`. Added `chown nobody:nogroup` on `${WEB_LOG}` after directory creation so the container can write log files.
+
+---
+
 ## [Unreleased] – branch: `monitor_filter`
 
 ### Added

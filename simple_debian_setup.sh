@@ -624,6 +624,12 @@ for _dir in \
     ok "Created: $_dir"
 done
 
+# The web log directory is written to by the nobody user inside the container
+step "Setting ownership of web log directory..."
+target_exec "chown nobody:nogroup '${WEB_LOG}'" \
+    || warn_continue "Failed to set ownership on ${WEB_LOG}."
+ok "Ownership set: ${WEB_LOG} → nobody:nogroup"
+
 # ═════════════════════════════════════════════════════════════════════════════
 #  10. DEPLOY AGENT FILES
 # ═════════════════════════════════════════════════════════════════════════════

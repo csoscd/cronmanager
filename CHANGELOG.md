@@ -33,6 +33,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `portfix`
+
+### Fixed
+
+- **Wrong internal container port in docker-compose.yml** – The `cs1711/cs_php-nginx-fpm:latest-alpine` image runs nginx on port 8080, not 80. The generated port mapping was `${WEB_PORT}:80`; corrected to `${WEB_PORT}:8080`.
+
+---
+
 ## [Unreleased] – branch: `monitor_filter`
 
 ### Added

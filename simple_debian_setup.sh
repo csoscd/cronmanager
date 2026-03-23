@@ -904,7 +904,7 @@ services:
       - ${WEB_LOG}:/var/www/log
       - ${PHPLIB_DIR}/vendor:/var/www/libs/vendor
     ports:
-      - "${WEB_PORT}:80"
+      - "${WEB_PORT}:8080"
     depends_on:
       cronmanager-db:
         condition: service_healthy

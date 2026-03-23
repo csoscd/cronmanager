@@ -948,7 +948,15 @@ networks:
 COMPOSEEOF
 ok "docker-compose.yml written."
 
-# Display the generated file
+# Display the generated credential files and docker-compose.yml
+blank; sep
+echo -e "  ${BOLD}Generated db.credentials${NC}  ${YELLOW}(keep secure)${NC}:"
+blank
+target_exec "cat '${COMPOSE_DIR}/db.credentials'" | sed 's/^/    /'
+blank; sep
+echo -e "  ${BOLD}Generated .env${NC}  ${YELLOW}(keep secure)${NC}:"
+blank
+target_exec "cat '${COMPOSE_DIR}/.env'" | sed 's/^/    /'
 blank; sep
 echo -e "  ${BOLD}Generated docker-compose.yml:${NC}"
 blank
@@ -1009,9 +1017,12 @@ if [[ "$DOCKER_DEPLOYED" == true ]]; then
             ok "MariaDB is ready."
 
             step "Applying schema.sql..."
+            # Use -h 127.0.0.1 to force TCP so the @'%' grant created by the
+            # Docker image is matched (socket connections resolve to @'localhost'
+            # which does not match @'%' in MariaDB).
             target_exec \
                 "docker exec -i cronmanager-db \
-                 mariadb -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' \
+                 mariadb -h 127.0.0.1 -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' \
                  < '${SCHEMA_FILE}'" \
                 && ok "Schema applied." \
                 || warn "Schema failed (may already exist – safe to ignore on re-runs)."
@@ -1021,7 +1032,7 @@ if [[ "$DOCKER_DEPLOYED" == true ]]; then
 for mig in \$(ls -1v '${MIGRATIONS_DIR}'/*.sql 2>/dev/null); do
     name=\$(basename "\$mig")
     docker exec -i cronmanager-db \
-        mariadb -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' < "\$mig" \
+        mariadb -h 127.0.0.1 -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' < "\$mig" \
         && echo "    applied: \${name}" \
         || echo "    skipped (may already be applied): \${name}"
 done

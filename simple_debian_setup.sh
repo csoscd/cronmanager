@@ -1017,12 +1017,13 @@ if [[ "$DOCKER_DEPLOYED" == true ]]; then
             ok "MariaDB is ready."
 
             step "Applying schema.sql..."
-            # Use -h 127.0.0.1 to force TCP so the @'%' grant created by the
-            # Docker image is matched (socket connections resolve to @'localhost'
-            # which does not match @'%' in MariaDB).
+            # Connect as root: docker exec always resolves to @'localhost' in
+            # MariaDB (even with -h 127.0.0.1 due to reverse DNS), so the
+            # app user cronmanager@'%' created by the Docker image would be
+            # denied. Root has unconditional @'localhost' access.
             target_exec \
                 "docker exec -i cronmanager-db \
-                 mariadb -h 127.0.0.1 -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' \
+                 mariadb -u root -p'${DB_ROOT_PASSWORD}' '${DB_NAME}' \
                  < '${SCHEMA_FILE}'" \
                 && ok "Schema applied." \
                 || warn "Schema failed (may already exist – safe to ignore on re-runs)."
@@ -1032,7 +1033,7 @@ if [[ "$DOCKER_DEPLOYED" == true ]]; then
 for mig in \$(ls -1v '${MIGRATIONS_DIR}'/*.sql 2>/dev/null); do
     name=\$(basename "\$mig")
     docker exec -i cronmanager-db \
-        mariadb -h 127.0.0.1 -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' < "\$mig" \
+        mariadb -u root -p'${DB_ROOT_PASSWORD}' '${DB_NAME}' < "\$mig" \
         && echo "    applied: \${name}" \
         || echo "    skipped (may already be applied): \${name}"
 done
@@ -1041,7 +1042,7 @@ SHELLSCRIPT
     fi
 else
     info "Docker stack not deployed – skipping schema setup."
-    info "Apply manually:  docker exec -i cronmanager-db mariadb -u ${DB_USER} -p'<pw>' ${DB_NAME} < ${SCHEMA_FILE}"
+    info "Apply manually:  docker exec -i cronmanager-db mariadb -u root -p'<root-pw>' ${DB_NAME} < ${SCHEMA_FILE}"
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════

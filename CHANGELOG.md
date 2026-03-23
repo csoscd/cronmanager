@@ -45,7 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **Web log directory not writable by container** – The `${WEB_LOG}` directory was created as root, but the PHP-FPM process inside the `cs_php-nginx-fpm` container runs as `nobody`. Added `chown nobody:nogroup` on `${WEB_LOG}` after directory creation so the container can write log files.
+- **Web log/conf directories and config.json not accessible by container** – The `${WEB_LOG}`, `${WEB_CONF}` directories and `${WEB_CONF}/config.json` were created as root, but the PHP-FPM process inside the `cs_php-nginx-fpm` container runs as `nobody`. Added `chown nobody:nogroup` on all three so the container can write logs and read its configuration.
 
 ---
 

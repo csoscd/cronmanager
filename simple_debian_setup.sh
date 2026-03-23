@@ -911,8 +911,6 @@ services:
       - ${PHPLIB_DIR}/vendor:/var/www/libs/vendor
     ports:
       - "${WEB_PORT}:80"
-    networks:
-      - cronmanager-internal
     depends_on:
       cronmanager-db:
         condition: service_healthy
@@ -939,12 +937,6 @@ services:
       timeout:      5s
       retries:      3
       start_period: 30s
-    networks:
-      - cronmanager-internal
-
-networks:
-  cronmanager-internal:
-    driver: bridge
 COMPOSEEOF
 ok "docker-compose.yml written."
 

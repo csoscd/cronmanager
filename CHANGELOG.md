@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `simple_setup_fix`
+
+### Fixed
+
+- **Package installation fails with "command not found"** – `IFS=$'\n\t'` removed the space character from the field separator. `${MISSING_PKGS[*]}` therefore joined array elements with a newline instead of a space, causing `bash -c "apt-get install -y pkg1\npkg2"` to try to execute each subsequent package name as a standalone command (e.g. `php8.4-mbstring: command not found`). Fixed by removing the non-standard `IFS` assignment and changing the array-to-string join to `printf '%s ' "${MISSING_PKGS[@]}"`.
+- **Prerequisites checked on local machine instead of target** – The script now asks for the target host (local or remote SSH) as the very first step. All subsequent checks and operations (package installs, Composer, file deployment, systemd, Docker, DB schema) run on the selected target via `target_exec` / `target_copy` / `target_write` / `target_script` helpers.
+- **ANSI color codes shown as raw escape sequences** – Color variables were defined with single quotes (`'\033[1m'`), storing the literal 4-character sequence instead of the actual ESC byte. Changed to ANSI-C quoting (`$'\033[1m'`) so codes render correctly in both `echo -e` and `read -p` prompts.
+
+### Added
+
+- **README: Guided Setup section with one-command download and run example** – New `## Guided Setup (Recommended)` section added before Quick Start. Includes a single `curl … | sudo bash` command to download and execute the setup script directly from GitHub, a "review before run" alternative, and a step table describing what the script does.
+
+---
+
 ## [Unreleased] – branch: `monitor_filter`
 
 ### Added

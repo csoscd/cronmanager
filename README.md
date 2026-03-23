@@ -17,8 +17,9 @@ history, email failure alerts, multi-host support, and SSO integration.
 1. [Features](#features)
 2. [Architecture Overview](#architecture-overview)
 3. [Prerequisites](#prerequisites)
-4. [Quick Start](#quick-start)
-5. [Detailed Installation](#detailed-installation)
+4. [Guided Setup (Recommended)](#guided-setup-recommended)
+5. [Quick Start](#quick-start)
+6. [Detailed Installation](#detailed-installation)
    - [Step 1 – Install PHP and shared libraries on the host](#step-1--install-php-and-shared-libraries-on-the-host)
    - [Step 2 – Deploy the files](#step-2--deploy-the-files)
    - [Step 3 – Configure the host agent](#step-3--configure-the-host-agent)
@@ -26,17 +27,17 @@ history, email failure alerts, multi-host support, and SSO integration.
    - [Step 5 – Configure the web application](#step-5--configure-the-web-application)
    - [Step 6 – Start the Docker stack](#step-6--start-the-docker-stack)
    - [Step 7 – First login and initial setup](#step-7--first-login-and-initial-setup)
-6. [OIDC / SSO Setup with Authentik](#oidc--sso-setup-with-authentik)
-7. [Configuration Reference](#configuration-reference)
+7. [OIDC / SSO Setup with Authentik](#oidc--sso-setup-with-authentik)
+8. [Configuration Reference](#configuration-reference)
    - [Web application](#web-application-optwebsitescronmanagerconfconfigjson)
    - [Host agent](#host-agent-optphpscriptscronmanageragentconfigconfigjson)
-8. [Email Failure Alerts](#email-failure-alerts)
-9. [Multi-Host Execution](#multi-host-execution)
-10. [Crontab Import](#crontab-import)
-11. [Export](#export)
-12. [User Management](#user-management)
-13. [Updating](#updating)
-14. [Troubleshooting](#troubleshooting)
+9. [Email Failure Alerts](#email-failure-alerts)
+10. [Multi-Host Execution](#multi-host-execution)
+11. [Crontab Import](#crontab-import)
+12. [Export](#export)
+13. [User Management](#user-management)
+14. [Updating](#updating)
+15. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -126,6 +127,36 @@ includes PHP-FPM 8.4 and Nginx.
 > ```bash
 > docker exec <container> php -r "var_dump(extension_loaded('apcu'));"
 > ```
+
+---
+
+## Guided Setup (Recommended)
+
+For a fresh installation on a Debian or Ubuntu host, the easiest path is the
+interactive setup script included in the repository:
+
+```bash
+sudo bash simple_debian_setup.sh
+```
+
+The script guides you through the entire installation in a single session:
+
+| Step | What happens |
+|---|---|
+| **Prerequisites** | Checks for PHP 8.4, required extensions, Docker, Composer, git, openssl and more. Lists any missing packages and offers to install them via `apt`. |
+| **Repository clone** | Clones the repository to a temporary directory (auto-cleaned on exit). |
+| **Composer / PHP libraries** | Verifies that all required third-party libraries are present in the shared vendor directory (`/opt/phplib/vendor`). Offers to add missing packages to `composer.json` and run `composer install`. |
+| **Configuration interview** | Collects all settings interactively – installation paths, database credentials, agent and web settings – before touching anything on disk. |
+| **HMAC secret** | Generates a cryptographically random 64-character secret with `openssl rand -hex 32`. Both the agent and the web application receive the same value automatically. |
+| **Host agent deployment** | Deploys agent files, patches hardcoded paths, writes `config/config.json`, installs the systemd service, and starts it. |
+| **Web application deployment** | Deploys web files, downloads Tailwind CSS and Chart.js, writes `conf/config.json`. |
+| **Docker Compose** | Generates a customised `docker-compose.yml` based on your paths and port choices, displays it, and optionally runs `docker compose up -d`. |
+| **Database schema** | Waits for MariaDB to become healthy, applies `schema.sql` and all migrations via `docker exec`. |
+| **Optional: OIDC** | If enabled, asks for provider URL, client credentials, redirect URI and SSL/CA settings, and writes them to the web configuration. |
+| **Optional: Email alerts** | If enabled, asks for SMTP host, port, credentials and encryption, and writes them to the agent configuration. |
+| **Summary** | Prints all relevant paths, management commands, the web UI URL and the generated HMAC secret. |
+
+> **Requirements**: Debian 12+ or Ubuntu 22.04+, internet access, must be run as root.
 
 ---
 

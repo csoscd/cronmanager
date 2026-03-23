@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `debian_simple_setup`
+
+### Added
+
+- **Guided Debian setup script** (`simple_debian_setup.sh`) – interactive, single-command installation assistant for Debian 12+ / Ubuntu 22.04+ hosts. Covers the full installation in one session:
+  - Prerequisite check (PHP 8.4, required extensions, Docker, Composer, git, openssl, rsync, python3, jq) with optional `apt` install of missing packages.
+  - Repository clone to a temporary directory.
+  - Composer installation check with optional global install via the official installer.
+  - PHP library check against the shared vendor directory (`/opt/phplib/vendor`); missing packages are added to `composer.json` and installed automatically.
+  - Full configuration interview (paths, database credentials, agent and web settings) with defaults; HMAC secret generated via `openssl rand -hex 32`.
+  - Host agent deployment with path patching, `config/config.json` generation, systemd service installation/enable/start, and health check.
+  - Web application deployment with Tailwind CSS and Chart.js asset download, `conf/config.json` generation.
+  - Customised `docker-compose.yml` generated from collected values, displayed to the user, with optional `docker compose up -d`.
+  - Database schema and migrations applied via `docker exec` after MariaDB health confirmation.
+  - Optional OIDC/SSO configuration (provider URL, client credentials, redirect URI, SSL/CA cert path).
+  - Optional email failure notification configuration (SMTP host, port, credentials, encryption).
+  - Summary with all paths, management commands, web UI URL and the generated HMAC secret.
+- README: added *Guided Setup (Recommended)* section with step-by-step table, directly before the existing Quick Start section.
+
+---
+
 ## [Unreleased] – branch: `monitor_filter`
 
 ### Added

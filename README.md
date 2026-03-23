@@ -133,30 +133,43 @@ includes PHP-FPM 8.4 and Nginx.
 ## Guided Setup (Recommended)
 
 For a fresh installation on a Debian or Ubuntu host, the easiest path is the
-interactive setup script included in the repository:
+interactive setup script included in the repository.  It guides you through
+every step in a single session — no manual config file editing required.
+
+### One-command download and run
 
 ```bash
-sudo bash simple_debian_setup.sh
+curl -fsSL https://raw.githubusercontent.com/csoscd/cronmanager/main/simple_debian_setup.sh | sudo bash
 ```
 
-The script guides you through the entire installation in a single session:
+> **Note:** Piping directly into `bash` is convenient but means you trust the
+> content of the script at that URL.  If you prefer to review it first:
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/csoscd/cronmanager/main/simple_debian_setup.sh \
+>     -o simple_debian_setup.sh
+> less simple_debian_setup.sh          # review
+> sudo bash simple_debian_setup.sh     # run
+> ```
+
+### What the script covers
 
 | Step | What happens |
 |---|---|
-| **Prerequisites** | Checks for PHP 8.4, required extensions, Docker, Composer, git, openssl and more. Lists any missing packages and offers to install them via `apt`. |
-| **Repository clone** | Clones the repository to a temporary directory (auto-cleaned on exit). |
-| **Composer / PHP libraries** | Verifies that all required third-party libraries are present in the shared vendor directory (`/opt/phplib/vendor`). Offers to add missing packages to `composer.json` and run `composer install`. |
-| **Configuration interview** | Collects all settings interactively – installation paths, database credentials, agent and web settings – before touching anything on disk. |
-| **HMAC secret** | Generates a cryptographically random 64-character secret with `openssl rand -hex 32`. Both the agent and the web application receive the same value automatically. |
-| **Host agent deployment** | Deploys agent files, patches hardcoded paths, writes `config/config.json`, installs the systemd service, and starts it. |
+| **Target host** | Choose local installation or a remote server via SSH. SSH connectivity and root access are verified before anything else. |
+| **Prerequisites** | Checks for PHP 8.4, required extensions, Docker, Composer, git, openssl, rsync and more — **on the target host**. Lists any missing packages and offers to install them via `apt`. |
+| **Repository clone** | Clones the repository locally, then deploys files to the target. |
+| **Composer / PHP libraries** | Verifies that all required third-party libraries are present on the target. Offers to add missing packages to `composer.json` and run `composer install`. |
+| **Configuration interview** | Collects all settings interactively — paths, database credentials, agent and web settings — before touching anything on disk. |
+| **HMAC secret** | Generates a cryptographically random 64-character secret with `openssl rand -hex 32`. Both the agent and web application receive the same value automatically. |
+| **Host agent deployment** | Deploys agent files, patches paths, writes `config/config.json`, installs the systemd service, starts it, and runs a health check. |
 | **Web application deployment** | Deploys web files, downloads Tailwind CSS and Chart.js, writes `conf/config.json`. |
-| **Docker Compose** | Generates a customised `docker-compose.yml` based on your paths and port choices, displays it, and optionally runs `docker compose up -d`. |
-| **Database schema** | Waits for MariaDB to become healthy, applies `schema.sql` and all migrations via `docker exec`. |
-| **Optional: OIDC** | If enabled, asks for provider URL, client credentials, redirect URI and SSL/CA settings, and writes them to the web configuration. |
-| **Optional: Email alerts** | If enabled, asks for SMTP host, port, credentials and encryption, and writes them to the agent configuration. |
-| **Summary** | Prints all relevant paths, management commands, the web UI URL and the generated HMAC secret. |
+| **Docker Compose** | Generates a customised `docker-compose.yml` from your settings, displays it, and optionally runs `docker compose up -d`. |
+| **Database schema** | Waits for MariaDB to become healthy, then applies `schema.sql` and all migrations via `docker exec`. |
+| **Optional: OIDC** | Asks for provider URL, client credentials, redirect URI, and SSL/CA settings. |
+| **Optional: Email alerts** | Asks for SMTP host, port, credentials and encryption. |
+| **Summary** | Prints all paths, management commands, the web UI URL, and the generated HMAC secret. |
 
-> **Requirements**: Debian 12+ or Ubuntu 22.04+, internet access, must be run as root.
+> **Requirements:** Debian 12+ or Ubuntu 22.04+, internet access on the target, root access.
 
 ---
 

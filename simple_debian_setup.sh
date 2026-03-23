@@ -2,52 +2,71 @@
 # =============================================================================
 #  Cronmanager – Simple Debian Setup Script
 #
-#  Guides through a complete local installation of Cronmanager on a Debian
-#  (or Ubuntu) based system.  Covers:
-#    • Prerequisite check and installation
+#  Guides through a complete installation of Cronmanager on a local or
+#  remote Debian / Ubuntu based host.  Covers:
+#    • Prerequisite check and installation on the target host
 #    • Repository clone
-#    • Composer / PHP library setup
+#    • Composer / PHP library setup on the target host
 #    • Host agent deployment and systemd service
 #    • Web application deployment (Docker + MariaDB)
 #    • Optional OIDC / SSO integration
 #    • Optional email failure notifications
 #
-#  Must be run as root on the target host.
+#  Run this script from any machine that can reach the target host via SSH.
+#  For local installation: answer "local" when asked for the target.
 #
 #  @author  Christian Schulz <technik@meinetechnikwelt.rocks>
 #  @license GNU General Public License version 3 or later
 # =============================================================================
 
 set -uo pipefail
-IFS=$'\n\t'
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── Colours ────────────────────────────────────────────────────────────────────
+# ── Colours ──────────────────────────────────────────────────────────────────
+# Use $'...' ANSI-C quoting so the actual ESC byte (0x1b) is stored in the
+# variable – this makes the codes work correctly in both echo and read -p.
 if [[ -t 1 ]]; then
-    RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-    CYAN='\033[0;36m'; BLUE='\033[0;34m'; BOLD='\033[1m'; NC='\033[0m'
+    RED=$'\033[0;31m'
+    GREEN=$'\033[0;32m'
+    YELLOW=$'\033[1;33m'
+    CYAN=$'\033[0;36m'
+    BLUE=$'\033[0;34m'
+    BOLD=$'\033[1m'
+    NC=$'\033[0m'
 else
     RED=''; GREEN=''; YELLOW=''; CYAN=''; BLUE=''; BOLD=''; NC=''
 fi
 
-# ── Output helpers ─────────────────────────────────────────────────────────────
-header() { echo; echo -e "${BOLD}${CYAN}══════════════════════════════════════════════════${NC}";
-           echo -e "${BOLD}${CYAN}  $*${NC}";
-           echo -e "${BOLD}${CYAN}══════════════════════════════════════════════════${NC}"; echo; }
+# ── Output helpers ────────────────────────────────────────────────────────────
+header() {
+    echo
+    echo -e "${BOLD}${CYAN}══════════════════════════════════════════════════${NC}"
+    echo -e "${BOLD}${CYAN}  $*${NC}"
+    echo -e "${BOLD}${CYAN}══════════════════════════════════════════════════${NC}"
+    echo
+}
 step()  { echo -e "  ${BOLD}▶  $*${NC}"; }
 info()  { echo -e "  ${BLUE}→${NC}  $*"; }
 ok()    { echo -e "  ${GREEN}✔${NC}  $*"; }
 warn()  { echo -e "  ${YELLOW}⚠${NC}  $*"; }
 error() { echo -e "  ${RED}✘${NC}  $*" >&2; }
-die()   { error "$*"; exit 1; }
+die()            { error "$*"; exit 1; }
+# warn_continue: show an error and ask the user whether to continue or abort.
+# Use this instead of die() for recoverable operational failures.
+warn_continue()  {
+    error "$*"
+    ask_yn _wc_cont "Continue despite this error?" "no"
+    [[ "$_wc_cont" == "no" ]] && exit 1
+    return 0
+}
 sep()   { echo -e "  ${CYAN}──────────────────────────────────────────────────${NC}"; }
 blank() { echo; }
 
-# ── Interactive input helpers ──────────────────────────────────────────────────
+# ── Interactive input helpers ─────────────────────────────────────────────────
 
-# ask VARNAME "Prompt text" "default_value"
+# ask VARNAME "Prompt" "default"
 ask() {
     local _var="$1" _prompt="$2" _default="${3:-}" _input
     if [[ -n "$_default" ]]; then
@@ -63,7 +82,7 @@ ask() {
     printf -v "$_var" '%s' "$_input"
 }
 
-# ask_secret VARNAME "Prompt text"  (hidden input, required)
+# ask_secret VARNAME "Prompt"  (hidden, required)
 ask_secret() {
     local _var="$1" _prompt="$2" _input=""
     while [[ -z "$_input" ]]; do
@@ -73,7 +92,7 @@ ask_secret() {
     printf -v "$_var" '%s' "$_input"
 }
 
-# ask_yn VARNAME "Question?" "yes|no"   → sets VARNAME to "yes" or "no"
+# ask_yn VARNAME "Question?" "yes|no"  →  sets VARNAME to "yes" or "no"
 ask_yn() {
     local _var="$1" _prompt="$2" _default="${3:-yes}" _input _hint
     [[ "$_default" == "yes" ]] && _hint="Y/n" || _hint="y/N"
@@ -106,15 +125,57 @@ ask_choice() {
     done
 }
 
-# json_escape VAL  →  JSON-encoded string value including surrounding quotes
-json_escape() {
-    python3 -c "import json,sys; print(json.dumps(sys.argv[1]),end='')" "$1"
+# ── Target execution helpers ──────────────────────────────────────────────────
+# All operations on the install target go through these functions so the
+# rest of the script works identically for local and remote deployments.
+
+TARGET_TYPE="local"   # "local" or "remote"
+TARGET_SSH=""         # SSH host alias (remote only)
+
+# Run a shell command string on the target
+target_exec() {
+    if [[ "$TARGET_TYPE" == "local" ]]; then
+        bash -c "$1"
+    else
+        ssh "$TARGET_SSH" "$1"
+    fi
 }
 
-# Temp directory – cleaned up on exit
+# Pipe a multi-line bash script to the target for execution
+target_script() {
+    if [[ "$TARGET_TYPE" == "local" ]]; then
+        bash -s
+    else
+        ssh "$TARGET_SSH" bash -s
+    fi
+}
+
+# Write stdin to a file on the target (create / overwrite)
+target_write() {
+    local _dst="$1"
+    if [[ "$TARGET_TYPE" == "local" ]]; then
+        cat > "$_dst"
+    else
+        ssh "$TARGET_SSH" "cat > $(printf '%q' "$_dst")"
+    fi
+}
+
+# Copy a local path (file or directory) to a path on the target
+target_copy() {
+    local _src="$1" _dst="$2"
+    if [[ "$TARGET_TYPE" == "local" ]]; then
+        rsync -a "$_src" "$_dst"
+    else
+        rsync -a -e "ssh" "$_src" "${TARGET_SSH}:${_dst}"
+    fi
+}
+
+# ── Temp directory – cleaned up on exit ──────────────────────────────────────
 CLONE_DIR=""
-cleanup() { [[ -n "$CLONE_DIR" && -d "$CLONE_DIR" ]] && rm -rf "$CLONE_DIR"; }
-trap cleanup EXIT INT TERM
+cleanup()     { [[ -n "$CLONE_DIR" && -d "$CLONE_DIR" ]] && rm -rf "$CLONE_DIR"; }
+interrupted() { echo; warn "Setup interrupted by user (CTRL-C). You can re-run the script at any time."; cleanup; exit 130; }
+trap cleanup EXIT
+trap interrupted INT TERM
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  1. WELCOME BANNER
@@ -127,7 +188,7 @@ echo "  ║           Cronmanager – Simple Debian Setup                  ║"
 echo "  ║                      Version ${SCRIPT_VERSION}                            ║"
 echo "  ╚══════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
-echo "  This script installs Cronmanager on this Debian / Ubuntu host:"
+echo "  This script installs Cronmanager on a local or remote host:"
 echo
 echo "    •  Host agent (PHP 8.4 CLI, systemd)"
 echo "    •  Web application + MariaDB (Docker)"
@@ -135,78 +196,108 @@ echo "    •  Shared PHP libraries via Composer"
 echo "    •  Optional: OIDC / SSO authentication"
 echo "    •  Optional: Email failure notifications"
 echo
-echo -e "  ${YELLOW}Requirements: Debian 12+ / Ubuntu 22.04+  •  Internet access  •  root${NC}"
+echo -e "  ${YELLOW}Target host requirements: Debian 12+ / Ubuntu 22.04+  •  root access${NC}"
 blank
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  2. ROOT CHECK
+#  2. TARGET HOST SELECTION
 # ═════════════════════════════════════════════════════════════════════════════
 
-[[ "$EUID" -ne 0 ]] && die "Please run as root:  sudo bash $0"
-ok "Running as root."
+header "Step 1 – Target Host"
+
+echo "  Where should Cronmanager be installed?"
+blank
+echo "    1) This machine (local)"
+echo "    2) A remote server via SSH"
+blank
+read -r -p "  ${BOLD}Target${NC} [1]: " _target_choice
+_target_choice="${_target_choice:-1}"
+
+if [[ "$_target_choice" == "2" ]]; then
+    TARGET_TYPE="remote"
+    blank
+    info "Enter a host alias from ~/.ssh/config or user@hostname."
+    ask TARGET_SSH "SSH host" ""
+
+    step "Testing SSH connection to ${TARGET_SSH} ..."
+    if ssh -o ConnectTimeout=10 -o BatchMode=yes "$TARGET_SSH" "echo ok" &>/dev/null; then
+        ok "SSH connection to ${TARGET_SSH} successful."
+    else
+        die "Cannot connect to ${TARGET_SSH} via SSH. Check your SSH config and key authentication."
+    fi
+
+    step "Checking root access on ${TARGET_SSH} ..."
+    REMOTE_USER=$(ssh "$TARGET_SSH" "id -un" 2>/dev/null || echo "")
+    if [[ "$REMOTE_USER" == "root" ]]; then
+        ok "Connected as root on ${TARGET_SSH}."
+    else
+        die "SSH connection is not as root (got: ${REMOTE_USER}). Use root@${TARGET_SSH} or configure SSH accordingly."
+    fi
+else
+    TARGET_TYPE="local"
+    blank
+    [[ "$EUID" -ne 0 ]] && die "Local installation requires root. Please run: sudo bash $0"
+    ok "Installing locally on this machine."
+fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  3. PREREQUISITES CHECK
+#  3. PREREQUISITES CHECK ON TARGET
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 1 – Prerequisites"
+header "Step 2 – Prerequisites"
+
+if [[ "$TARGET_TYPE" == "remote" ]]; then
+    info "Checking required packages on ${TARGET_SSH}..."
+else
+    info "Checking required packages on this machine..."
+fi
+blank
 
 MISSING_PKGS=()
 
 check_pkg() {
-    local pkg="$1" bin="${2:-}" apt_pkg="${3:-$1}"
-    local found=false
-    # check via dpkg first (apt-installed packages)
-    if dpkg -l "$apt_pkg" 2>/dev/null | grep -q '^ii'; then
-        found=true
-    elif [[ -n "$bin" ]] && command -v "$bin" &>/dev/null; then
-        found=true
-    fi
-    if [[ "$found" == true ]]; then
-        ok "${pkg} – OK"
+    local _label="$1" _apt_pkg="$2" _bin="${3:-}"
+    local _check="dpkg -l '$_apt_pkg' 2>/dev/null | grep -q '^ii'"
+    [[ -n "$_bin" ]] && _check="{ ${_check}; } || command -v '$_bin' >/dev/null 2>&1"
+    if target_exec "$_check" 2>/dev/null; then
+        ok "${_label} – OK"
     else
-        warn "${pkg} – NOT installed  (package: ${apt_pkg})"
-        MISSING_PKGS+=("$apt_pkg")
+        warn "${_label} – NOT installed  (package: ${_apt_pkg})"
+        MISSING_PKGS+=("$_apt_pkg")
     fi
 }
 
 check_php_ext() {
-    local ext="$1" apt_pkg="${2:-}"
-    if php -m 2>/dev/null | grep -qi "^${ext}$"; then
-        ok "PHP extension ${ext} – OK"
+    local _ext="$1" _apt_pkg="$2"
+    if target_exec "php -m 2>/dev/null | grep -qi '^${_ext}\$'" 2>/dev/null; then
+        ok "PHP extension ${_ext} – OK"
     else
-        warn "PHP extension ${ext} – missing  (package: ${apt_pkg})"
-        [[ -n "$apt_pkg" ]] && MISSING_PKGS+=("$apt_pkg")
+        warn "PHP extension ${_ext} – missing  (package: ${_apt_pkg})"
+        MISSING_PKGS+=("$_apt_pkg")
     fi
 }
 
-step "Checking required system packages..."
-blank
+check_pkg "PHP 8.4 CLI"   "php8.4-cli"       "php"
+check_php_ext "pdo_mysql" "php8.4-mysql"
+check_php_ext "mbstring"  "php8.4-mbstring"
+check_php_ext "curl"      "php8.4-curl"
+check_pkg "curl"          "curl"             "curl"
+check_pkg "git"           "git"              "git"
+check_pkg "openssl"       "openssl"          "openssl"
+check_pkg "rsync"         "rsync"            "rsync"
+check_pkg "unzip"         "unzip"            "unzip"
+check_pkg "python3"       "python3"          "python3"
 
-check_pkg "PHP 8.4 CLI"          "php8.4"       "php8.4-cli"
-check_php_ext "pdo_mysql"        "php8.4-mysql"
-check_php_ext "mbstring"         "php8.4-mbstring"
-check_php_ext "curl"             "php8.4-curl"
-check_pkg "curl"                 "curl"         "curl"
-check_pkg "git"                  "git"          "git"
-check_pkg "openssl"              "openssl"      "openssl"
-check_pkg "rsync"                "rsync"        "rsync"
-check_pkg "unzip"                "unzip"        "unzip"
-check_pkg "python3"              "python3"      "python3"
-check_pkg "jq"                   "jq"           "jq"
-
-# Docker
-if command -v docker &>/dev/null; then
+if target_exec "command -v docker >/dev/null 2>&1" 2>/dev/null; then
     ok "Docker – OK"
 else
     warn "Docker – NOT installed"
     MISSING_PKGS+=("docker.io")
 fi
 
-# Docker Compose v2
-if docker compose version &>/dev/null 2>&1; then
+if target_exec "docker compose version >/dev/null 2>&1" 2>/dev/null; then
     ok "docker compose (v2) – OK"
-elif command -v docker-compose &>/dev/null; then
+elif target_exec "command -v docker-compose >/dev/null 2>&1" 2>/dev/null; then
     ok "docker-compose (v1) – OK  (v2 recommended)"
 else
     warn "docker compose – NOT installed"
@@ -214,110 +305,95 @@ else
 fi
 
 blank
-
-# Remove duplicate packages
 MISSING_PKGS=($(printf '%s\n' "${MISSING_PKGS[@]}" | sort -u))
 
 if [[ ${#MISSING_PKGS[@]} -eq 0 ]]; then
     ok "All prerequisites satisfied."
 else
-    warn "The following packages need to be installed:"
-    for pkg in "${MISSING_PKGS[@]}"; do
-        echo -e "    ${YELLOW}•${NC}  $pkg"
+    warn "The following packages need to be installed on the target:"
+    for _pkg in "${MISSING_PKGS[@]}"; do
+        echo -e "    ${YELLOW}•${NC}  $_pkg"
     done
     blank
     ask_yn INSTALL_PKGS "Install missing packages now via apt?" "yes"
 
     if [[ "$INSTALL_PKGS" == "yes" ]]; then
-        step "Updating package index..."
-        apt-get update -qq || die "apt-get update failed."
+        step "Updating package index on target..."
+        target_exec "apt-get update -qq" || warn_continue "apt-get update failed."
 
-        step "Installing: ${MISSING_PKGS[*]}"
-        apt-get install -y "${MISSING_PKGS[@]}" || die "Package installation failed."
+        _pkgs=$(printf '%s ' "${MISSING_PKGS[@]}")
+        step "Installing: ${_pkgs}"
+        target_exec "DEBIAN_FRONTEND=noninteractive apt-get install -y ${_pkgs}" \
+            || warn_continue "Package installation failed. Some packages may be missing."
         ok "All packages installed."
 
-        # Verify PHP extensions after install
-        for ext in pdo_mysql mbstring curl; do
-            php -m 2>/dev/null | grep -qi "^${ext}$" || \
-                die "PHP extension ${ext} still not available after install. Check your PHP setup."
+        for _ext in pdo_mysql mbstring curl; do
+            target_exec "php -m 2>/dev/null | grep -qi '^${_ext}\$'" \
+                || warn_continue "PHP extension ${_ext} still unavailable. Check your PHP setup."
         done
     else
-        die "Cannot continue without required packages. Please install them and re-run this script."
+        die "Cannot continue without required packages."
     fi
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  4. CLONE REPOSITORY
+#  4. CLONE REPOSITORY  (always local – files are then copied to target)
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 2 – Clone Repository"
+header "Step 3 – Clone Repository"
 
-# Try to detect the remote URL from this script's own git repo
-DETECTED_URL=""
 DETECTED_URL=$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null || true)
-
 ask REPO_URL "Repository URL" "${DETECTED_URL:-https://github.com/csoscd/cronmanager.git}"
 
 CLONE_DIR=$(mktemp -d /tmp/cronmanager-setup-XXXXXX)
 step "Cloning into ${CLONE_DIR} ..."
-if git clone --depth=1 "$REPO_URL" "$CLONE_DIR" 2>&1; then
-    ok "Repository cloned successfully."
-else
-    die "git clone failed. Check the URL and your internet connection."
-fi
+git clone --depth=1 "$REPO_URL" "$CLONE_DIR" 2>&1 \
+    || die "git clone failed. Check the URL and your internet connection."
 
-# Verify the clone looks like a cronmanager repo
-[[ -f "$CLONE_DIR/agent/agent.php" ]] || die "Cloned repository does not look like Cronmanager (agent/agent.php not found)."
-[[ -f "$CLONE_DIR/composer.json" ]]   || die "composer.json not found in cloned repository."
+[[ -f "$CLONE_DIR/agent/agent.php" ]] \
+    || die "Cloned repo missing agent/agent.php – unexpected structure."
+[[ -f "$CLONE_DIR/composer.json" ]] \
+    || die "composer.json not found in cloned repository."
+ok "Repository cloned successfully."
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  5. COMPOSER CHECK AND INSTALL
+#  5. COMPOSER CHECK AND INSTALL  (on target)
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 3 – Composer"
+header "Step 4 – Composer"
 
-COMPOSER_BIN=""
-if command -v composer &>/dev/null; then
-    COMPOSER_VER=$(composer --version 2>/dev/null | head -1 || true)
-    ok "Composer is installed: ${COMPOSER_VER}"
-    COMPOSER_BIN=$(command -v composer)
-elif [[ -f "/usr/local/bin/composer" ]]; then
+COMPOSER_BIN="composer"
+if target_exec "command -v composer >/dev/null 2>&1" 2>/dev/null; then
+    _ver=$(target_exec "composer --version 2>/dev/null | head -1" || true)
+    ok "Composer is installed: ${_ver}"
+elif target_exec "test -f /usr/local/bin/composer" 2>/dev/null; then
     ok "Composer found at /usr/local/bin/composer."
     COMPOSER_BIN="/usr/local/bin/composer"
 else
-    warn "Composer is not installed."
-    ask_yn INSTALL_COMPOSER "Install Composer globally now?" "yes"
+    warn "Composer is not installed on the target."
+    ask_yn INSTALL_COMPOSER "Install Composer on the target now?" "yes"
 
     if [[ "$INSTALL_COMPOSER" == "yes" ]]; then
-        step "Downloading and installing Composer..."
-        EXPECTED_CHECKSUM="$(php -r 'copy("https://composer.github.io/installer.sig", "php://stdout");')"
-        php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
-        ACTUAL_CHECKSUM="$(php -r "echo hash_file('sha384', 'composer-setup.php');")"
-        if [[ "$EXPECTED_CHECKSUM" != "$ACTUAL_CHECKSUM" ]]; then
-            rm -f composer-setup.php
-            die "Composer installer checksum verification failed."
-        fi
-        php composer-setup.php --install-dir=/usr/local/bin --filename=composer --quiet
-        rm -f composer-setup.php
+        step "Downloading and installing Composer on target..."
+        target_exec \
+            "curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer --quiet" \
+            || warn_continue "Composer installation failed."
         COMPOSER_BIN="/usr/local/bin/composer"
-        ok "Composer installed at ${COMPOSER_BIN}."
+        ok "Composer installed."
     else
-        die "Cannot continue without Composer. Please install it and re-run this script."
+        die "Cannot continue without Composer on the target."
     fi
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  6. PHP LIBRARY CHECK
+#  6. PHP LIBRARY CHECK  (on target)
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 4 – PHP Libraries"
+header "Step 5 – PHP Libraries"
 
-ask PHPLIB_DIR "Shared PHP library directory (vendor parent)" "/opt/phplib"
-
+ask PHPLIB_DIR "Shared PHP library directory on target" "/opt/phplib"
 VENDOR_DIR="${PHPLIB_DIR}/vendor"
-PHPLIB_COMPOSER="${PHPLIB_DIR}/composer.json"
 
-# Required packages from the cronmanager composer.json
 declare -A REQUIRED_PACKAGES=(
     ["hassankhan/config"]="^2.1"
     ["monolog/monolog"]="^3.6"
@@ -327,84 +403,64 @@ declare -A REQUIRED_PACKAGES=(
     ["lorisleiva/cron-translator"]="^0.4"
 )
 
-step "Checking installed packages in ${VENDOR_DIR} ..."
+step "Checking installed packages in ${VENDOR_DIR} on target..."
 MISSING_PACKAGES=()
 
-for pkg in "${!REQUIRED_PACKAGES[@]}"; do
-    vendor_path="${VENDOR_DIR}/$(echo "$pkg" | tr '/' '/')"
-    if [[ -d "${VENDOR_DIR}/$pkg" ]]; then
-        ok "$pkg – OK"
+for _pkg in "${!REQUIRED_PACKAGES[@]}"; do
+    if target_exec "test -d '${VENDOR_DIR}/${_pkg}'" 2>/dev/null; then
+        ok "$_pkg – OK"
     else
-        warn "$pkg – NOT found in vendor directory"
-        MISSING_PACKAGES+=("$pkg")
+        warn "$_pkg – NOT found"
+        MISSING_PACKAGES+=("$_pkg")
     fi
 done
 
 if [[ ${#MISSING_PACKAGES[@]} -eq 0 ]]; then
     ok "All required PHP libraries are installed."
 else
-    warn "The following libraries are missing from ${VENDOR_DIR}:"
-    for pkg in "${MISSING_PACKAGES[@]}"; do
-        echo -e "    ${YELLOW}•${NC}  $pkg  ${REQUIRED_PACKAGES[$pkg]}"
+    warn "The following libraries are missing:"
+    for _pkg in "${MISSING_PACKAGES[@]}"; do
+        echo -e "    ${YELLOW}•${NC}  $_pkg  ${REQUIRED_PACKAGES[$_pkg]}"
     done
     blank
-    ask_yn ADD_LIBS "Add missing libraries to ${PHPLIB_COMPOSER} and run composer install?" "yes"
+    ask_yn ADD_LIBS "Add missing libraries to composer.json on target and run composer install?" "yes"
 
     if [[ "$ADD_LIBS" == "yes" ]]; then
-        mkdir -p "$PHPLIB_DIR"
+        target_exec "mkdir -p '${PHPLIB_DIR}'"
 
-        # Build or update composer.json
-        if [[ -f "$PHPLIB_COMPOSER" ]]; then
-            step "Updating existing ${PHPLIB_COMPOSER} ..."
-            # Use python3 to merge required packages
-            python3 - "$PHPLIB_COMPOSER" << 'PYEOF'
+        # Build a merged composer.json locally, then send it to the target
+        _tmp_composer=$(mktemp /tmp/cronmanager-composer-XXXXXX.json)
+        python3 - "$CLONE_DIR/composer.json" "$_tmp_composer" << 'PYEOF'
 import json, sys
-path = sys.argv[1]
-with open(path) as f:
-    data = json.load(f)
-required = {
-    "hassankhan/config":            "^2.1",
-    "monolog/monolog":              "^3.6",
-    "guzzlehttp/guzzle":            "^7.8",
-    "phpmailer/phpmailer":          "^6.8",
-    "dragonmantank/cron-expression":"^3.3",
-    "lorisleiva/cron-translator":   "^0.4",
-}
-data.setdefault("require", {})["php"] = ">=8.4"
-for pkg, ver in required.items():
-    data["require"].setdefault(pkg, ver)
-data.setdefault("config", {})["optimize-autoloader"] = True
-with open(path, "w") as f:
-    json.dump(data, f, indent=4)
-print("Updated:", path)
-PYEOF
-        else
-            step "Creating ${PHPLIB_COMPOSER} ..."
-            cat > "$PHPLIB_COMPOSER" << 'JSONEOF'
-{
-    "name": "local/phplib",
-    "description": "Shared PHP libraries for Cronmanager",
-    "type": "project",
-    "require": {
-        "php": ">=8.4",
-        "hassankhan/config":             "^2.1",
-        "monolog/monolog":               "^3.6",
-        "guzzlehttp/guzzle":             "^7.8",
-        "phpmailer/phpmailer":           "^6.8",
-        "dragonmantank/cron-expression": "^3.3",
-        "lorisleiva/cron-translator":    "^0.4"
-    },
-    "config": {
-        "optimize-autoloader": true
-    }
-}
-JSONEOF
-        fi
 
-        step "Running composer install in ${PHPLIB_DIR} ..."
-        "$COMPOSER_BIN" install --no-dev --optimize-autoloader --working-dir="$PHPLIB_DIR" \
-            || die "composer install failed."
-        ok "PHP libraries installed in ${VENDOR_DIR}."
+src_path  = sys.argv[1]
+dest_path = sys.argv[2]
+
+try:
+    with open(dest_path) as f:
+        data = json.load(f)
+except Exception:
+    data = {"name": "local/phplib", "description": "Shared PHP libraries", "type": "project"}
+
+with open(src_path) as f:
+    src = json.load(f)
+
+data.setdefault("require", {})
+for pkg, ver in src.get("require", {}).items():
+    data["require"].setdefault(pkg, ver)
+
+data.setdefault("config", {})["optimize-autoloader"] = True
+
+with open(dest_path, "w") as f:
+    json.dump(data, f, indent=4)
+PYEOF
+        target_write "${PHPLIB_DIR}/composer.json" < "$_tmp_composer"
+        rm -f "$_tmp_composer"
+
+        step "Running composer install on target..."
+        target_exec "${COMPOSER_BIN} install --no-dev --optimize-autoloader --working-dir='${PHPLIB_DIR}'" \
+            || warn_continue "composer install failed."
+        ok "PHP libraries installed."
     else
         die "Cannot continue without required PHP libraries."
     fi
@@ -414,19 +470,18 @@ fi
 #  7. COLLECT CONFIGURATION
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 5 – Configuration"
+header "Step 6 – Configuration"
 echo "  Please answer the following questions. Press Enter to accept the default."
 blank
 
-# ── Installation paths ────────────────────────────────────────────────────────
+# ── Installation paths ─────────────────────────────────────────────────────
 sep
-echo -e "  ${BOLD}Installation Paths${NC}"
+echo -e "  ${BOLD}Installation Paths (on target)${NC}"
 blank
-ask AGENT_DIR   "Host agent installation directory"    "/opt/phpscripts/cronmanager/agent"
-ask WEB_DIR     "Web application base directory"       "/opt/websites/cronmanager"
-ask DB_DIR      "MariaDB data directory"               "/opt/cronmanager/db"
+ask AGENT_DIR "Host agent directory"           "/opt/cronmanager/agent"
+ask WEB_DIR   "Web application base directory" "/opt/cronmanager/web"
+ask DB_DIR    "MariaDB data directory"         "/opt/cronmanager/db"
 
-# Derived sub-paths
 WEB_WWW="${WEB_DIR}/www"
 WEB_CONF="${WEB_DIR}/conf"
 WEB_LOG="${WEB_DIR}/log"
@@ -435,43 +490,41 @@ DB_CONF="${DB_DIR}/conf"
 DB_LOG="${DB_DIR}/log"
 DB_INIT="${DB_DIR}/init"
 COMPOSE_DIR="$WEB_DIR"
-
 blank
 
-# ── Database credentials ───────────────────────────────────────────────────────
+# ── Database credentials ────────────────────────────────────────────────────
 sep
 echo -e "  ${BOLD}Database Credentials${NC}"
 blank
-ask        DB_NAME          "Database name"                     "cronmanager"
-ask        DB_USER          "Database user"                     "cronmanager"
+ask        DB_NAME          "Database name"        "cronmanager"
+ask        DB_USER          "Database user"        "cronmanager"
 ask_secret DB_PASSWORD      "Database password"
 ask_secret DB_ROOT_PASSWORD "MariaDB root password"
 blank
 
-# ── Agent settings ────────────────────────────────────────────────────────────
+# ── Agent settings ──────────────────────────────────────────────────────────
 sep
 echo -e "  ${BOLD}Host Agent Settings${NC}"
 blank
-ask AGENT_BIND  "Agent listen address (0.0.0.0 = all interfaces)" "0.0.0.0"
-ask AGENT_PORT  "Agent listen port"                               "8865"
+ask AGENT_BIND "Agent listen address (0.0.0.0 = all interfaces)" "0.0.0.0"
+ask AGENT_PORT "Agent listen port"                               "8865"
 ask_choice AGENT_LOG_LEVEL "Agent log level" "info" "debug" "warning" "error"
 blank
 
-# ── Web application settings ──────────────────────────────────────────────────
+# ── Web application settings ────────────────────────────────────────────────
 sep
 echo -e "  ${BOLD}Web Application Settings${NC}"
 blank
-ask WEB_PORT     "Web application HTTP port (external Docker port)" "8880"
-ask WEB_LANG     "Default language (en / de)"                       "en"
+ask WEB_PORT "Web application HTTP port (external Docker port)" "8880"
+ask WEB_LANG "Default language (en / de)"                       "en"
 ask_choice WEB_LOG_LEVEL "Web application log level" "info" "debug" "warning" "error"
 blank
 
-# Agent URL as seen from inside Docker
 AGENT_URL="http://host.docker.internal:${AGENT_PORT}"
 info "Agent URL for web app (Docker → host): ${AGENT_URL}"
 blank
 
-# ── OIDC ──────────────────────────────────────────────────────────────────────
+# ── OIDC ────────────────────────────────────────────────────────────────────
 sep
 echo -e "  ${BOLD}OIDC / SSO Configuration${NC}"
 blank
@@ -499,13 +552,14 @@ if [[ "$OIDC_ENABLED" == "yes" ]]; then
 fi
 blank
 
-# ── Email notifications ───────────────────────────────────────────────────────
+# ── Email notifications ─────────────────────────────────────────────────────
 sep
 echo -e "  ${BOLD}Email Failure Notifications${NC}"
 blank
 ask_yn MAIL_ENABLED "Enable email notifications for job failures?" "no"
 MAIL_HOST=""; MAIL_PORT="587"; MAIL_USER=""; MAIL_PASS=""
-MAIL_FROM=""; MAIL_FROM_NAME="Cronmanager"; MAIL_TO=""; MAIL_ENC="tls"; MAIL_TIMEOUT="15"
+MAIL_FROM=""; MAIL_FROM_NAME="Cronmanager"; MAIL_TO=""
+MAIL_ENC="tls"; MAIL_TIMEOUT="15"
 
 if [[ "$MAIL_ENABLED" == "yes" ]]; then
     ask        MAIL_HOST      "SMTP server hostname"              ""
@@ -520,10 +574,15 @@ if [[ "$MAIL_ENABLED" == "yes" ]]; then
 fi
 blank
 
-# ── Summary of collected config ───────────────────────────────────────────────
+# ── Summary ──────────────────────────────────────────────────────────────────
 sep
 echo -e "  ${BOLD}Configuration Summary${NC}"
 blank
+if [[ "$TARGET_TYPE" == "remote" ]]; then
+    echo -e "    Target          : ${CYAN}${TARGET_SSH} (remote SSH)${NC}"
+else
+    echo -e "    Target          : ${CYAN}local${NC}"
+fi
 echo -e "    Agent dir       : ${CYAN}${AGENT_DIR}${NC}"
 echo -e "    Web dir         : ${CYAN}${WEB_DIR}${NC}"
 echo -e "    DB dir          : ${CYAN}${DB_DIR}${NC}"
@@ -539,80 +598,68 @@ ask_yn PROCEED "Proceed with this configuration?" "yes"
 [[ "$PROCEED" == "no" ]] && die "Setup cancelled by user."
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  8. GENERATE HMAC SECRET
+#  8. GENERATE HMAC SECRET  (locally)
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 6 – Security"
+header "Step 7 – Security"
 
 step "Generating HMAC-SHA256 secret..."
 HMAC_SECRET=$(openssl rand -hex 32)
 ok "HMAC secret generated  (${#HMAC_SECRET} hex characters)."
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  9. CREATE DIRECTORY STRUCTURE
+#  9. CREATE DIRECTORY STRUCTURE  (on target)
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 7 – Directory Structure"
+header "Step 8 – Directory Structure"
 
-for dir in \
-    "$AGENT_DIR" "$AGENT_DIR/config" "$AGENT_DIR/bin" \
+for _dir in \
+    "$AGENT_DIR" "$AGENT_DIR/config" "$AGENT_DIR/bin" "$AGENT_DIR/log" \
     "$WEB_WWW" "$WEB_CONF" "$WEB_LOG" \
-    "$DB_DATA" "$DB_CONF" "$DB_LOG" "$DB_INIT" \
-    "$PHPLIB_DIR"; do
-    mkdir -p "$dir"
-    ok "Created: $dir"
+    "$DB_DATA" "$DB_CONF" "$DB_LOG" "$DB_INIT"; do
+    target_exec "mkdir -p '$_dir'" || warn_continue "Failed to create directory: $_dir"
+    ok "Created: $_dir"
 done
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  10. DEPLOY AGENT FILES
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 8 – Deploy Host Agent"
+header "Step 9 – Deploy Host Agent"
 
-step "Copying agent files from clone to ${AGENT_DIR} ..."
-rsync -a --delete \
-    --exclude='config/config.json' \
-    "$CLONE_DIR/agent/" "$AGENT_DIR/"
+step "Copying agent files to ${AGENT_DIR} on target..."
+target_copy "$CLONE_DIR/agent/" "$AGENT_DIR/" \
+    || warn_continue "Failed to copy agent files to ${AGENT_DIR}."
 ok "Agent files deployed."
 
-# Update hardcoded paths in start-agent.sh and cron-wrapper.sh
-step "Patching paths in start-agent.sh ..."
-sed -i \
-    -e "s|/opt/phpscripts/cronmanager/agent|${AGENT_DIR}|g" \
-    -e "s|/opt/phplib|${PHPLIB_DIR}|g" \
-    "${AGENT_DIR}/bin/start-agent.sh"
-chmod +x "${AGENT_DIR}/bin/start-agent.sh"
-
-step "Patching paths in cron-wrapper.sh ..."
-sed -i \
-    -e "s|/opt/phpscripts/cronmanager/agent|${AGENT_DIR}|g" \
-    -e "s|/opt/phplib|${PHPLIB_DIR}|g" \
-    "${AGENT_DIR}/bin/cron-wrapper.sh"
-chmod +x "${AGENT_DIR}/bin/cron-wrapper.sh"
-
-if [[ -f "${AGENT_DIR}/bin/send-notification.php" ]]; then
-    sed -i "s|/opt/phplib|${PHPLIB_DIR}|g" "${AGENT_DIR}/bin/send-notification.php"
-fi
-if [[ -f "${AGENT_DIR}/bin/create-admin.php" ]]; then
-    sed -i "s|/opt/phplib|${PHPLIB_DIR}|g" "${AGENT_DIR}/bin/create-admin.php"
-fi
-if [[ -f "${AGENT_DIR}/agent.php" ]]; then
-    sed -i "s|/opt/phplib|${PHPLIB_DIR}|g" "${AGENT_DIR}/agent.php"
-fi
-
+step "Patching hardcoded paths in agent scripts..."
+for _file in \
+    "${AGENT_DIR}/bin/start-agent.sh" \
+    "${AGENT_DIR}/bin/cron-wrapper.sh" \
+    "${AGENT_DIR}/bin/send-notification.php" \
+    "${AGENT_DIR}/bin/create-admin.php" \
+    "${AGENT_DIR}/agent.php"; do
+    target_exec "
+        test -f '$_file' || exit 0
+        sed -i \
+            -e 's|/opt/phpscripts/cronmanager/agent|${AGENT_DIR}|g' \
+            -e 's|/opt/phplib|${PHPLIB_DIR}|g' \
+            '$_file'
+        chmod +x '$_file' 2>/dev/null || true
+    " || warn_continue "Failed to patch paths in: $_file"
+done
 ok "Paths patched."
 
-# ── Write agent config.json ────────────────────────────────────────────────────
+# Write agent config.json – generated locally via Python, written to target
+step "Writing agent config.json..."
 
-step "Writing agent config.json ..."
+# Build Python booleans from shell vars before the heredoc
+_mail_py=$( [[ "$MAIL_ENABLED" == "yes" ]] && echo "True" || echo "False" )
+_mail_enc_py="${MAIL_ENC}"
 
-MAIL_ENABLED_BOOL=$(json_bool "$MAIL_ENABLED")
-
-python3 - << PYEOF
-import json, os
-
-mail_enabled = "${MAIL_ENABLED}" == "yes"
-mail_enc     = "${MAIL_ENC}"
+_agent_conf_tmp=$(mktemp /tmp/cronmanager-agent-conf-XXXXXX.json)
+python3 - > "$_agent_conf_tmp" << PYEOF
+import json
 
 config = {
     "agent": {
@@ -633,7 +680,7 @@ config = {
         "max_days": 30
     },
     "mail": {
-        "enabled":      mail_enabled,
+        "enabled":      ${_mail_py},
         "host":         "${MAIL_HOST}",
         "port":         int("${MAIL_PORT}") if "${MAIL_PORT}" else 587,
         "username":     "${MAIL_USER}",
@@ -641,47 +688,39 @@ config = {
         "from":         "${MAIL_FROM}",
         "from_name":    "${MAIL_FROM_NAME}",
         "to":           "${MAIL_TO}",
-        "encryption":   mail_enc if mail_enc != "none" else "",
+        "encryption":   "" if "${_mail_enc_py}" == "none" else "${_mail_enc_py}",
         "smtp_timeout": int("${MAIL_TIMEOUT}") if "${MAIL_TIMEOUT}" else 15
     },
     "cron": {
         "wrapper_script": "${AGENT_DIR}/bin/cron-wrapper.sh"
     }
 }
-
-with open("${AGENT_DIR}/config/config.json", "w") as f:
-    json.dump(config, f, indent=4, ensure_ascii=False)
-print("  Written: ${AGENT_DIR}/config/config.json")
+print(json.dumps(config, indent=4, ensure_ascii=False))
 PYEOF
+[[ $? -eq 0 ]] || warn_continue "Failed to generate agent config.json."
+target_write "${AGENT_DIR}/config/config.json" < "$_agent_conf_tmp" \
+    || warn_continue "Failed to write agent config.json to target."
+rm -f "$_agent_conf_tmp"
 
-chmod 600 "${AGENT_DIR}/config/config.json"
+target_exec "chmod 600 '${AGENT_DIR}/config/config.json'" 2>/dev/null || true
 ok "Agent config.json written."
 
-# ── Create log directory for agent ────────────────────────────────────────────
-mkdir -p "${AGENT_DIR}/log"
-
 # ═════════════════════════════════════════════════════════════════════════════
-#  11. SYSTEMD SERVICE
+#  11. SYSTEMD SERVICE  (on target)
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 9 – Systemd Service"
+header "Step 10 – Systemd Service"
 
-SERVICE_FILE="${AGENT_DIR}/systemd/cronmanager-agent.service"
+# Ship the service unit: patch paths from the clone's template, send to target
+_tmp_svc=$(mktemp /tmp/cronmanager-svc-XXXXXX.service)
 
-if [[ -f "$SERVICE_FILE" ]]; then
-    step "Installing systemd service from ${SERVICE_FILE} ..."
-    # Patch paths in service file
+if [[ -f "$CLONE_DIR/agent/systemd/cronmanager-agent.service" ]]; then
     sed \
         -e "s|/opt/phpscripts/cronmanager/agent|${AGENT_DIR}|g" \
         -e "s|/opt/phplib|${PHPLIB_DIR}|g" \
-        "$SERVICE_FILE" > /etc/systemd/system/cronmanager-agent.service
-
-    systemctl daemon-reload
-    systemctl enable cronmanager-agent.service
-    ok "Service enabled:  cronmanager-agent.service"
+        "$CLONE_DIR/agent/systemd/cronmanager-agent.service" > "$_tmp_svc"
 else
-    warn "Service file not found at ${SERVICE_FILE}. Creating minimal service unit..."
-    cat > /etc/systemd/system/cronmanager-agent.service << SVCEOF
+    cat > "$_tmp_svc" << SVCEOF
 [Unit]
 Description=Cronmanager Host Agent
 After=network.target
@@ -700,80 +739,64 @@ SyslogIdentifier=cronmanager-agent
 [Install]
 WantedBy=multi-user.target
 SVCEOF
-    systemctl daemon-reload
-    systemctl enable cronmanager-agent.service
-    ok "Minimal service unit created and enabled."
 fi
 
+target_write "/etc/systemd/system/cronmanager-agent.service" < "$_tmp_svc" \
+    || warn_continue "Failed to write systemd service file."
+rm -f "$_tmp_svc"
+
+target_exec "systemctl daemon-reload && systemctl enable cronmanager-agent.service" \
+    || warn_continue "Failed to enable cronmanager-agent service."
+ok "Service installed and enabled."
+
 # ═════════════════════════════════════════════════════════════════════════════
-#  12. DEPLOY WEB APPLICATION
+#  12. DEPLOY WEB APPLICATION  (on target)
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 10 – Deploy Web Application"
+header "Step 11 – Deploy Web Application"
 
-step "Copying web files to ${WEB_WWW} ..."
-rsync -a --delete \
-    --exclude='config/config.json' \
-    "$CLONE_DIR/web/" "$WEB_WWW/"
+step "Copying web files to ${WEB_WWW} on target..."
+target_copy "$CLONE_DIR/web/" "$WEB_WWW/" \
+    || warn_continue "Failed to copy web application files to ${WEB_WWW}."
 
-# Patch autoload path in PHP files
 step "Patching PHP library path in web application..."
-find "$WEB_WWW" -name '*.php' -exec \
-    sed -i "s|/opt/phplib|${PHPLIB_DIR}|g" {} \;
-
+target_exec "find '${WEB_WWW}' -name '*.php' -exec sed -i 's|/opt/phplib|${PHPLIB_DIR}|g' {} \\;" \
+    || warn_continue "Failed to patch PHP library paths in web application."
 ok "Web files deployed."
 
-# ── Download frontend assets ──────────────────────────────────────────────────
+# Download frontend assets on the target
+step "Downloading Tailwind CSS v3.4.17..."
+target_exec "
+    test -f '${WEB_WWW}/assets/js/tailwind.min.js' && exit 0
+    mkdir -p '${WEB_WWW}/assets/js'
+    curl -fsSL 'https://cdn.tailwindcss.com/3.4.17' \
+        -o '${WEB_WWW}/assets/js/tailwind.min.js'
+" && ok "tailwind.min.js – OK." || warn "Tailwind download failed – install manually."
 
-JS_DIR="${WEB_WWW}/assets/js"
-mkdir -p "$JS_DIR"
+step "Downloading Chart.js v4..."
+target_exec "
+    test -f '${WEB_WWW}/assets/js/chart.min.js' && exit 0
+    curl -fsSL 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js' \
+        -o '${WEB_WWW}/assets/js/chart.min.js'
+" && ok "chart.min.js – OK." || warn "Chart.js download failed – install manually."
 
-if [[ ! -f "${JS_DIR}/tailwind.min.js" ]]; then
-    step "Downloading Tailwind CSS v3.4.17 ..."
-    curl -fsSL "https://cdn.tailwindcss.com/3.4.17" -o "${JS_DIR}/tailwind.min.js" \
-        || warn "Tailwind download failed – install manually."
-    ok "tailwind.min.js downloaded."
-else
-    ok "tailwind.min.js already present."
-fi
+# Write web config.json – generated locally, written to target
+step "Writing web application config.json..."
 
-if [[ ! -f "${JS_DIR}/chart.min.js" ]]; then
-    step "Downloading Chart.js v4 ..."
-    curl -fsSL "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" \
-        -o "${JS_DIR}/chart.min.js" \
-        || warn "Chart.js download failed – install manually."
-    ok "chart.min.js downloaded."
-else
-    ok "chart.min.js already present."
-fi
+_oidc_py=$( [[ "$OIDC_ENABLED" == "yes" ]] && echo "True" || echo "False" )
+_ssl_raw="$OIDC_SSL_VERIFY"
 
-# ── Write web app config.json ─────────────────────────────────────────────────
-
-step "Writing web application config.json ..."
-
-# Build oidc_ssl_verify value: boolean or path string
-if [[ "$OIDC_SSL_VERIFY" == "true" ]]; then
-    OIDC_SSL_VERIFY_JSON="true"
-elif [[ "$OIDC_SSL_VERIFY" == "false" ]]; then
-    OIDC_SSL_VERIFY_JSON="false"
-else
-    # It's a path string
-    OIDC_SSL_VERIFY_JSON=$(json_escape "$OIDC_SSL_VERIFY")
-fi
-
-python3 - << PYEOF
+_web_conf_tmp=$(mktemp /tmp/cronmanager-web-conf-XXXXXX.json)
+python3 - > "$_web_conf_tmp" << PYEOF
 import json
 
-oidc_enabled = "${OIDC_ENABLED}" == "yes"
-ssl_verify_raw = "${OIDC_SSL_VERIFY}"
-
-# Determine ssl_verify value type
-if ssl_verify_raw == "true":
+ssl_raw = "${_ssl_raw}"
+if ssl_raw == "true":
     ssl_verify = True
-elif ssl_verify_raw == "false":
+elif ssl_raw == "false":
     ssl_verify = False
 else:
-    ssl_verify = ssl_verify_raw  # path string
+    ssl_verify = ssl_raw  # path to CA bundle
 
 config = {
     "database": {
@@ -802,7 +825,7 @@ config = {
         "available":        ["en", "de"]
     },
     "auth": {
-        "oidc_enabled":      oidc_enabled,
+        "oidc_enabled":      ${_oidc_py},
         "oidc_provider_url": "${OIDC_PROVIDER_URL}",
         "oidc_client_id":    "${OIDC_CLIENT_ID}",
         "oidc_client_secret":"${OIDC_CLIENT_SECRET}",
@@ -811,51 +834,50 @@ config = {
         "oidc_ssl_ca_bundle":"${OIDC_CA_BUNDLE}"
     }
 }
-
-with open("${WEB_CONF}/config.json", "w") as f:
-    json.dump(config, f, indent=4, ensure_ascii=False)
-print("  Written: ${WEB_CONF}/config.json")
+print(json.dumps(config, indent=4, ensure_ascii=False))
 PYEOF
+[[ $? -eq 0 ]] || warn_continue "Failed to generate web config.json."
+target_write "${WEB_CONF}/config.json" < "$_web_conf_tmp" \
+    || warn_continue "Failed to write web config.json to target."
+rm -f "$_web_conf_tmp"
 
-chmod 640 "${WEB_CONF}/config.json"
+target_exec "chmod 640 '${WEB_CONF}/config.json'" 2>/dev/null || true
 ok "Web config.json written."
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  13. CREDENTIAL AND DEPLOY FILES
+#  13. CREDENTIAL AND COMPOSE FILES  (on target)
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 11 – Credential Files"
+header "Step 12 – Credential and Compose Files"
 
-# db.credentials (used for reference and docker compose --env-file)
-cat > "${COMPOSE_DIR}/db.credentials" << CREDEOF
-# =============================================================================
+# db.credentials
+cat << CREDEOF | target_write "${COMPOSE_DIR}/db.credentials" \
+    || warn_continue "Failed to write db.credentials."
 # Cronmanager – Database Credentials
-# KEEP THIS FILE SECURE – do not commit to version control
-# =============================================================================
+# KEEP SECURE – do not commit to version control
 DB_NAME=${DB_NAME}
 DB_USER=${DB_USER}
 DB_PASSWORD=${DB_PASSWORD}
 DB_ROOT_USER=root
 DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
 CREDEOF
-chmod 600 "${COMPOSE_DIR}/db.credentials"
-ok "db.credentials written to ${COMPOSE_DIR}/db.credentials"
+target_exec "chmod 600 '${COMPOSE_DIR}/db.credentials'" 2>/dev/null || true
+ok "db.credentials written."
 
-# .env for docker compose (docker compose reads .env automatically)
-cat > "${COMPOSE_DIR}/.env" << ENVEOF
+# .env (read automatically by docker compose)
+cat << ENVEOF | target_write "${COMPOSE_DIR}/.env" \
+    || warn_continue "Failed to write .env file."
 DB_NAME=${DB_NAME}
 DB_USER=${DB_USER}
 DB_PASSWORD=${DB_PASSWORD}
 DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
 ENVEOF
-chmod 600 "${COMPOSE_DIR}/.env"
-ok ".env written to ${COMPOSE_DIR}/.env"
+target_exec "chmod 600 '${COMPOSE_DIR}/.env'" 2>/dev/null || true
+ok ".env written."
 
-# deploy.env (informational / future use with deploy.sh)
-cat > "${COMPOSE_DIR}/deploy.env" << DEPLOYEOF
-# =============================================================================
-# Cronmanager – Deployment Configuration
-# =============================================================================
+# deploy.env (informational)
+cat << DEPLOYEOF | target_write "${COMPOSE_DIR}/deploy.env" \
+    || warn_continue "Failed to write deploy.env."
 DEPLOY_TYPE=LOCAL
 DEPLOY_DB=${DB_DIR}/
 DEPLOY_WEB=${WEB_DIR}/
@@ -863,27 +885,18 @@ DEPLOY_AGENT=${AGENT_DIR}/
 DEPLOY_COMPOSER=${PHPLIB_DIR}/
 DEPLOY_COMPOSER_VENDOR=${PHPLIB_DIR}/vendor/
 DEPLOYEOF
-ok "deploy.env written to ${COMPOSE_DIR}/deploy.env"
+ok "deploy.env written."
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  14. DOCKER COMPOSE FILE
-# ═════════════════════════════════════════════════════════════════════════════
-
-header "Step 12 – Docker Compose"
-
-COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
-
-cat > "$COMPOSE_FILE" << COMPOSEEOF
-# =============================================================================
-#  Cronmanager – docker-compose.yml
-#  Generated by simple_debian_setup.sh
-# =============================================================================
+# ── Generate docker-compose.yml ───────────────────────────────────────────
+# Shell variables for paths are expanded now (intentional).
+# \${DB_*} is escaped so docker compose substitutes them from .env at runtime.
+cat << COMPOSEEOF | target_write "${COMPOSE_DIR}/docker-compose.yml" \
+    || warn_continue "Failed to write docker-compose.yml."
+# Cronmanager – docker-compose.yml
+# Generated by simple_debian_setup.sh
 
 services:
 
-  # ---------------------------------------------------------------------------
-  # Web Application (PHP-FPM + Nginx)
-  # ---------------------------------------------------------------------------
   cronmanager-web:
     image: cs1711/cs_php-nginx-fpm:latest-alpine
     container_name: cronmanager-web
@@ -898,15 +911,10 @@ services:
       - ${PHPLIB_DIR}/vendor:/var/www/libs/vendor
     ports:
       - "${WEB_PORT}:80"
-    networks:
-      - cronmanager-internal
     depends_on:
       cronmanager-db:
         condition: service_healthy
 
-  # ---------------------------------------------------------------------------
-  # Database (MariaDB LTS)
-  # ---------------------------------------------------------------------------
   cronmanager-db:
     image: mariadb:lts
     container_name: cronmanager-db
@@ -929,79 +937,51 @@ services:
       timeout:      5s
       retries:      3
       start_period: 30s
-    networks:
-      - cronmanager-internal
-
-networks:
-  cronmanager-internal:
-    driver: bridge
 COMPOSEEOF
+ok "docker-compose.yml written."
 
-ok "docker-compose.yml written to ${COMPOSE_FILE}"
+# Display the generated credential files and docker-compose.yml
+blank; sep
+echo -e "  ${BOLD}Generated db.credentials${NC}  ${YELLOW}(keep secure)${NC}:"
 blank
-
-# Display the generated file
-sep
+target_exec "cat '${COMPOSE_DIR}/db.credentials'" | sed 's/^/    /'
+blank; sep
+echo -e "  ${BOLD}Generated .env${NC}  ${YELLOW}(keep secure)${NC}:"
+blank
+target_exec "cat '${COMPOSE_DIR}/.env'" | sed 's/^/    /'
+blank; sep
 echo -e "  ${BOLD}Generated docker-compose.yml:${NC}"
 blank
-sed 's/^/    /' "$COMPOSE_FILE"
-blank
-sep
+target_exec "cat '${COMPOSE_DIR}/docker-compose.yml'" | sed 's/^/    /'
+blank; sep
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  15. START HOST AGENT + HEALTH CHECK
+#  14. DOCKER STACK  (on target)
+#  Must run before the agent so MariaDB is already up when the agent starts.
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 13 – Start Host Agent"
-
-step "Starting cronmanager-agent service..."
-if systemctl start cronmanager-agent.service 2>&1; then
-    sleep 2
-
-    # Health check
-    HEALTH_URL="http://127.0.0.1:${AGENT_PORT}/health"
-    step "Health check: ${HEALTH_URL}"
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-        --max-time 5 "$HEALTH_URL" 2>/dev/null || echo "000")
-
-    if [[ "$HTTP_CODE" == "200" ]]; then
-        ok "Agent health check passed  (HTTP ${HTTP_CODE})."
-    else
-        warn "Agent health check returned HTTP ${HTTP_CODE}."
-        warn "Check logs:  journalctl -u cronmanager-agent -n 50"
-    fi
-else
-    warn "Agent service could not be started."
-    warn "Check logs:  journalctl -u cronmanager-agent -n 50"
-fi
-
-# ═════════════════════════════════════════════════════════════════════════════
-#  16. DOCKER COMPOSE DEPLOYMENT
-# ═════════════════════════════════════════════════════════════════════════════
-
-header "Step 14 – Docker Stack"
+header "Step 13 – Docker Stack"
 
 DOCKER_DEPLOYED=false
-
-ask_yn AUTO_DEPLOY "Start the Docker stack automatically now?" "yes"
+ask_yn AUTO_DEPLOY "Start the Docker stack on target now?" "yes"
 
 if [[ "$AUTO_DEPLOY" == "yes" ]]; then
-    step "Starting Docker stack in ${COMPOSE_DIR} ..."
-    cd "$COMPOSE_DIR"
-    docker compose up -d
+    step "Starting Docker stack..."
+    target_exec "cd '${COMPOSE_DIR}' && docker compose up -d" \
+        || warn_continue "Docker stack failed to start. Check logs with: docker compose -f '${COMPOSE_DIR}/docker-compose.yml' logs"
     ok "Docker stack started."
     DOCKER_DEPLOYED=true
 else
     info "Docker stack was NOT started automatically."
-    ask_yn MANUAL_DEPLOYED "Have you already deployed the Docker stack manually?" "no"
+    ask_yn MANUAL_DEPLOYED "Has the Docker stack already been deployed manually?" "no"
     [[ "$MANUAL_DEPLOYED" == "yes" ]] && DOCKER_DEPLOYED=true
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  17. DATABASE SCHEMA
+#  15. DATABASE SCHEMA  (on target via docker exec)
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 15 – Database Schema"
+header "Step 14 – Database Schema"
 
 SCHEMA_FILE="${AGENT_DIR}/sql/schema.sql"
 MIGRATIONS_DIR="${AGENT_DIR}/sql/migrations"
@@ -1010,65 +990,95 @@ if [[ "$DOCKER_DEPLOYED" == true ]]; then
     ask_yn APPLY_SCHEMA "Apply database schema and migrations now?" "yes"
 
     if [[ "$APPLY_SCHEMA" == "yes" ]]; then
-        # Wait for MariaDB to be healthy
         step "Waiting for MariaDB to be ready..."
-        RETRIES=15
         READY=false
-        for i in $(seq 1 $RETRIES); do
-            if docker exec cronmanager-db healthcheck.sh --connect --innodb_initialized \
-                &>/dev/null 2>&1; then
-                READY=true
-                break
+        for _i in $(seq 1 15); do
+            if target_exec \
+                "docker exec cronmanager-db healthcheck.sh --connect --innodb_initialized >/dev/null 2>&1"; then
+                READY=true; break
             fi
-            echo -ne "    Attempt ${i}/${RETRIES}... \r"
+            echo -ne "    Attempt ${_i}/15...\r"
             sleep 4
         done
         echo
 
         if [[ "$READY" == false ]]; then
             warn "MariaDB did not become healthy in time."
-            warn "Apply the schema manually after the database is ready:"
-            info "  docker exec -i cronmanager-db mariadb -u ${DB_USER} -p'<password>' ${DB_NAME} < ${SCHEMA_FILE}"
+            warn "Apply schema manually once the DB is ready."
         else
             ok "MariaDB is ready."
 
-            if [[ -f "$SCHEMA_FILE" ]]; then
-                step "Applying schema.sql ..."
-                docker exec -i cronmanager-db \
-                    mariadb -u "$DB_USER" -p"${DB_PASSWORD}" "$DB_NAME" \
-                    < "$SCHEMA_FILE" \
-                    && ok "Schema applied." \
-                    || warn "Schema application failed – it may already exist (safe to ignore on re-runs)."
-            else
-                warn "Schema file not found: ${SCHEMA_FILE}"
-            fi
+            step "Applying schema.sql..."
+            # Connect as root: docker exec always resolves to @'localhost' in
+            # MariaDB (even with -h 127.0.0.1 due to reverse DNS), so the
+            # app user cronmanager@'%' created by the Docker image would be
+            # denied. Root has unconditional @'localhost' access.
+            target_exec \
+                "docker exec -i cronmanager-db \
+                 mariadb -u root -p'${DB_ROOT_PASSWORD}' '${DB_NAME}' \
+                 < '${SCHEMA_FILE}'" \
+                && ok "Schema applied." \
+                || warn "Schema failed (may already exist – safe to ignore on re-runs)."
 
-            if [[ -d "$MIGRATIONS_DIR" ]]; then
-                step "Applying migrations ..."
-                for migration in $(ls -1v "$MIGRATIONS_DIR"/*.sql 2>/dev/null); do
-                    MIG_NAME=$(basename "$migration")
-                    docker exec -i cronmanager-db \
-                        mariadb -u "$DB_USER" -p"${DB_PASSWORD}" "$DB_NAME" \
-                        < "$migration" \
-                        && ok "  Migration applied: ${MIG_NAME}" \
-                        || warn "  Migration ${MIG_NAME} failed (may already be applied – safe to ignore)."
-                done
-            fi
+            step "Applying migrations..."
+            target_script << SHELLSCRIPT
+for mig in \$(ls -1v '${MIGRATIONS_DIR}'/*.sql 2>/dev/null); do
+    name=\$(basename "\$mig")
+    docker exec -i cronmanager-db \
+        mariadb -u root -p'${DB_ROOT_PASSWORD}' '${DB_NAME}' < "\$mig" \
+        && echo "    applied: \${name}" \
+        || echo "    skipped (may already be applied): \${name}"
+done
+SHELLSCRIPT
         fi
     fi
 else
     info "Docker stack not deployed – skipping schema setup."
-    info "Apply schema manually after deployment:"
-    info "  docker exec -i cronmanager-db mariadb -u ${DB_USER} -p'<password>' ${DB_NAME} < ${SCHEMA_FILE}"
+    info "Apply manually:  docker exec -i cronmanager-db mariadb -u root -p'<root-pw>' ${DB_NAME} < ${SCHEMA_FILE}"
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  18. SUMMARY
+#  16. START HOST AGENT + HEALTH CHECK  (on target)
+#  Runs last so MariaDB is already up and the schema is applied.
+# ═════════════════════════════════════════════════════════════════════════════
+
+header "Step 15 – Start Host Agent"
+
+step "Starting cronmanager-agent service..."
+if target_exec "systemctl start cronmanager-agent.service" 2>&1; then
+    sleep 2
+    step "Health check: http://127.0.0.1:${AGENT_PORT}/health"
+    HTTP_CODE=$(target_exec \
+        "curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+         http://127.0.0.1:${AGENT_PORT}/health 2>/dev/null || echo 000")
+    if [[ "$HTTP_CODE" == "200" ]]; then
+        ok "Agent health check passed  (HTTP ${HTTP_CODE})."
+    else
+        warn "Agent health check returned HTTP ${HTTP_CODE}."
+        warn "Check logs with:  journalctl -u cronmanager-agent -n 50"
+    fi
+else
+    warn "Agent service could not be started."
+    warn "Check logs with:  journalctl -u cronmanager-agent -n 50"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  17. SUMMARY
 # ═════════════════════════════════════════════════════════════════════════════
 
 header "Setup Complete"
 
-echo -e "  ${GREEN}${BOLD}Cronmanager has been installed successfully.${NC}"
+if [[ "$TARGET_TYPE" == "remote" ]]; then
+    _label="$TARGET_SSH"
+    _ssh_pfx="ssh ${TARGET_SSH} "
+    _host_ip=$(target_exec "hostname -I | awk '{print \$1}'" 2>/dev/null || echo "<target-ip>")
+else
+    _label="localhost"
+    _ssh_pfx=""
+    _host_ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+fi
+
+echo -e "  ${GREEN}${BOLD}Cronmanager has been installed on ${_label}.${NC}"
 blank
 echo -e "  ${BOLD}Installed paths:${NC}"
 echo -e "    Host agent    : ${CYAN}${AGENT_DIR}${NC}"
@@ -1079,31 +1089,29 @@ echo -e "    Docker Compose: ${CYAN}${COMPOSE_DIR}/${NC}"
 echo -e "    DB data       : ${CYAN}${DB_DATA}${NC}"
 blank
 echo -e "  ${BOLD}Service management:${NC}"
-echo -e "    ${CYAN}systemctl status cronmanager-agent${NC}"
-echo -e "    ${CYAN}systemctl restart cronmanager-agent${NC}"
-echo -e "    ${CYAN}journalctl -u cronmanager-agent -f${NC}"
+echo -e "    ${CYAN}${_ssh_pfx}systemctl status cronmanager-agent${NC}"
+echo -e "    ${CYAN}${_ssh_pfx}systemctl restart cronmanager-agent${NC}"
+echo -e "    ${CYAN}${_ssh_pfx}journalctl -u cronmanager-agent -f${NC}"
 blank
 echo -e "  ${BOLD}Docker stack (from ${COMPOSE_DIR}):${NC}"
-echo -e "    ${CYAN}docker compose up -d${NC}       Start"
-echo -e "    ${CYAN}docker compose down${NC}         Stop"
-echo -e "    ${CYAN}docker compose logs -f${NC}      Logs"
+echo -e "    ${CYAN}${_ssh_pfx}sh -c 'cd ${COMPOSE_DIR} && docker compose up -d'${NC}"
+echo -e "    ${CYAN}${_ssh_pfx}sh -c 'cd ${COMPOSE_DIR} && docker compose logs -f'${NC}"
 blank
 echo -e "  ${BOLD}Agent health check:${NC}"
-echo -e "    ${CYAN}curl http://127.0.0.1:${AGENT_PORT}/health${NC}"
+echo -e "    ${CYAN}${_ssh_pfx}curl http://127.0.0.1:${AGENT_PORT}/health${NC}"
 blank
 echo -e "  ${BOLD}Web UI:${NC}"
-echo -e "    ${CYAN}http://$(hostname -I | awk '{print $1}'):${WEB_PORT}/${NC}"
-echo -e "    Open this URL in your browser to complete the setup."
-echo -e "    On first visit, create the initial administrator account."
+echo -e "    ${CYAN}http://${_host_ip}:${WEB_PORT}/${NC}"
+echo -e "    Open this URL to complete setup and create the admin account."
 blank
-echo -e "  ${BOLD}HMAC secret${NC}  (keep this secure – needed if you reinstall):"
+echo -e "  ${BOLD}HMAC secret${NC}  (store securely – needed if you reinstall):"
 echo -e "    ${YELLOW}${HMAC_SECRET}${NC}"
 blank
 echo -e "  ${BOLD}Next steps:${NC}"
 echo -e "    1. Open the web UI and create your admin account."
-[[ "$OIDC_ENABLED" == "yes" ]] && \
+[[ "$OIDC_ENABLED"  == "yes" ]] && \
     echo -e "    2. Verify OIDC login at ${CYAN}${OIDC_REDIRECT_URI}${NC}."
-[[ "$MAIL_ENABLED" == "yes" ]] && \
-    echo -e "    3. Test email notifications by creating a job with 'Notify on failure' enabled."
+[[ "$MAIL_ENABLED"  == "yes" ]] && \
+    echo -e "    3. Test email by creating a job with 'Notify on failure' enabled."
 echo -e "    4. Add your first cron job via the web UI."
 blank

@@ -6,24 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `debian_simple_setup`
+## [Unreleased] – branch: `simple_setup_fix`
+
+### Fixed
+
+- **Package installation fails with "command not found"** – `IFS=$'\n\t'` removed the space character from the field separator. `${MISSING_PKGS[*]}` therefore joined array elements with a newline instead of a space, causing `bash -c "apt-get install -y pkg1\npkg2"` to try to execute each subsequent package name as a standalone command (e.g. `php8.4-mbstring: command not found`). Fixed by removing the non-standard `IFS` assignment and changing the array-to-string join to `printf '%s ' "${MISSING_PKGS[@]}"`.
+- **Prerequisites checked on local machine instead of target** – The script now asks for the target host (local or remote SSH) as the very first step. All subsequent checks and operations (package installs, Composer, file deployment, systemd, Docker, DB schema) run on the selected target via `target_exec` / `target_copy` / `target_write` / `target_script` helpers.
+- **ANSI color codes shown as raw escape sequences** – Color variables were defined with single quotes (`'\033[1m'`), storing the literal 4-character sequence instead of the actual ESC byte. Changed to ANSI-C quoting (`$'\033[1m'`) so codes render correctly in both `echo -e` and `read -p` prompts.
+- **Hard failures on recoverable errors** – All operational steps (package install, Composer, PHP libraries, directory creation, file deployment, path patching, config generation, systemd service, web app copy, credential files, Docker Compose start) previously called `die()` on failure, aborting the setup immediately with no recourse. Replaced with a new `warn_continue()` helper that displays the error and prompts the user whether to continue or abort. Fatal pre-flight checks (SSH connectivity, root access, repository clone integrity, user-chosen cancellation) remain as hard `die()` failures.
+- **`Access denied` when applying database schema** – `docker exec mariadb` always resolves to `@'localhost'` in MariaDB privilege checking (even with `-h 127.0.0.1`, as MariaDB reverse-resolves the loopback address back to `localhost`). The Docker image creates the app user as `cronmanager@'%'`, which does not match `@'localhost'`. Fixed by running schema and migration imports as `root` (using `DB_ROOT_PASSWORD`), which always has unconditional `@'localhost'` access inside the container.
+- **db.credentials and .env not shown during setup** – The generated credential files were written silently. Added a display block (identical in style to the existing docker-compose.yml display) that prints `db.credentials` and `.env` to the terminal before the `docker-compose.yml` preview, so the user can review all generated files in one place.
+- **Agent started before database was available** – The host agent was started (Step 13) before the Docker stack containing MariaDB was launched (Step 14), causing the agent to fail its health check on every fresh install. Fixed by reordering to: Docker stack start → DB schema → agent start, so MariaDB is guaranteed to be running before the agent tries to connect.
+- **CTRL-C left the script in an inconsistent state** – A single `trap cleanup EXIT INT TERM` silently removed the temp clone directory on interrupt without any user feedback. Added a dedicated `interrupted()` trap on `INT`/`TERM` that prints a clear "Setup interrupted" warning before cleaning up, so users know the installation did not complete.
 
 ### Added
 
-- **Guided Debian setup script** (`simple_debian_setup.sh`) – interactive, single-command installation assistant for Debian 12+ / Ubuntu 22.04+ hosts. Covers the full installation in one session:
-  - Prerequisite check (PHP 8.4, required extensions, Docker, Composer, git, openssl, rsync, python3, jq) with optional `apt` install of missing packages.
-  - Repository clone to a temporary directory.
-  - Composer installation check with optional global install via the official installer.
-  - PHP library check against the shared vendor directory (`/opt/phplib/vendor`); missing packages are added to `composer.json` and installed automatically.
-  - Full configuration interview (paths, database credentials, agent and web settings) with defaults; HMAC secret generated via `openssl rand -hex 32`.
-  - Host agent deployment with path patching, `config/config.json` generation, systemd service installation/enable/start, and health check.
-  - Web application deployment with Tailwind CSS and Chart.js asset download, `conf/config.json` generation.
-  - Customised `docker-compose.yml` generated from collected values, displayed to the user, with optional `docker compose up -d`.
-  - Database schema and migrations applied via `docker exec` after MariaDB health confirmation.
-  - Optional OIDC/SSO configuration (provider URL, client credentials, redirect URI, SSL/CA cert path).
-  - Optional email failure notification configuration (SMTP host, port, credentials, encryption).
-  - Summary with all paths, management commands, web UI URL and the generated HMAC secret.
-- README: added *Guided Setup (Recommended)* section with step-by-step table, directly before the existing Quick Start section.
+- **README: Guided Setup section with one-command download and run example** – New `## Guided Setup (Recommended)` section added before Quick Start. Includes a single `curl … | sudo bash` command to download and execute the setup script directly from GitHub, a "review before run" alternative, and a step table describing what the script does.
 
 ---
 

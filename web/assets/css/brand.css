@@ -1,0 +1,421 @@
+/**
+ * Cronmanager Web UI – Brand CSS  (v2 · Light + Dark Mode)
+ *
+ * Defines the Cronmanager design system: CSS custom properties, base styles,
+ * Tailwind utility-class overrides, and brand-specific component helpers.
+ * Both modes use the same gradient brand — only the context changes.
+ *
+ * Rules use !important throughout to beat Tailwind's generated specificity.
+ *
+ * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+ * @license GNU General Public License version 3 or later
+ */
+
+/* ── Google Fonts ─────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1. MARKENFARBEN — modusunabhängig, niemals überschreiben
+══════════════════════════════════════════════════════════════════════════ */
+:root {
+    --cm-violet:  #c084fc;
+    --cm-indigo:  #818cf8;
+    --cm-sky:     #38bdf8;
+    --cm-grad:    linear-gradient(135deg, #c084fc, #818cf8, #38bdf8);
+
+    --cm-success: #34d399;
+    --cm-danger:  #f87171;
+    --cm-warning: #fbbf24;
+    --cm-info:    #38bdf8;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   2. DARK MODE — Standard/Fallback (dark ist der primäre Modus)
+══════════════════════════════════════════════════════════════════════════ */
+:root,
+.theme-dark {
+    --cm-bg-deep:      #080812;
+    --cm-bg-dark:      #0d0d1f;
+    --cm-bg-card:      #12122a;
+    --cm-bg-elevated:  #17173a;
+    --cm-border:       #1e1e40;
+    --cm-border-focus: #818cf8;
+
+    --cm-text:   #f0f0ff;
+    --cm-muted:  #8888bb;
+    --cm-faint:  #44446a;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   3. LIGHT MODE — OS-Präferenz (ohne manuellen Override)
+══════════════════════════════════════════════════════════════════════════ */
+@media (prefers-color-scheme: light) {
+    :root:not(.theme-dark) {
+        --cm-bg-deep:      #f4f4fb;
+        --cm-bg-dark:      #ffffff;
+        --cm-bg-card:      #ffffff;
+        --cm-bg-elevated:  #f0f2ff;
+        --cm-border:       #ddddf0;
+        --cm-border-focus: #818cf8;
+
+        --cm-text:  #1a1a2e;
+        --cm-muted: #5a5a80;
+        --cm-faint: #9090b8;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   4. LIGHT MODE — manueller Toggle (.theme-light auf <html>)
+══════════════════════════════════════════════════════════════════════════ */
+.theme-light {
+    --cm-bg-deep:      #f4f4fb;
+    --cm-bg-dark:      #ffffff;
+    --cm-bg-card:      #ffffff;
+    --cm-bg-elevated:  #f0f2ff;
+    --cm-border:       #ddddf0;
+    --cm-border-focus: #818cf8;
+
+    --cm-text:  #1a1a2e;
+    --cm-muted: #5a5a80;
+    --cm-faint: #9090b8;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   5. BASIS
+══════════════════════════════════════════════════════════════════════════ */
+html,
+body {
+    background-color: var(--cm-bg-deep) !important;
+    color:            var(--cm-text)    !important;
+    font-family:      'Outfit', system-ui, sans-serif !important;
+    transition:       background-color .25s ease, color .25s ease;
+}
+
+code,
+pre,
+.font-mono,
+kbd,
+samp {
+    font-family: 'JetBrains Mono', monospace !important;
+    color:       var(--cm-sky) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   6. TAILWIND BACKGROUND-KLASSEN ÜBERSCHREIBEN
+   (keine dark:-Präfixe mehr — alles über CSS-Variablen)
+══════════════════════════════════════════════════════════════════════════ */
+
+/* Strukturelle Hintergründe */
+body.bg-gray-100  { background-color: var(--cm-bg-deep) !important; }
+.bg-gray-900      { background-color: var(--cm-bg-deep) !important; }
+.bg-gray-800      { background-color: var(--cm-bg-dark) !important; }
+.bg-gray-950      { background-color: var(--cm-bg-dark) !important; }
+.bg-gray-700      { background-color: var(--cm-bg-elevated) !important; }
+.bg-gray-50       { background-color: var(--cm-bg-dark) !important; }
+.bg-white         { background-color: var(--cm-bg-card) !important; }
+
+/* Light-Mode: Karten mit leichtem Schatten für Tiefe */
+.theme-light .bg-white,
+.theme-light .bg-gray-800 {
+    box-shadow: 0 1px 4px rgba(129,140,248,.07) !important;
+}
+
+/* Status-Hintergründe */
+.bg-green-100  { background-color: rgba(52,211,153,.12)  !important; }
+.bg-red-100    { background-color: rgba(248,113,113,.12) !important; }
+.bg-red-50     { background-color: rgba(248,113,113,.08) !important; }
+.bg-yellow-100 { background-color: rgba(251,191,36,.12)  !important; }
+.bg-purple-100 { background-color: rgba(192,132,252,.12) !important; }
+.bg-blue-100   { background-color: rgba(129,140,248,.12) !important; }
+.bg-blue-50    { background-color: rgba(129,140,248,.08) !important; }
+.bg-indigo-50  { background-color: rgba(129,140,248,.08) !important; }
+
+/* Primary-Button-Hintergrund */
+.bg-blue-600               { background: var(--cm-grad) !important; border: none !important; }
+.hover\:bg-blue-700:hover  { background: var(--cm-violet) !important; }
+
+/* Gray-Interactive */
+.bg-gray-600               { background-color: rgba(136,136,187,.15) !important; }
+.hover\:bg-gray-700:hover  { background-color: rgba(129,140,248,.08) !important; }
+.hover\:bg-gray-800:hover  { background-color: rgba(129,140,248,.12) !important; }
+
+/* Indigo-Hover */
+.hover\:bg-indigo-100:hover { background-color: rgba(129,140,248,.14) !important; }
+.hover\:bg-indigo-100       { background-color: rgba(129,140,248,.08) !important; }
+
+/* Red-Interactive */
+.hover\:bg-red-100:hover { background-color: rgba(248,113,113,.14) !important; }
+.hover\:bg-red-100       { background-color: rgba(248,113,113,.08) !important; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   7. TAILWIND TEXT-KLASSEN ÜBERSCHREIBEN
+══════════════════════════════════════════════════════════════════════════ */
+.text-gray-900  { color: var(--cm-text)  !important; }
+.text-gray-800  { color: var(--cm-text)  !important; }
+.text-gray-700  { color: var(--cm-muted) !important; }
+.text-gray-600  { color: var(--cm-muted) !important; }
+.text-gray-500  { color: var(--cm-faint) !important; }
+.text-gray-400  { color: var(--cm-faint) !important; }
+.text-gray-300  { color: var(--cm-muted) !important; }
+
+.text-blue-600   { color: var(--cm-indigo)  !important; }
+.text-blue-500   { color: var(--cm-indigo)  !important; }
+.text-blue-800   { color: var(--cm-indigo)  !important; }
+.text-green-600  { color: var(--cm-success) !important; }
+.text-green-800  { color: var(--cm-success) !important; }
+.text-red-700    { color: var(--cm-danger)  !important; }
+.text-red-800    { color: var(--cm-danger)  !important; }
+.text-red-600    { color: var(--cm-danger)  !important; }
+.text-yellow-800 { color: var(--cm-warning) !important; }
+.text-yellow-600 { color: var(--cm-warning) !important; }
+.text-purple-800 { color: var(--cm-violet)  !important; }
+.text-purple-700 { color: var(--cm-violet)  !important; }
+.text-indigo-700 { color: var(--cm-indigo)  !important; }
+
+.hover\:text-blue-800:hover { color: var(--cm-violet) !important; }
+.hover\:text-white:hover    { color: var(--cm-text)   !important; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   8. TAILWIND BORDER-KLASSEN ÜBERSCHREIBEN
+══════════════════════════════════════════════════════════════════════════ */
+.border-gray-200  { border-color: var(--cm-border) !important; }
+.border-gray-300  { border-color: var(--cm-border) !important; }
+.border-gray-600  { border-color: var(--cm-border) !important; }
+.border-gray-700  { border-color: var(--cm-border) !important; }
+.border-gray-800  { border-color: var(--cm-border) !important; }
+.border-red-300   { border-color: rgba(248,113,113,.25) !important; }
+.border-red-200   { border-color: rgba(248,113,113,.2)  !important; }
+.border-blue-200  { border-color: rgba(129,140,248,.2)  !important; }
+.border-indigo-200 { border-color: rgba(129,140,248,.2) !important; }
+
+.divide-gray-100 > * + * { border-color: var(--cm-border) !important; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   9. FOCUS-RING
+══════════════════════════════════════════════════════════════════════════ */
+.focus\:ring-blue-500:focus   { --tw-ring-color: var(--cm-border-focus) !important; }
+.focus\:ring-gray-500:focus   { --tw-ring-color: var(--cm-border)       !important; }
+.focus\:ring-indigo-400:focus { --tw-ring-color: var(--cm-border-focus) !important; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   10. SELECT / DROPDOWN — Lesbarkeit in beiden Modi
+══════════════════════════════════════════════════════════════════════════ */
+/*
+ * Inputs und Selects: im Dark-Mode dunkler Hintergrund, im Light-Mode
+ * leicht abgehobener Hintergrund für Tiefe (var(--cm-bg-deep) = #f4f4fb).
+ * Browser-native <option>-Elemente erben die Farben.
+ */
+select {
+    background-color: var(--cm-bg-deep) !important;
+    color:            var(--cm-text)    !important;
+    border-color:     var(--cm-border)  !important;
+}
+
+select option {
+    background-color: var(--cm-bg-deep) !important;
+    color:            var(--cm-text)    !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   11. NAVIGATION
+══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Aktiver Navigationslink – identisch in beiden Modi (Gradient-Hintergrund).
+ */
+.cm-nav-active {
+    color:      var(--cm-text)   !important;
+    background: rgba(129,140,248,.15) !important;
+    border:     1px solid rgba(129,140,248,.2) !important;
+    text-decoration: none;
+}
+
+/**
+ * Inaktiver Navigationslink.
+ */
+.cm-nav-link {
+    color:           var(--cm-muted);
+    text-decoration: none;
+    transition:      color .15s, background .15s;
+}
+.cm-nav-link:hover {
+    color:      var(--cm-text) !important;
+    background: rgba(129,140,248,.1) !important;
+}
+
+/**
+ * Kleine Buttons in der Navigationsleiste (Sprache, Logout).
+ */
+.cm-nav-btn {
+    color:        var(--cm-muted);
+    border:       1px solid var(--cm-border);
+    border-radius: 8px;
+    text-decoration: none;
+    transition:   color .15s, border-color .15s, background .15s;
+}
+.cm-nav-btn:hover {
+    color:        var(--cm-text) !important;
+    border-color: var(--cm-indigo) !important;
+    background:   rgba(129,140,248,.08) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   12. THEME-TOGGLE BUTTON
+══════════════════════════════════════════════════════════════════════════ */
+.cm-theme-toggle {
+    width:           36px;
+    height:          36px;
+    border-radius:   8px;
+    border:          1px solid var(--cm-border);
+    background:      transparent;
+    cursor:          pointer;
+    display:         flex;
+    align-items:     center;
+    justify-content: center;
+    font-size:       16px;
+    color:           var(--cm-muted);
+    transition:      border-color .2s ease, background .2s ease, color .2s ease;
+    flex-shrink:     0;
+    padding:         0;
+    line-height:     1;
+}
+.cm-theme-toggle:hover {
+    border-color: var(--cm-indigo);
+    background:   rgba(129,140,248,.08);
+    color:        var(--cm-text);
+}
+
+/* Icon-Sichtbarkeit je nach aktivem Modus */
+.theme-dark  .icon-sun  { display: inline; }
+.theme-dark  .icon-moon { display: none;   }
+.theme-light .icon-sun  { display: none;   }
+.theme-light .icon-moon { display: inline; }
+
+/* Fallback wenn kein Modus gesetzt (vor IIFE) — Dark ist Standard */
+html:not(.theme-light) .icon-sun  { display: inline; }
+html:not(.theme-light) .icon-moon { display: none;   }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   13. STATUS-BADGES (modusunabhängig — eigene Farben)
+══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Basis-Badge: JetBrains Mono, klein, Pill-Form.
+ */
+.cm-badge {
+    display:      inline-flex;
+    align-items:  center;
+    font-family:  'JetBrains Mono', monospace;
+    font-size:    11px;
+    font-weight:  600;
+    padding:      4px 10px;
+    border-radius:6px;
+    white-space:  nowrap;
+    border:       1px solid transparent;
+}
+
+.cm-badge-success {
+    background: rgba(52,211,153,.12);
+    color:      var(--cm-success);
+    border-color: rgba(52,211,153,.2);
+}
+.cm-badge-running {
+    background: rgba(129,140,248,.12);
+    color:      var(--cm-indigo);
+    border-color: rgba(129,140,248,.2);
+}
+.cm-badge-danger {
+    background: rgba(248,113,113,.12);
+    color:      var(--cm-danger);
+    border-color: rgba(248,113,113,.2);
+}
+.cm-badge-pending {
+    background: rgba(251,191,36,.12);
+    color:      var(--cm-warning);
+    border-color: rgba(251,191,36,.2);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   14. BUTTONS
+══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Primary CTA: Gradient-Hintergrund, weißer Text — gleich in beiden Modi.
+ */
+.cm-btn-primary {
+    display:         inline-flex;
+    align-items:     center;
+    gap:             0.5rem;
+    background:      var(--cm-grad);
+    border:          none;
+    color:           #fff;
+    font-weight:     600;
+    border-radius:   10px;
+    padding:         10px 22px;
+    font-size:       0.875rem;
+    cursor:          pointer;
+    transition:      opacity .15s;
+    text-decoration: none;
+}
+.cm-btn-primary:hover  { opacity: 0.88; }
+.cm-btn-primary:active { opacity: 0.75; }
+
+/**
+ * Ghost: transparenter Hintergrund, gedämpfte Border — sekundäre Aktionen.
+ */
+.cm-btn-ghost {
+    display:         inline-flex;
+    align-items:     center;
+    gap:             0.5rem;
+    background:      transparent;
+    border:          1px solid var(--cm-border);
+    color:           var(--cm-muted);
+    font-weight:     500;
+    border-radius:   10px;
+    padding:         10px 22px;
+    font-size:       0.875rem;
+    cursor:          pointer;
+    transition:      border-color .15s, color .15s, background .15s;
+    text-decoration: none;
+}
+.cm-btn-ghost:hover {
+    border-color: var(--cm-indigo);
+    color:        var(--cm-text);
+    background:   rgba(129,140,248,.06);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   15. CARDS
+══════════════════════════════════════════════════════════════════════════ */
+.cm-card {
+    background:    var(--cm-bg-card);
+    border:        1px solid var(--cm-border);
+    border-radius: 14px;
+    padding:       24px;
+    transition:    background-color .25s ease, border-color .25s ease;
+}
+.theme-light .cm-card {
+    box-shadow: 0 1px 4px rgba(129,140,248,.07);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   16. GRADIENT-TEXT (nur Seitentitel, Logo, Hero)
+══════════════════════════════════════════════════════════════════════════ */
+.cm-gradient-text,
+.cm-app-name {
+    background:              var(--cm-grad);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip:         text;
+}
+.cm-app-name {
+    font-weight: 700;
+    font-size:   1.125rem;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   17. SWIMLANE NOW-LINE
+══════════════════════════════════════════════════════════════════════════ */
+.sw-now-line {
+    background: linear-gradient(to bottom, rgba(192,132,252,.5), var(--cm-violet)) !important;
+}

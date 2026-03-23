@@ -44,37 +44,24 @@ $timings          = isset($timings)          ? (array)  $timings          : [];
 /* These cannot be expressed as Tailwind utilities because they involve        */
 /* dynamic percentage positions set by JS and custom colour tokens.            */
 
-/* Light mode defaults */
-.sw-labels      { background: #ffffff; border-right-color: #e5e7eb; }
-.sw-axis        { background: #f9fafb; border-bottom-color: #d1d5db; }
-.sw-axis-pad    { background: #ffffff; border-bottom-color: #e5e7eb; }
-.sw-job-hdr-lbl { background: #ffffff; border-bottom-color: #e5e7eb; color: #111827; }
-.sw-target-lbl  { background: #f9fafb; border-top-color: #f3f4f6; color: #6b7280; }
-.sw-tl-row-even { background: #ffffff; border-top-color: #f3f4f6; }
-.sw-tl-row-odd  { background: #f9fafb; border-top-color: #f3f4f6; }
-.sw-tl-row:hover { background: #eff6ff !important; }
-.sw-job-tl-hdr  { background: #f3f4f6; border-bottom-color: #e5e7eb; }
-.sw-job-block   { border-bottom-color: #e5e7eb; }
-.sw-tick-time   { color: #6b7280; }
-.sw-tick-major .sw-tick-time { color: #374151; }
-.sw-grid-major  { background: #e5e7eb; }
-.sw-grid-minor  { background: #f3f4f6; }
+/* Brand-token colours (dark-first; no light-mode overrides needed) */
+.sw-labels      { background: var(--cm-bg-card); border-right-color: var(--cm-border); }
+.sw-axis        { background: var(--cm-bg-dark);  border-bottom-color: var(--cm-border); }
+.sw-axis-pad    { background: var(--cm-bg-card);  border-bottom-color: var(--cm-border); }
+.sw-job-hdr-lbl { background: var(--cm-bg-card);  border-bottom-color: var(--cm-border); color: var(--cm-text); }
+.sw-target-lbl  { background: var(--cm-bg-dark);  border-top-color: var(--cm-border);    color: var(--cm-muted); }
+.sw-tl-row-even { background: var(--cm-bg-card);  border-top-color: var(--cm-border); }
+.sw-tl-row-odd  { background: var(--cm-bg-dark);  border-top-color: var(--cm-border); }
+.sw-tl-row:hover { background: rgba(129,140,248,.06) !important; }
+.sw-job-tl-hdr  { background: var(--cm-bg-deep);  border-bottom-color: var(--cm-border); }
+.sw-job-block   { border-bottom-color: var(--cm-border); }
+.sw-tick-time   { color: var(--cm-faint); }
+.sw-tick-major .sw-tick-time { color: var(--cm-muted); }
+.sw-grid-major  { background: var(--cm-border); }
+.sw-grid-minor  { background: rgba(30,30,64,.5); }
 
-/* Dark mode overrides via .dark parent class */
-.dark .sw-labels      { background: #1e293b; border-right-color: #334155; }
-.dark .sw-axis        { background: #0f172a; border-bottom-color: #334155; }
-.dark .sw-axis-pad    { background: #1e293b; border-bottom-color: #334155; }
-.dark .sw-job-hdr-lbl { background: #1e293b; border-bottom-color: #1a2535; color: #f1f5f9; }
-.dark .sw-target-lbl  { background: #192334; border-top-color: #0f172a; color: #94a3b8; }
-.dark .sw-tl-row-even { background: #0c1826; border-top-color: #0d1a28; }
-.dark .sw-tl-row-odd  { background: #0e1c2c; border-top-color: #0d1a28; }
-.dark .sw-tl-row:hover { background: #14273a !important; }
-.dark .sw-job-tl-hdr  { background: #0a1525; border-bottom-color: #0f1e2e; }
-.dark .sw-job-block   { border-bottom-color: #0f172a; }
-.dark .sw-tick-time   { color: #64748b; }
-.dark .sw-tick-major .sw-tick-time { color: #7c94af; }
-.dark .sw-grid-major  { background: #1a2c3e; }
-.dark .sw-grid-minor  { background: #111e2b; }
+/* Dark mode — same as base since brand is always dark */
+/* (no overrides needed; variables already use dark values) */
 
 /* Layout */
 .sw-wrapper {
@@ -118,12 +105,11 @@ $timings          = isset($timings)          ? (array)  $timings          : [];
 .sw-job-hdr-lbl .sw-cron {
     margin-left: auto;
     font-size: 0.62rem;
-    font-family: 'Courier New', monospace;
-    color: #6b7280;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    color: var(--cm-faint);
     flex-shrink: 0;
     white-space: nowrap;
 }
-.dark .sw-job-hdr-lbl .sw-cron { color: #475569; }
 .sw-tag-badge {
     font-size: 0.6rem;
     padding: 1px 6px;
@@ -190,7 +176,7 @@ $timings          = isset($timings)          ? (array)  $timings          : [];
     top: 44px;
     bottom: 0;
     width: 2px;
-    background: linear-gradient(to bottom, #f59e0b88, #d97706);
+    background: linear-gradient(to bottom, rgba(192,132,252,.55), var(--cm-violet));
     z-index: 8;
     pointer-events: none;
 }
@@ -200,16 +186,14 @@ $timings          = isset($timings)          ? (array)  $timings          : [];
     left: 50%;
     transform: translateX(-50%);
     font-size: 0.6rem;
-    color: #f59e0b;
+    color: var(--cm-violet);
     font-weight: 700;
     white-space: nowrap;
     padding: 1px 4px;
     border-radius: 3px;
-    border: 1px solid #92400e;
+    border: 1px solid rgba(192,132,252,.3);
+    background: var(--cm-bg-dark);
 }
-.dark  .sw-now-cap { background: #0f172a; }
-.light .sw-now-cap { background: #f9fafb; }
-.sw-now-cap:not(.dark .sw-now-line .sw-now-cap) { background: #f9fafb; }
 
 .sw-job-tl-hdr {
     height: 30px;
@@ -244,14 +228,15 @@ $timings          = isset($timings)          ? (array)  $timings          : [];
 
 <!-- ── Page title ──────────────────────────────────────────────────────────── -->
 <div class="mb-4 flex items-center justify-between">
-    <h1 class="text-2xl font-bold text-gray-800 dark:text-white">
+    <h1 class="text-2xl font-bold cm-gradient-text">
         <?= $t('swimlane_title') ?>
     </h1>
 </div>
 
 <!-- ── Filter bar ─────────────────────────────────────────────────────────── -->
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow px-4 py-3 mb-3
-            flex flex-wrap gap-x-4 gap-y-2 items-center">
+            flex flex-wrap gap-x-4 gap-y-2 items-center"
+     style="background:var(--cm-bg-card);border-color:var(--cm-border)">
 
     <!-- From hour -->
     <div class="flex items-center gap-2">
@@ -351,7 +336,8 @@ $timings          = isset($timings)          ? (array)  $timings          : [];
 </div>
 
 <!-- ── Swimlane card ──────────────────────────────────────────────────────── -->
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden"
+     style="background:var(--cm-bg-card);border-color:var(--cm-border)">
 
     <!-- Info bar -->
     <div class="px-4 py-2 text-xs border-b border-gray-200 dark:border-gray-700
@@ -360,7 +346,7 @@ $timings          = isset($timings)          ? (array)  $timings          : [];
         <span id="lblRange"></span>
         <span id="lblDay"></span>
         <span id="lblCount" class="text-gray-400 dark:text-gray-500"></span>
-        <span id="lblNext" class="ml-auto text-blue-500 dark:text-blue-400 font-medium"></span>
+        <span id="lblNext" class="ml-auto font-medium" style="color:var(--cm-indigo)"></span>
     </div>
 
     <!-- Swimlane -->
@@ -393,10 +379,10 @@ $timings          = isset($timings)          ? (array)  $timings          : [];
 
 <!-- ── Tooltip ────────────────────────────────────────────────────────────── -->
 <div id="swTip"
-     class="fixed z-50 hidden bg-white dark:bg-gray-900
-            border border-gray-200 dark:border-gray-700
-            rounded-lg shadow-xl px-4 py-3 text-sm
-            pointer-events-none min-w-[210px] max-w-[280px]">
+     class="fixed z-50 hidden
+            border rounded-lg shadow-xl px-4 py-3 text-sm
+            pointer-events-none min-w-[210px] max-w-[280px]"
+     style="background:var(--cm-bg-card);border-color:var(--cm-border);color:var(--cm-muted)">
 </div>
 
 <!-- ── Swimlane JavaScript ────────────────────────────────────────────────── -->
@@ -796,7 +782,7 @@ function showTip(e) {
 }
 function row(lbl, val) {
     return '<div style="display:flex;justify-content:space-between;gap:12px;margin-top:3px">' +
-               '<span style="color:#6b7280">' + lbl + '</span>' +
+               '<span style="color:var(--cm-faint)">' + lbl + '</span>' +
                '<span>' + val + '</span>' +
            '</div>';
 }

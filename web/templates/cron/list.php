@@ -393,14 +393,16 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
 
                             <!-- Admin actions -->
                             <?php if ($isAdmin): ?>
-                                <td class="px-4 py-3 text-sm">
-                                    <div class="flex items-center gap-2">
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <div class="flex items-center gap-1.5">
                                         <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/edit?_return=<?= htmlspecialchars(rawurlencode($pageUrl($currentPage)), ENT_QUOTES, 'UTF-8') ?>"
-                                           class="text-blue-600 hover:text-blue-800 text-sm font-medium transition">
+                                           class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold transition"
+                                           style="background:rgba(129,140,248,.12);color:var(--cm-indigo);border:1px solid rgba(129,140,248,.2)">
                                             <?= htmlspecialchars($t('cron_edit'), ENT_QUOTES, 'UTF-8') ?>
                                         </a>
                                         <a href="/crons/new?copy_from=<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>&_return=<?= htmlspecialchars(rawurlencode($pageUrl($currentPage)), ENT_QUOTES, 'UTF-8') ?>"
-                                           class="text-green-600 hover:text-green-800 text-sm font-medium transition">
+                                           class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold transition"
+                                           style="background:rgba(52,211,153,.1);color:var(--cm-success);border:1px solid rgba(52,211,153,.2)">
                                             <?= htmlspecialchars($t('cron_copy'), ENT_QUOTES, 'UTF-8') ?>
                                         </a>
                                         <form method="POST"
@@ -409,7 +411,8 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                                             <input type="hidden" name="_csrf"   value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
                                             <input type="hidden" name="_return" value="<?= htmlspecialchars($pageUrl($currentPage), ENT_QUOTES, 'UTF-8') ?>">
                                             <button type="submit"
-                                                    class="text-red-600 hover:text-red-800 text-sm font-medium transition">
+                                                    class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold transition"
+                                                    style="background:rgba(248,113,113,.1);color:var(--cm-danger);border:1px solid rgba(248,113,113,.2)">
                                                 <?= htmlspecialchars($t('cron_delete'), ENT_QUOTES, 'UTF-8') ?>
                                             </button>
                                         </form>

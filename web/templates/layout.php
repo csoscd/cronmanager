@@ -48,8 +48,8 @@ if ($user !== null) {
         default => $t('role_view'),
     };
     $roleBadge = match ($user['role'] ?? '') {
-        'admin' => 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-        default => 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+        'admin' => 'cm-badge cm-badge-danger',
+        default => 'cm-badge cm-badge-running',
     };
 }
 
@@ -59,8 +59,8 @@ $navClass = static function (string $path) use ($currentPath): string {
         || ($path !== '/' && str_starts_with($currentPath, $path));
 
     return $isActive
-        ? 'text-white bg-gray-700 dark:bg-gray-600 px-3 py-2 rounded-md text-sm font-medium'
-        : 'text-gray-300 hover:text-white hover:bg-gray-700 dark:hover:bg-gray-600 px-3 py-2 rounded-md text-sm font-medium transition-colors';
+        ? 'cm-nav-active px-3 py-2 rounded-md text-sm font-medium'
+        : 'cm-nav-link px-3 py-2 rounded-md text-sm font-medium';
 };
 ?>
 <!DOCTYPE html>
@@ -70,37 +70,28 @@ $navClass = static function (string $path) use ($currentPath): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?> – <?= htmlspecialchars($t('app_name'), ENT_QUOTES, 'UTF-8') ?></title>
 
-    <!-- Apply dark mode before first paint to prevent flash -->
-    <script>
-    (function () {
-        var stored = localStorage.getItem('darkMode');
-        var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (stored === 'true' || (stored === null && prefersDark)) {
-            document.documentElement.classList.add('dark');
-        }
-        // Configure Tailwind dark mode (must be set before CDN initialises)
-        window.tailwind = window.tailwind || {};
-        window.tailwind.config = { darkMode: 'class' };
-    })();
-    </script>
+    <!-- Theme IIFE: must run before any CSS paints to prevent flash -->
+    <script>(function(){var s=localStorage.getItem('cm-theme'),p=window.matchMedia('(prefers-color-scheme:dark)').matches,t=s||(p?'dark':'light');document.documentElement.classList.add('theme-'+t);})();</script>
     <script src="/assets/js/tailwind.min.js"></script>
-    <script>tailwind.config = { darkMode: 'class' };</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="/assets/css/brand.css">
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 min-h-screen transition-colors duration-200">
+<body class="bg-gray-100 min-h-screen">
 
 <?php if ($user !== null): ?>
     <!-- ------------------------------------------------------------------ -->
     <!-- Top Navigation Bar                                                  -->
     <!-- ------------------------------------------------------------------ -->
-    <nav class="bg-gray-800 dark:bg-gray-950 shadow-md border-b border-gray-700 dark:border-gray-800">
+    <nav class="bg-gray-800 border-b border-gray-700">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
 
                 <!-- Left: App name + nav links -->
                 <div class="flex items-center space-x-4">
                     <!-- App name / logo -->
-                    <a href="/dashboard" class="flex-shrink-0 text-white font-bold text-lg tracking-wide">
-                        <?= htmlspecialchars($t('app_name'), ENT_QUOTES, 'UTF-8') ?>
+                    <a href="/dashboard" class="flex-shrink-0">
+                        <span class="cm-app-name"><?= htmlspecialchars($t('app_name'), ENT_QUOTES, 'UTF-8') ?></span>
                     </a>
 
                     <!-- Nav links -->
@@ -128,49 +119,29 @@ $navClass = static function (string $path) use ($currentPath): string {
                     </div>
                 </div>
 
-                <!-- Right: dark mode toggle, language switch, username, role badge, logout -->
+                <!-- Right: theme toggle, language switch, username, role badge, logout -->
                 <div class="flex items-center space-x-2">
 
-                    <!-- Dark mode toggle button -->
-                    <button id="dark-mode-btn"
-                            onclick="toggleDarkMode()"
-                            title="<?= htmlspecialchars($t('dark_mode_toggle'), ENT_QUOTES, 'UTF-8') ?>"
-                            class="text-gray-300 hover:text-white hover:bg-gray-700 dark:hover:bg-gray-600
-                                   p-2 rounded-md transition-colors focus:outline-none focus:ring-2
-                                   focus:ring-gray-500">
-                        <!-- Sun icon (shown in dark mode) -->
-                        <svg id="icon-sun" class="w-5 h-5 hidden" fill="none" viewBox="0 0 24 24"
-                             stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                  d="M12 3v1m0 16v1m8.66-9h-1M4.34 12h-1m15.07-6.07-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z"/>
-                        </svg>
-                        <!-- Moon icon (shown in light mode) -->
-                        <svg id="icon-moon" class="w-5 h-5" fill="none" viewBox="0 0 24 24"
-                             stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                  d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
-                        </svg>
+                    <!-- Theme toggle -->
+                    <button onclick="cmToggleTheme()" aria-label="Theme wechseln" class="cm-theme-toggle">
+                        <span class="icon-sun">☀️</span>
+                        <span class="icon-moon">🌙</span>
                     </button>
 
                     <!-- Language switch -->
                     <a href="/lang/<?= htmlspecialchars($otherLang, ENT_QUOTES, 'UTF-8') ?>"
                        title="<?= htmlspecialchars($langLabel, ENT_QUOTES, 'UTF-8') ?>"
-                       class="text-gray-300 hover:text-white hover:bg-gray-700 dark:hover:bg-gray-600
-                              px-2.5 py-1.5 rounded-md text-xs font-semibold tracking-wider
-                              border border-gray-600 transition-colors focus:outline-none
-                              focus:ring-2 focus:ring-gray-500">
+                       class="cm-nav-btn px-2.5 py-1.5 text-xs font-semibold tracking-wider">
                         <?= htmlspecialchars($langLabel, ENT_QUOTES, 'UTF-8') ?>
                     </a>
 
                     <span class="text-gray-300 text-sm hidden sm:inline ml-1">
                         <?= htmlspecialchars((string) ($user['username'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
                     </span>
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium <?= $roleBadge ?>">
+                    <span class="<?= $roleBadge ?>">
                         <?= htmlspecialchars($roleLabel, ENT_QUOTES, 'UTF-8') ?>
                     </span>
-                    <a href="/logout"
-                       class="text-gray-300 hover:text-white hover:bg-gray-700 dark:hover:bg-gray-600
-                              px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                    <a href="/logout" class="cm-nav-link px-3 py-2 rounded-md text-sm font-medium">
                         <?= htmlspecialchars($t('logout'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
                 </div>
@@ -178,7 +149,7 @@ $navClass = static function (string $path) use ($currentPath): string {
         </div>
 
         <!-- Mobile menu (simple stack) -->
-        <div class="md:hidden border-t border-gray-700 dark:border-gray-800 px-4 pb-3 pt-2 flex flex-wrap gap-2">
+        <div class="md:hidden border-t border-gray-700 px-4 pb-3 pt-2 flex flex-wrap gap-2">
             <a href="/dashboard" class="<?= $navClass('/dashboard') ?>"><?= htmlspecialchars($t('nav_dashboard'), ENT_QUOTES, 'UTF-8') ?></a>
             <a href="/crons"     class="<?= $navClass('/crons') ?>"><?= htmlspecialchars($t('nav_crons'), ENT_QUOTES, 'UTF-8') ?></a>
             <a href="/timeline"  class="<?= $navClass('/timeline') ?>"><?= htmlspecialchars($t('nav_timeline'), ENT_QUOTES, 'UTF-8') ?></a>
@@ -198,32 +169,15 @@ $navClass = static function (string $path) use ($currentPath): string {
     <?= $content ?>
 </main>
 
+
 <script>
-/**
- * Initialise the dark mode icon state to match the current HTML class.
- * Called once on page load and after each toggle.
- */
-function updateDarkModeIcons() {
-    var isDark = document.documentElement.classList.contains('dark');
-    var sun  = document.getElementById('icon-sun');
-    var moon = document.getElementById('icon-moon');
-    if (sun)  sun.classList.toggle('hidden', !isDark);
-    if (moon) moon.classList.toggle('hidden',  isDark);
+function cmToggleTheme() {
+    var el = document.documentElement;
+    var isDark = el.classList.contains('theme-dark');
+    el.classList.toggle('theme-dark',  !isDark);
+    el.classList.toggle('theme-light',  isDark);
+    localStorage.setItem('cm-theme', isDark ? 'light' : 'dark');
 }
-
-/**
- * Toggle dark mode on/off, persist the preference in localStorage.
- */
-function toggleDarkMode() {
-    var html   = document.documentElement;
-    var isDark = html.classList.toggle('dark');
-    localStorage.setItem('darkMode', isDark ? 'true' : 'false');
-    updateDarkModeIcons();
-}
-
-// Set correct icon on initial load
-updateDarkModeIcons();
 </script>
-
 </body>
 </html>

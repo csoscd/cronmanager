@@ -66,16 +66,19 @@ blank() { echo; }
 
 # ── Interactive input helpers ─────────────────────────────────────────────────
 
+# All read calls use </dev/tty so the script works correctly when launched
+# via curl | bash (where stdin is the pipe, not the terminal).
+
 # ask VARNAME "Prompt" "default"
 ask() {
     local _var="$1" _prompt="$2" _default="${3:-}" _input
     if [[ -n "$_default" ]]; then
-        read -r -p "  ${BOLD}${_prompt}${NC} [${_default}]: " _input
+        read -r -p "  ${BOLD}${_prompt}${NC} [${_default}]: " _input < /dev/tty
         _input="${_input:-$_default}"
     else
         _input=""
         while [[ -z "$_input" ]]; do
-            read -r -p "  ${BOLD}${_prompt}${NC}: " _input
+            read -r -p "  ${BOLD}${_prompt}${NC}: " _input < /dev/tty
             [[ -z "$_input" ]] && warn "This field is required."
         done
     fi
@@ -86,7 +89,7 @@ ask() {
 ask_secret() {
     local _var="$1" _prompt="$2" _input=""
     while [[ -z "$_input" ]]; do
-        read -r -s -p "  ${BOLD}${_prompt}${NC}: " _input; echo
+        read -r -s -p "  ${BOLD}${_prompt}${NC}: " _input < /dev/tty; echo
         [[ -z "$_input" ]] && warn "This field is required."
     done
     printf -v "$_var" '%s' "$_input"
@@ -96,7 +99,7 @@ ask_secret() {
 ask_yn() {
     local _var="$1" _prompt="$2" _default="${3:-yes}" _input _hint
     [[ "$_default" == "yes" ]] && _hint="Y/n" || _hint="y/N"
-    read -r -p "  ${BOLD}${_prompt}${NC} [${_hint}]: " _input
+    read -r -p "  ${BOLD}${_prompt}${NC} [${_hint}]: " _input < /dev/tty
     _input="${_input:-$_default}"
     if [[ "${_input,,}" == "y" || "${_input,,}" == "yes" ]]; then
         printf -v "$_var" 'yes'
@@ -114,7 +117,7 @@ ask_choice() {
         echo -e "    $((_i+1))) ${_opts[$_i]}"
     done
     while [[ "$_valid" == false ]]; do
-        read -r -p "  Choice [1]: " _input
+        read -r -p "  Choice [1]: " _input < /dev/tty
         _input="${_input:-1}"
         if [[ "$_input" =~ ^[0-9]+$ ]] && (( _input >= 1 && _input <= ${#_opts[@]} )); then
             printf -v "$_var" '%s' "${_opts[$((_input-1))]}"
@@ -210,7 +213,7 @@ blank
 echo "    1) This machine (local)"
 echo "    2) A remote server via SSH"
 blank
-read -r -p "  ${BOLD}Target${NC} [1]: " _target_choice
+read -r -p "  ${BOLD}Target${NC} [1]: " _target_choice < /dev/tty
 _target_choice="${_target_choice:-1}"
 
 if [[ "$_target_choice" == "2" ]]; then

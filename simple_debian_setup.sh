@@ -624,6 +624,12 @@ for _dir in \
     ok "Created: $_dir"
 done
 
+# The web log and conf directories are read/written by the nobody user inside the container
+step "Setting ownership of web log and conf directories..."
+target_exec "chown nobody:nogroup '${WEB_LOG}' '${WEB_CONF}'" \
+    || warn_continue "Failed to set ownership on web directories."
+ok "Ownership set: ${WEB_LOG}, ${WEB_CONF} → nobody:nogroup"
+
 # ═════════════════════════════════════════════════════════════════════════════
 #  10. DEPLOY AGENT FILES
 # ═════════════════════════════════════════════════════════════════════════════
@@ -836,6 +842,7 @@ target_write "${WEB_CONF}/config.json" < "$_web_conf_tmp" \
 rm -f "$_web_conf_tmp"
 
 target_exec "chmod 640 '${WEB_CONF}/config.json'" 2>/dev/null || true
+target_exec "chown nobody:nogroup '${WEB_CONF}/config.json'" 2>/dev/null || true
 ok "Web config.json written."
 
 # ═════════════════════════════════════════════════════════════════════════════

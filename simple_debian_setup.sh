@@ -635,22 +635,13 @@ target_copy "$CLONE_DIR/agent/" "$AGENT_DIR/" \
     || warn_continue "Failed to copy agent files to ${AGENT_DIR}."
 ok "Agent files deployed."
 
-step "Patching hardcoded paths in agent scripts..."
-for _file in \
-    "${AGENT_DIR}/bin/start-agent.sh" \
-    "${AGENT_DIR}/bin/cron-wrapper.sh" \
-    "${AGENT_DIR}/bin/send-notification.php" \
-    "${AGENT_DIR}/bin/create-admin.php" \
-    "${AGENT_DIR}/agent.php"; do
-    target_exec "
-        test -f '$_file' || exit 0
-        sed -i \
-            -e 's|/opt/phpscripts/cronmanager/agent|${AGENT_DIR}|g' \
-            -e 's|/opt/phplib|${PHPLIB_DIR}|g' \
-            '$_file'
-        chmod +x '$_file' 2>/dev/null || true
-    " || warn_continue "Failed to patch paths in: $_file"
-done
+step "Patching hardcoded paths in all agent files..."
+target_exec "find '${AGENT_DIR}' \( -name '*.php' -o -name '*.sh' -o -name '*.sql' \) \
+    -exec sed -i \
+        -e 's|/opt/phpscripts/cronmanager/agent|${AGENT_DIR}|g' \
+        -e 's|/opt/phplib|${PHPLIB_DIR}|g' \
+    {} \;" || warn_continue "Failed to patch hardcoded paths in agent files."
+target_exec "chmod +x '${AGENT_DIR}/bin/'*.sh 2>/dev/null || true"
 ok "Paths patched."
 
 # Write agent config.json – generated locally via Python, written to target

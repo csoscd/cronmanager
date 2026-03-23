@@ -20,7 +20,6 @@
 # =============================================================================
 
 set -uo pipefail
-IFS=$'\n\t'
 
 SCRIPT_VERSION="1.1.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -312,7 +311,7 @@ else
         step "Updating package index on target..."
         target_exec "apt-get update -qq" || die "apt-get update failed."
 
-        _pkgs="${MISSING_PKGS[*]}"
+        _pkgs=$(printf '%s ' "${MISSING_PKGS[@]}")
         step "Installing: ${_pkgs}"
         target_exec "DEBIAN_FRONTEND=noninteractive apt-get install -y ${_pkgs}" \
             || die "Package installation failed."

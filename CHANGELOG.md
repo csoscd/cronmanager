@@ -25,6 +25,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `pathfix`
+
+### Fixed
+
+- **Agent config path not found after installation** – Path patching only replaced hardcoded `/opt/phpscripts/cronmanager/agent` in a small explicit list of files (`agent.php`, `bin/*`). Files under `src/` (e.g. `src/Database/Connection.php`, `src/Bootstrap.php`) and SQL migrations were skipped, so the agent still referenced the old default path at runtime. Fixed by replacing the explicit file list with a `find` across all `*.php`, `*.sh`, and `*.sql` files in the agent directory.
+
+---
+
 ## [Unreleased] – branch: `monitor_filter`
 
 ### Added

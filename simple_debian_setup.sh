@@ -52,7 +52,15 @@ info()  { echo -e "  ${BLUE}→${NC}  $*"; }
 ok()    { echo -e "  ${GREEN}✔${NC}  $*"; }
 warn()  { echo -e "  ${YELLOW}⚠${NC}  $*"; }
 error() { echo -e "  ${RED}✘${NC}  $*" >&2; }
-die()   { error "$*"; exit 1; }
+die()            { error "$*"; exit 1; }
+# warn_continue: show an error and ask the user whether to continue or abort.
+# Use this instead of die() for recoverable operational failures.
+warn_continue()  {
+    error "$*"
+    ask_yn _wc_cont "Continue despite this error?" "no"
+    [[ "$_wc_cont" == "no" ]] && exit 1
+    return 0
+}
 sep()   { echo -e "  ${CYAN}──────────────────────────────────────────────────${NC}"; }
 blank() { echo; }
 
@@ -309,17 +317,17 @@ else
 
     if [[ "$INSTALL_PKGS" == "yes" ]]; then
         step "Updating package index on target..."
-        target_exec "apt-get update -qq" || die "apt-get update failed."
+        target_exec "apt-get update -qq" || warn_continue "apt-get update failed."
 
         _pkgs=$(printf '%s ' "${MISSING_PKGS[@]}")
         step "Installing: ${_pkgs}"
         target_exec "DEBIAN_FRONTEND=noninteractive apt-get install -y ${_pkgs}" \
-            || die "Package installation failed."
+            || warn_continue "Package installation failed. Some packages may be missing."
         ok "All packages installed."
 
         for _ext in pdo_mysql mbstring curl; do
             target_exec "php -m 2>/dev/null | grep -qi '^${_ext}\$'" \
-                || die "PHP extension ${_ext} still unavailable. Check your PHP setup."
+                || warn_continue "PHP extension ${_ext} still unavailable. Check your PHP setup."
         done
     else
         die "Cannot continue without required packages."
@@ -367,7 +375,7 @@ else
         step "Downloading and installing Composer on target..."
         target_exec \
             "curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer --quiet" \
-            || die "Composer installation failed."
+            || warn_continue "Composer installation failed."
         COMPOSER_BIN="/usr/local/bin/composer"
         ok "Composer installed."
     else
@@ -449,7 +457,7 @@ PYEOF
 
         step "Running composer install on target..."
         target_exec "${COMPOSER_BIN} install --no-dev --optimize-autoloader --working-dir='${PHPLIB_DIR}'" \
-            || die "composer install failed."
+            || warn_continue "composer install failed."
         ok "PHP libraries installed."
     else
         die "Cannot continue without required PHP libraries."
@@ -607,7 +615,7 @@ for _dir in \
     "$AGENT_DIR" "$AGENT_DIR/config" "$AGENT_DIR/bin" "$AGENT_DIR/log" \
     "$WEB_WWW" "$WEB_CONF" "$WEB_LOG" \
     "$DB_DATA" "$DB_CONF" "$DB_LOG" "$DB_INIT"; do
-    target_exec "mkdir -p '$_dir'"
+    target_exec "mkdir -p '$_dir'" || warn_continue "Failed to create directory: $_dir"
     ok "Created: $_dir"
 done
 
@@ -618,7 +626,8 @@ done
 header "Step 9 – Deploy Host Agent"
 
 step "Copying agent files to ${AGENT_DIR} on target..."
-target_copy "$CLONE_DIR/agent/" "$AGENT_DIR/"
+target_copy "$CLONE_DIR/agent/" "$AGENT_DIR/" \
+    || warn_continue "Failed to copy agent files to ${AGENT_DIR}."
 ok "Agent files deployed."
 
 step "Patching hardcoded paths in agent scripts..."
@@ -635,18 +644,19 @@ for _file in \
             -e 's|/opt/phplib|${PHPLIB_DIR}|g' \
             '$_file'
         chmod +x '$_file' 2>/dev/null || true
-    "
+    " || warn_continue "Failed to patch paths in: $_file"
 done
 ok "Paths patched."
 
-# Write agent config.json – generated locally via Python, piped to target
+# Write agent config.json – generated locally via Python, written to target
 step "Writing agent config.json..."
 
 # Build Python booleans from shell vars before the heredoc
 _mail_py=$( [[ "$MAIL_ENABLED" == "yes" ]] && echo "True" || echo "False" )
 _mail_enc_py="${MAIL_ENC}"
 
-python3 - << PYEOF | target_write "${AGENT_DIR}/config/config.json"
+_agent_conf_tmp=$(mktemp /tmp/cronmanager-agent-conf-XXXXXX.json)
+python3 - > "$_agent_conf_tmp" << PYEOF
 import json
 
 config = {
@@ -685,8 +695,12 @@ config = {
 }
 print(json.dumps(config, indent=4, ensure_ascii=False))
 PYEOF
+[[ $? -eq 0 ]] || warn_continue "Failed to generate agent config.json."
+target_write "${AGENT_DIR}/config/config.json" < "$_agent_conf_tmp" \
+    || warn_continue "Failed to write agent config.json to target."
+rm -f "$_agent_conf_tmp"
 
-target_exec "chmod 600 '${AGENT_DIR}/config/config.json'"
+target_exec "chmod 600 '${AGENT_DIR}/config/config.json'" 2>/dev/null || true
 ok "Agent config.json written."
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -725,10 +739,12 @@ WantedBy=multi-user.target
 SVCEOF
 fi
 
-target_write "/etc/systemd/system/cronmanager-agent.service" < "$_tmp_svc"
+target_write "/etc/systemd/system/cronmanager-agent.service" < "$_tmp_svc" \
+    || warn_continue "Failed to write systemd service file."
 rm -f "$_tmp_svc"
 
-target_exec "systemctl daemon-reload && systemctl enable cronmanager-agent.service"
+target_exec "systemctl daemon-reload && systemctl enable cronmanager-agent.service" \
+    || warn_continue "Failed to enable cronmanager-agent service."
 ok "Service installed and enabled."
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -738,10 +754,12 @@ ok "Service installed and enabled."
 header "Step 11 – Deploy Web Application"
 
 step "Copying web files to ${WEB_WWW} on target..."
-target_copy "$CLONE_DIR/web/" "$WEB_WWW/"
+target_copy "$CLONE_DIR/web/" "$WEB_WWW/" \
+    || warn_continue "Failed to copy web application files to ${WEB_WWW}."
 
 step "Patching PHP library path in web application..."
-target_exec "find '${WEB_WWW}' -name '*.php' -exec sed -i 's|/opt/phplib|${PHPLIB_DIR}|g' {} \\;"
+target_exec "find '${WEB_WWW}' -name '*.php' -exec sed -i 's|/opt/phplib|${PHPLIB_DIR}|g' {} \\;" \
+    || warn_continue "Failed to patch PHP library paths in web application."
 ok "Web files deployed."
 
 # Download frontend assets on the target
@@ -760,13 +778,14 @@ target_exec "
         -o '${WEB_WWW}/assets/js/chart.min.js'
 " && ok "chart.min.js – OK." || warn "Chart.js download failed – install manually."
 
-# Write web config.json – generated locally, piped to target
+# Write web config.json – generated locally, written to target
 step "Writing web application config.json..."
 
 _oidc_py=$( [[ "$OIDC_ENABLED" == "yes" ]] && echo "True" || echo "False" )
 _ssl_raw="$OIDC_SSL_VERIFY"
 
-python3 - << PYEOF | target_write "${WEB_CONF}/config.json"
+_web_conf_tmp=$(mktemp /tmp/cronmanager-web-conf-XXXXXX.json)
+python3 - > "$_web_conf_tmp" << PYEOF
 import json
 
 ssl_raw = "${_ssl_raw}"
@@ -815,8 +834,12 @@ config = {
 }
 print(json.dumps(config, indent=4, ensure_ascii=False))
 PYEOF
+[[ $? -eq 0 ]] || warn_continue "Failed to generate web config.json."
+target_write "${WEB_CONF}/config.json" < "$_web_conf_tmp" \
+    || warn_continue "Failed to write web config.json to target."
+rm -f "$_web_conf_tmp"
 
-target_exec "chmod 640 '${WEB_CONF}/config.json'"
+target_exec "chmod 640 '${WEB_CONF}/config.json'" 2>/dev/null || true
 ok "Web config.json written."
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -826,7 +849,8 @@ ok "Web config.json written."
 header "Step 12 – Credential and Compose Files"
 
 # db.credentials
-cat << CREDEOF | target_write "${COMPOSE_DIR}/db.credentials"
+cat << CREDEOF | target_write "${COMPOSE_DIR}/db.credentials" \
+    || warn_continue "Failed to write db.credentials."
 # Cronmanager – Database Credentials
 # KEEP SECURE – do not commit to version control
 DB_NAME=${DB_NAME}
@@ -835,21 +859,23 @@ DB_PASSWORD=${DB_PASSWORD}
 DB_ROOT_USER=root
 DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
 CREDEOF
-target_exec "chmod 600 '${COMPOSE_DIR}/db.credentials'"
+target_exec "chmod 600 '${COMPOSE_DIR}/db.credentials'" 2>/dev/null || true
 ok "db.credentials written."
 
 # .env (read automatically by docker compose)
-cat << ENVEOF | target_write "${COMPOSE_DIR}/.env"
+cat << ENVEOF | target_write "${COMPOSE_DIR}/.env" \
+    || warn_continue "Failed to write .env file."
 DB_NAME=${DB_NAME}
 DB_USER=${DB_USER}
 DB_PASSWORD=${DB_PASSWORD}
 DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
 ENVEOF
-target_exec "chmod 600 '${COMPOSE_DIR}/.env'"
+target_exec "chmod 600 '${COMPOSE_DIR}/.env'" 2>/dev/null || true
 ok ".env written."
 
 # deploy.env (informational)
-cat << DEPLOYEOF | target_write "${COMPOSE_DIR}/deploy.env"
+cat << DEPLOYEOF | target_write "${COMPOSE_DIR}/deploy.env" \
+    || warn_continue "Failed to write deploy.env."
 DEPLOY_TYPE=LOCAL
 DEPLOY_DB=${DB_DIR}/
 DEPLOY_WEB=${WEB_DIR}/
@@ -862,7 +888,8 @@ ok "deploy.env written."
 # ── Generate docker-compose.yml ───────────────────────────────────────────
 # Shell variables for paths are expanded now (intentional).
 # \${DB_*} is escaped so docker compose substitutes them from .env at runtime.
-cat << COMPOSEEOF | target_write "${COMPOSE_DIR}/docker-compose.yml"
+cat << COMPOSEEOF | target_write "${COMPOSE_DIR}/docker-compose.yml" \
+    || warn_continue "Failed to write docker-compose.yml."
 # Cronmanager – docker-compose.yml
 # Generated by simple_debian_setup.sh
 
@@ -961,7 +988,8 @@ ask_yn AUTO_DEPLOY "Start the Docker stack on target now?" "yes"
 
 if [[ "$AUTO_DEPLOY" == "yes" ]]; then
     step "Starting Docker stack..."
-    target_exec "cd '${COMPOSE_DIR}' && docker compose up -d"
+    target_exec "cd '${COMPOSE_DIR}' && docker compose up -d" \
+        || warn_continue "Docker stack failed to start. Check logs with: docker compose -f '${COMPOSE_DIR}/docker-compose.yml' logs"
     ok "Docker stack started."
     DOCKER_DEPLOYED=true
 else

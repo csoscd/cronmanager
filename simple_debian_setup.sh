@@ -478,8 +478,8 @@ blank
 sep
 echo -e "  ${BOLD}Installation Paths (on target)${NC}"
 blank
-ask AGENT_DIR "Host agent directory"           "/opt/phpscripts/cronmanager/agent"
-ask WEB_DIR   "Web application base directory" "/opt/websites/cronmanager"
+ask AGENT_DIR "Host agent directory"           "/opt/cronmanager/agent"
+ask WEB_DIR   "Web application base directory" "/opt/cronmanager/web"
 ask DB_DIR    "MariaDB data directory"         "/opt/cronmanager/db"
 
 WEB_WWW="${WEB_DIR}/www"

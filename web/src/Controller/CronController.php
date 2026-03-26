@@ -795,8 +795,15 @@ class CronController extends BaseController
 
         $this->logger->info('CronController::executeNow: scheduling immediate execution', ['id' => $id]);
 
+        // Optional target subset selected via the multi-target modal.
+        $selectedTargets = isset($_POST['targets']) && is_array($_POST['targets'])
+            ? array_values(array_filter(array_map('strval', $_POST['targets'])))
+            : [];
+
+        $payload = $selectedTargets !== [] ? ['targets' => $selectedTargets] : [];
+
         try {
-            $this->agentClient()->post("/crons/{$id}/execute", []);
+            $this->agentClient()->post("/crons/{$id}/execute", $payload);
         } catch (\RuntimeException $e) {
             $this->logger->error('CronController::executeNow: agent error', [
                 'id'    => $id,

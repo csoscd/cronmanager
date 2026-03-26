@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Run Now: target selection modal for multi-target jobs** – When a job has more than one configured target, clicking "Run Now" on the detail page now opens a modal dialog instead of directly confirming. The modal shows a checkbox for each target (all checked by default). The user can deselect individual targets before scheduling. At least one target must remain checked. Single-target jobs continue to use the previous simple confirm dialog. The agent's `ExecuteNowEndpoint` accepts an optional `targets` array in the JSON body and schedules only the specified subset (unknown values are silently ignored; falls back to all targets when the body is empty).
 - **"Last Result" filter on cron list** – New dropdown filter with options All / Ok / Failed / Not run. "Ok" shows jobs whose last finished execution exited with code 0; "Failed" shows jobs with a non-zero last exit code; "Not run" shows jobs that have never been started. Filter value is persisted via cookie (`cronmgr_crons_result`).
 - **"Last Result" filter on timeline** – Same Ok / Failed / Not run filter added to the timeline page. In the timeline context "Not run" maps to executions that are still running (no `finished_at` yet). Backed by a new `?result=` query parameter on the agent's `/history` endpoint. Filter value is persisted via cookie (`cronmgr_tl_result`).
 

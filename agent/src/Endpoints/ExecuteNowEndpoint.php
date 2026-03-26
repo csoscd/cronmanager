@@ -114,12 +114,31 @@ final class ExecuteNowEndpoint
 
         // ------------------------------------------------------------------
         // 2. Resolve targets (fall back to 'local' for legacy jobs)
+        //    If the request body contains a non-empty 'targets' array, only
+        //    the targets listed there are scheduled (must be a subset of the
+        //    job's configured targets; unknown values are silently dropped).
         // ------------------------------------------------------------------
 
-        $targets = $this->fetchTargets($jobId);
-        if ($targets === []) {
-            $targets = ['local'];
+        $allTargets = $this->fetchTargets($jobId);
+        if ($allTargets === []) {
+            $allTargets = ['local'];
         }
+
+        $body            = (string) file_get_contents('php://input');
+        $requestedSubset = [];
+        if ($body !== '') {
+            $decoded = json_decode($body, true);
+            if (is_array($decoded) && isset($decoded['targets']) && is_array($decoded['targets'])) {
+                // Accept only targets that are actually configured for this job
+                foreach ($decoded['targets'] as $t) {
+                    if (is_string($t) && in_array($t, $allTargets, strict: true)) {
+                        $requestedSubset[] = $t;
+                    }
+                }
+            }
+        }
+
+        $targets = $requestedSubset !== [] ? $requestedSubset : $allTargets;
 
         // ------------------------------------------------------------------
         // 3. Compute full-date schedule for next minute

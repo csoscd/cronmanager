@@ -126,9 +126,14 @@ final class ExecuteNowEndpoint
         //    Format: "{min} {hour} {dom} {month} *"
         //    Using day-of-month + month means the entry fires at most once per
         //    year if the cleanup step fails – far safer than "* * * * *".
+        //
+        //    We explicitly use the host system timezone so that the computed
+        //    minute/hour values match what cron sees on its clock.
+        //    Detection order: TZ env var → /etc/timezone → PHP default.
         // ------------------------------------------------------------------
 
-        $next     = new \DateTime('+1 minute');
+        $tz   = new \DateTimeZone($this->resolveSystemTimezone());
+        $next = new \DateTime('+1 minute', $tz);
         $schedule = sprintf(
             '%d %d %d %d *',
             (int) $next->format('i'),  // minute
@@ -221,5 +226,36 @@ final class ExecuteNowEndpoint
         $stmt->execute([':id' => $jobId]);
 
         return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    }
+
+    /**
+     * Resolve the host system timezone for accurate schedule computation.
+     *
+     * The cron daemon uses the OS timezone, not PHP's configured timezone.
+     * We detect it in priority order:
+     *   1. TZ environment variable (set by systemd or shell)
+     *   2. /etc/timezone (Debian/Ubuntu/most Linux distros)
+     *   3. PHP's configured date.timezone (php.ini fallback)
+     *
+     * @return string A valid timezone identifier (e.g. "Europe/Berlin").
+     */
+    private function resolveSystemTimezone(): string
+    {
+        // 1. TZ environment variable
+        $envTz = getenv('TZ');
+        if ($envTz !== false && $envTz !== '') {
+            return $envTz;
+        }
+
+        // 2. /etc/timezone (Debian / Ubuntu / most systemd distros)
+        if (is_readable('/etc/timezone')) {
+            $tz = trim((string) file_get_contents('/etc/timezone'));
+            if ($tz !== '') {
+                return $tz;
+            }
+        }
+
+        // 3. PHP's own configured timezone (date.timezone in php.ini)
+        return date_default_timezone_get();
     }
 }

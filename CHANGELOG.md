@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Job detail page: full action toolbar** – Monitor, Edit, Copy, Delete, and Run Now buttons are all available on the detail page. Edit, Copy, Delete, and Run Now are shown to admin users only; Monitor is accessible to all users. The Copy button was previously missing from the detail page.
 - **`cron_run_now` label changed from "Run" to "Run Now"** (EN) / "Jetzt ausführen" (DE) for clarity on the detail page.
 
+### Fixed
+
+- **Run Now: schedule computed in UTC instead of host system timezone** – `new \DateTime('+1 minute')` used PHP's `date.timezone` (defaults to UTC when unset), so the computed `{min} {hour}` fields could be off by the UTC offset, causing cron to fire at the wrong time or not at all. Fixed by resolving the host timezone explicitly before constructing the `DateTime`: checks the `TZ` environment variable first, then `/etc/timezone`, then falls back to `date_default_timezone_get()`.
+
 ### Added
 
 - **"Last Result" filter on cron list** – New dropdown filter with options All / Ok / Failed / Not run. "Ok" shows jobs whose last finished execution exited with code 0; "Failed" shows jobs with a non-zero last exit code; "Not run" shows jobs that have never been started. Filter value is persisted via cookie (`cronmgr_crons_result`).

@@ -107,13 +107,19 @@ $lastRun    = (string) ($job['last_run']       ?? '');
                 </a>
             <?php endif; ?>
 
-        <!-- Admin: Edit + Delete -->
+        <!-- Admin: Edit + Copy + Delete + Run Now -->
         <?php if ($isAdmin && $jobId !== ''): ?>
                 <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/edit"
                    class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white
                           text-sm font-medium px-4 py-2 rounded-lg transition focus:outline-none
                           focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                     <?= htmlspecialchars($t('cron_edit'), ENT_QUOTES, 'UTF-8') ?>
+                </a>
+                <a href="/crons/new?copy_from=<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>"
+                   class="inline-flex items-center gap-1 bg-green-50 hover:bg-green-100 text-green-700
+                          text-sm font-medium px-4 py-2 rounded-lg border border-green-200 transition
+                          focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
+                    <?= htmlspecialchars($t('cron_copy'), ENT_QUOTES, 'UTF-8') ?>
                 </a>
                 <form method="POST"
                       action="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/delete"
@@ -124,6 +130,17 @@ $lastRun    = (string) ($job['last_run']       ?? '');
                                    text-sm font-medium px-4 py-2 rounded-lg border border-red-200 transition
                                    focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
                         <?= htmlspecialchars($t('cron_delete'), ENT_QUOTES, 'UTF-8') ?>
+                    </button>
+                </form>
+                <form method="POST"
+                      action="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/execute"
+                      onsubmit="return confirm('<?= htmlspecialchars($t('cron_run_confirm'), ENT_QUOTES, 'UTF-8') ?>')">
+                    <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                    <button type="submit"
+                            class="inline-flex items-center gap-1 bg-yellow-50 hover:bg-yellow-100 text-yellow-700
+                                   text-sm font-medium px-4 py-2 rounded-lg border border-yellow-200 transition
+                                   focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2">
+                        <?= htmlspecialchars($t('cron_run_now'), ENT_QUOTES, 'UTF-8') ?>
                     </button>
                 </form>
         <?php endif; ?>

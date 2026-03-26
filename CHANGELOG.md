@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `misc_optimisations`
+## [1.3.0] – branch: `misc_optimisations`
 
 ### Changed
 
@@ -26,7 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `simple_setup_fix`
+## [1.3.0] – branch: `simple_setup_fix`
 
 ### Fixed
 
@@ -45,7 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `pathfix`
+## [1.3.0] – branch: `pathfix`
 
 ### Fixed
 
@@ -53,7 +53,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `portfix`
+## [1.3.0] – branch: `portfix`
 
 ### Fixed
 
@@ -61,7 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `permfix`
+## [1.3.0] – branch: `permfix`
 
 ### Fixed
 
@@ -69,7 +69,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `execute_now`
+## [1.3.0] – branch: `execute_now`
 
 ### Added
 
@@ -83,7 +83,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `monitor_filter`
+## [1.3.0] – branch: `monitor_filter`
 
 ### Added
 
@@ -95,7 +95,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `bugfix_jobcommand`
+## [1.3.0] – branch: `bugfix_jobcommand`
 
 ### Fixed
 
@@ -104,7 +104,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `monitor`
+## [1.3.0] – branch: `monitor`
 
 ### Added
 
@@ -121,7 +121,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `consistency`
+## [1.3.0] – branch: `consistency`
 
 ### Added
 
@@ -129,7 +129,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `delete_consistency`
+## [1.3.0] – branch: `delete_consistency`
 
 ### Fixed
 
@@ -137,7 +137,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `notify_fix`
+## [1.3.0] – branch: `notify_fix`
 
 ### Fixed
 
@@ -145,7 +145,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `copy`
+## [1.3.0] – branch: `copy`
 
 ### Added
 
@@ -153,7 +153,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `filter_improve`
+## [1.3.0] – branch: `filter_improve`
 
 ### Added
 
@@ -171,7 +171,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `small_fix`
+## [1.3.0] – branch: `small_fix`
 
 ### Fixed
 

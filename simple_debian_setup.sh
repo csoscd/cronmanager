@@ -191,11 +191,14 @@ echo "  ║           Cronmanager – Simple Debian Setup                  ║"
 echo "  ║                      Version ${SCRIPT_VERSION}                            ║"
 echo "  ╚══════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
-echo "  This script installs Cronmanager on a local or remote host:"
+echo "  This script installs Cronmanager on a local or remote host."
+echo "  Two deployment modes are available:"
 echo
-echo "    •  Host agent (PHP 8.4 CLI, systemd)"
+echo "    host-agent   •  PHP 8.4 CLI agent + systemd  (classic)"
+echo "    docker-only  •  Agent runs in a Docker container (no host PHP needed)"
+echo
+echo "  Both modes include:"
 echo "    •  Web application + MariaDB (Docker)"
-echo "    •  Shared PHP libraries via Composer"
 echo "    •  Optional: OIDC / SSO authentication"
 echo "    •  Optional: Email failure notifications"
 echo
@@ -244,6 +247,34 @@ else
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
+#  2b. DEPLOYMENT MODE
+# ═════════════════════════════════════════════════════════════════════════════
+
+header "Step 1b – Deployment Mode"
+
+echo "  How should the Cronmanager agent run on the target host?"
+blank
+echo "    1) host-agent   – PHP 8.4 CLI agent installed directly on the host,"
+echo "                      managed as a systemd service  (classic mode)"
+echo "    2) docker-only  – Agent runs in a Docker container alongside the web app."
+echo "                      No PHP installation on the host is required."
+blank
+
+read -r -p "  ${BOLD}Deployment mode${NC} [1]: " _deploy_choice < /dev/tty
+_deploy_choice="${_deploy_choice:-1}"
+
+if [[ "$_deploy_choice" == "2" ]]; then
+    DEPLOY_MODE="docker"
+    ok "Docker-only deployment selected."
+    blank
+    info "The agent will run in a Docker container (cs1711/cs_cronmanageragent:latest)."
+    info "SSH keys for remote targets are mounted from a host directory."
+else
+    DEPLOY_MODE="host"
+    ok "Host-agent deployment selected."
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
 #  3. PREREQUISITES CHECK ON TARGET
 # ═════════════════════════════════════════════════════════════════════════════
 
@@ -280,10 +311,14 @@ check_php_ext() {
     fi
 }
 
-check_pkg "PHP 8.4 CLI"   "php8.4-cli"       "php"
-check_php_ext "pdo_mysql" "php8.4-mysql"
-check_php_ext "mbstring"  "php8.4-mbstring"
-check_php_ext "curl"      "php8.4-curl"
+if [[ "$DEPLOY_MODE" == "host" ]]; then
+    check_pkg "PHP 8.4 CLI"   "php8.4-cli"       "php"
+    check_php_ext "pdo_mysql" "php8.4-mysql"
+    check_php_ext "mbstring"  "php8.4-mbstring"
+    check_php_ext "curl"      "php8.4-curl"
+else
+    info "Docker-only mode: PHP on the host is not required (runs inside container)."
+fi
 check_pkg "curl"          "curl"             "curl"
 check_pkg "git"           "git"              "git"
 check_pkg "openssl"       "openssl"          "openssl"
@@ -366,7 +401,10 @@ ok "Repository cloned successfully."
 header "Step 4 – Composer"
 
 COMPOSER_BIN="composer"
-if target_exec "command -v composer >/dev/null 2>&1" 2>/dev/null; then
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    info "Docker-only mode: Composer is not required on the host."
+    info "PHP libraries are managed via a mounted vendor directory (see Step 5)."
+elif target_exec "command -v composer >/dev/null 2>&1" 2>/dev/null; then
     _ver=$(target_exec "composer --version 2>/dev/null | head -1" || true)
     ok "Composer is installed: ${_ver}"
 elif target_exec "test -f /usr/local/bin/composer" 2>/dev/null; then
@@ -481,7 +519,12 @@ blank
 sep
 echo -e "  ${BOLD}Installation Paths (on target)${NC}"
 blank
-ask AGENT_DIR "Host agent directory"           "/opt/cronmanager/agent"
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    ask AGENT_DIR "Agent source directory on host (mounted into container)" "/opt/cronmanager/agent"
+    info "Note: Inside the container the agent will always run from /opt/cronmanager/agent."
+else
+    ask AGENT_DIR "Host agent directory" "/opt/cronmanager/agent"
+fi
 ask WEB_DIR   "Web application base directory" "/opt/cronmanager/web"
 ask DB_DIR    "MariaDB data directory"         "/opt/cronmanager/db"
 
@@ -507,12 +550,32 @@ blank
 
 # ── Agent settings ──────────────────────────────────────────────────────────
 sep
-echo -e "  ${BOLD}Host Agent Settings${NC}"
+echo -e "  ${BOLD}Agent Settings${NC}"
 blank
 ask AGENT_BIND "Agent listen address (0.0.0.0 = all interfaces)" "0.0.0.0"
 ask AGENT_PORT "Agent listen port"                               "8865"
 ask_choice AGENT_LOG_LEVEL "Agent log level" "info" "debug" "warning" "error"
 blank
+
+# ── Docker-only: SSH configuration ─────────────────────────────────────────
+DOCKER_SSH_DIR=""
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    sep
+    echo -e "  ${BOLD}SSH Keys for Remote Targets (Docker-only)${NC}"
+    blank
+    info "The agent container needs access to SSH keys for executing jobs on remote targets."
+    info "The directory you specify will be mounted read-only into the agent container."
+    blank
+    ask DOCKER_SSH_DIR "Host path to SSH key directory" "/root/.ssh"
+    blank
+    if ! target_exec "test -d '${DOCKER_SSH_DIR}'" 2>/dev/null; then
+        warn "Directory ${DOCKER_SSH_DIR} does not exist on target – remote targets will not work."
+        warn "Create it and add your SSH keys before starting the agent container."
+    else
+        ok "SSH directory found: ${DOCKER_SSH_DIR}"
+    fi
+    blank
+fi
 
 # ── Web application settings ────────────────────────────────────────────────
 sep
@@ -523,8 +586,13 @@ ask WEB_LANG "Default language (en / de)"                       "en"
 ask_choice WEB_LOG_LEVEL "Web application log level" "info" "debug" "warning" "error"
 blank
 
-AGENT_URL="http://host.docker.internal:${AGENT_PORT}"
-info "Agent URL for web app (Docker → host): ${AGENT_URL}"
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    AGENT_URL="http://cronmanager-agent:${AGENT_PORT}"
+    info "Agent URL for web app (container-to-container): ${AGENT_URL}"
+else
+    AGENT_URL="http://host.docker.internal:${AGENT_PORT}"
+    info "Agent URL for web app (Docker → host): ${AGENT_URL}"
+fi
 blank
 
 # ── OIDC ────────────────────────────────────────────────────────────────────
@@ -586,11 +654,17 @@ if [[ "$TARGET_TYPE" == "remote" ]]; then
 else
     echo -e "    Target          : ${CYAN}local${NC}"
 fi
+echo -e "    Deploy mode     : ${CYAN}${DEPLOY_MODE}${NC}"
 echo -e "    Agent dir       : ${CYAN}${AGENT_DIR}${NC}"
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    echo -e "    SSH keys dir    : ${CYAN}${DOCKER_SSH_DIR}${NC}"
+    echo -e "    Agent image     : ${CYAN}cs1711/cs_cronmanageragent:latest${NC}"
+fi
 echo -e "    Web dir         : ${CYAN}${WEB_DIR}${NC}"
 echo -e "    DB dir          : ${CYAN}${DB_DIR}${NC}"
 echo -e "    PHP libs        : ${CYAN}${PHPLIB_DIR}${NC}"
 echo -e "    Agent listen    : ${CYAN}${AGENT_BIND}:${AGENT_PORT}${NC}"
+echo -e "    Agent URL       : ${CYAN}${AGENT_URL}${NC}"
 echo -e "    Web HTTP port   : ${CYAN}${WEB_PORT}${NC}"
 echo -e "    Database        : ${CYAN}${DB_NAME}${NC}  (user: ${DB_USER})"
 echo -e "    Default lang    : ${CYAN}${WEB_LANG}${NC}"
@@ -630,24 +704,55 @@ target_exec "chown nobody:nogroup '${WEB_LOG}' '${WEB_CONF}'" \
     || warn_continue "Failed to set ownership on web directories."
 ok "Ownership set: ${WEB_LOG}, ${WEB_CONF} → nobody:nogroup"
 
+# In docker-only mode the agent log directory is written by root inside the container
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    step "Setting ownership of agent log and config directories (docker mode)..."
+    target_exec "chown root:root '${AGENT_DIR}/log' '${AGENT_DIR}/config'" 2>/dev/null || true
+    ok "Agent directories ready for docker container."
+fi
+
 # ═════════════════════════════════════════════════════════════════════════════
 #  10. DEPLOY AGENT FILES
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 9 – Deploy Host Agent"
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    header "Step 9 – Deploy Agent Files (Docker-only)"
+else
+    header "Step 9 – Deploy Host Agent"
+fi
 
 step "Copying agent files to ${AGENT_DIR} on target..."
 target_copy "$CLONE_DIR/agent/" "$AGENT_DIR/" \
     || warn_continue "Failed to copy agent files to ${AGENT_DIR}."
+# Also copy the docker/agent directory (entrypoint.sh)
+if [[ -d "$CLONE_DIR/docker" ]]; then
+    target_copy "$CLONE_DIR/docker/" "$AGENT_DIR/docker/" \
+        || warn_continue "Failed to copy docker helper files to ${AGENT_DIR}/docker/."
+fi
 ok "Agent files deployed."
 
 step "Patching hardcoded paths in all agent files..."
-target_exec "find '${AGENT_DIR}' \( -name '*.php' -o -name '*.sh' -o -name '*.sql' \) \
-    -exec sed -i \
-        -e 's|/opt/phpscripts/cronmanager/agent|${AGENT_DIR}|g' \
-        -e 's|/opt/phplib|${PHPLIB_DIR}|g' \
-    {} \;" || warn_continue "Failed to patch hardcoded paths in agent files."
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    # In docker mode the agent runs inside the container where the source is
+    # always mounted at /opt/cronmanager/agent, regardless of the host path.
+    _agent_container_path="/opt/cronmanager/agent"
+    target_exec "find '${AGENT_DIR}' \( -name '*.php' -o -name '*.sh' -o -name '*.sql' \) \
+        -exec sed -i \
+            -e 's|/opt/phpscripts/cronmanager/agent|${_agent_container_path}|g' \
+            -e 's|/opt/phplib|${PHPLIB_DIR}|g' \
+        {} \;" || warn_continue "Failed to patch hardcoded paths in agent files."
+    info "Paths patched to container path: ${_agent_container_path}"
+else
+    target_exec "find '${AGENT_DIR}' \( -name '*.php' -o -name '*.sh' -o -name '*.sql' \) \
+        -exec sed -i \
+            -e 's|/opt/phpscripts/cronmanager/agent|${AGENT_DIR}|g' \
+            -e 's|/opt/phplib|${PHPLIB_DIR}|g' \
+        {} \;" || warn_continue "Failed to patch hardcoded paths in agent files."
+fi
 target_exec "chmod +x '${AGENT_DIR}/bin/'*.sh 2>/dev/null || true"
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    target_exec "chmod +x '${AGENT_DIR}/docker/agent/entrypoint.sh' 2>/dev/null || true"
+fi
 ok "Paths patched."
 
 # Write agent config.json – generated locally via Python, written to target
@@ -656,6 +761,18 @@ step "Writing agent config.json..."
 # Build Python booleans from shell vars before the heredoc
 _mail_py=$( [[ "$MAIL_ENABLED" == "yes" ]] && echo "True" || echo "False" )
 _mail_enc_py="${MAIL_ENC}"
+
+# Database host: in docker mode the agent connects to the MariaDB container
+# by Docker service name; in host mode it connects via localhost.
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    _agent_db_host="cronmanager-db"
+    _agent_log_path="/opt/cronmanager/agent/log/cronmanager-agent.log"
+    _agent_wrapper="/opt/cronmanager/agent/bin/cron-wrapper.sh"
+else
+    _agent_db_host="127.0.0.1"
+    _agent_log_path="${AGENT_DIR}/log/cronmanager-agent.log"
+    _agent_wrapper="${AGENT_DIR}/bin/cron-wrapper.sh"
+fi
 
 _agent_conf_tmp=$(mktemp /tmp/cronmanager-agent-conf-XXXXXX.json)
 python3 - > "$_agent_conf_tmp" << PYEOF
@@ -668,14 +785,14 @@ config = {
         "hmac_secret":  "${HMAC_SECRET}"
     },
     "database": {
-        "host":     "127.0.0.1",
+        "host":     "${_agent_db_host}",
         "port":     3306,
         "name":     "${DB_NAME}",
         "user":     "${DB_USER}",
         "password": "${DB_PASSWORD}"
     },
     "logging": {
-        "path":     "${AGENT_DIR}/log/cronmanager-agent.log",
+        "path":     "${_agent_log_path}",
         "level":    "${AGENT_LOG_LEVEL}",
         "max_days": 30
     },
@@ -692,7 +809,7 @@ config = {
         "smtp_timeout": int("${MAIL_TIMEOUT}") if "${MAIL_TIMEOUT}" else 15
     },
     "cron": {
-        "wrapper_script": "${AGENT_DIR}/bin/cron-wrapper.sh"
+        "wrapper_script": "${_agent_wrapper}"
     }
 }
 print(json.dumps(config, indent=4, ensure_ascii=False))
@@ -706,21 +823,25 @@ target_exec "chmod 600 '${AGENT_DIR}/config/config.json'" 2>/dev/null || true
 ok "Agent config.json written."
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  11. SYSTEMD SERVICE  (on target)
+#  11. SYSTEMD SERVICE  (on target – host-agent mode only)
 # ═════════════════════════════════════════════════════════════════════════════
 
 header "Step 10 – Systemd Service"
 
-# Ship the service unit: patch paths from the clone's template, send to target
-_tmp_svc=$(mktemp /tmp/cronmanager-svc-XXXXXX.service)
-
-if [[ -f "$CLONE_DIR/agent/systemd/cronmanager-agent.service" ]]; then
-    sed \
-        -e "s|/opt/phpscripts/cronmanager/agent|${AGENT_DIR}|g" \
-        -e "s|/opt/phplib|${PHPLIB_DIR}|g" \
-        "$CLONE_DIR/agent/systemd/cronmanager-agent.service" > "$_tmp_svc"
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    info "Docker-only mode: the agent runs as a Docker container – no systemd service needed."
+    info "The agent container is managed by docker compose (see Step 12)."
 else
-    cat > "$_tmp_svc" << SVCEOF
+    # Ship the service unit: patch paths from the clone's template, send to target
+    _tmp_svc=$(mktemp /tmp/cronmanager-svc-XXXXXX.service)
+
+    if [[ -f "$CLONE_DIR/agent/systemd/cronmanager-agent.service" ]]; then
+        sed \
+            -e "s|/opt/phpscripts/cronmanager/agent|${AGENT_DIR}|g" \
+            -e "s|/opt/phplib|${PHPLIB_DIR}|g" \
+            "$CLONE_DIR/agent/systemd/cronmanager-agent.service" > "$_tmp_svc"
+    else
+        cat > "$_tmp_svc" << SVCEOF
 [Unit]
 Description=Cronmanager Host Agent
 After=network.target
@@ -739,15 +860,16 @@ SyslogIdentifier=cronmanager-agent
 [Install]
 WantedBy=multi-user.target
 SVCEOF
+    fi
+
+    target_write "/etc/systemd/system/cronmanager-agent.service" < "$_tmp_svc" \
+        || warn_continue "Failed to write systemd service file."
+    rm -f "$_tmp_svc"
+
+    target_exec "systemctl daemon-reload && systemctl enable cronmanager-agent.service" \
+        || warn_continue "Failed to enable cronmanager-agent service."
+    ok "Service installed and enabled."
 fi
-
-target_write "/etc/systemd/system/cronmanager-agent.service" < "$_tmp_svc" \
-    || warn_continue "Failed to write systemd service file."
-rm -f "$_tmp_svc"
-
-target_exec "systemctl daemon-reload && systemctl enable cronmanager-agent.service" \
-    || warn_continue "Failed to enable cronmanager-agent service."
-ok "Service installed and enabled."
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  12. DEPLOY WEB APPLICATION  (on target)
@@ -877,9 +999,14 @@ target_exec "chmod 600 '${COMPOSE_DIR}/.env'" 2>/dev/null || true
 ok ".env written."
 
 # deploy.env (informational)
+_deploy_type_label="LOCAL"
+[[ "$TARGET_TYPE" == "remote" ]] && _deploy_type_label="REMOTE"
+_deploy_mode_label="${DEPLOY_MODE^^}"  # HOST or DOCKER
+
 cat << DEPLOYEOF | target_write "${COMPOSE_DIR}/deploy.env" \
     || warn_continue "Failed to write deploy.env."
-DEPLOY_TYPE=LOCAL
+DEPLOY_TYPE=${_deploy_type_label}
+DEPLOY_MODE=${_deploy_mode_label}
 DEPLOY_DB=${DB_DIR}/
 DEPLOY_WEB=${WEB_DIR}/
 DEPLOY_AGENT=${AGENT_DIR}/
@@ -891,10 +1018,84 @@ ok "deploy.env written."
 # ── Generate docker-compose.yml ───────────────────────────────────────────
 # Shell variables for paths are expanded now (intentional).
 # \${DB_*} is escaped so docker compose substitutes them from .env at runtime.
-cat << COMPOSEEOF | target_write "${COMPOSE_DIR}/docker-compose.yml" \
-    || warn_continue "Failed to write docker-compose.yml."
+
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    # Docker-only mode: agent runs as a container alongside web and db.
+    # The web container reaches the agent via the Docker service name.
+    # No extra_hosts (host.docker.internal) is needed for the web container.
+    cat << COMPOSEEOF | target_write "${COMPOSE_DIR}/docker-compose.yml" \
+        || warn_continue "Failed to write docker-compose.yml."
 # Cronmanager – docker-compose.yml
 # Generated by simple_debian_setup.sh
+# Deployment mode: docker-only
+
+services:
+
+  cronmanager-agent:
+    image: cs1711/cs_cronmanageragent:latest
+    container_name: cronmanager-agent
+    restart: unless-stopped
+    entrypoint: ["/entrypoint.sh"]
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${AGENT_DIR}:/opt/cronmanager/agent:ro
+      - ${AGENT_DIR}/config:/opt/cronmanager/agent/config
+      - ${AGENT_DIR}/log:/opt/cronmanager/agent/log
+      - ${DOCKER_SSH_DIR}:/root/.ssh:ro
+      - ${PHPLIB_DIR}/vendor:/opt/phplib/vendor:ro
+      - ${AGENT_DIR}/docker/agent/entrypoint.sh:/entrypoint.sh:ro
+    depends_on:
+      cronmanager-db:
+        condition: service_healthy
+
+  cronmanager-web:
+    image: cs1711/cs_php-nginx-fpm:latest-alpine
+    container_name: cronmanager-web
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${WEB_CONF}:/var/www/conf
+      - ${WEB_WWW}:/var/www/html
+      - ${WEB_LOG}:/var/www/log
+      - ${PHPLIB_DIR}/vendor:/var/www/libs/vendor
+    ports:
+      - "${WEB_PORT}:8080"
+    depends_on:
+      cronmanager-db:
+        condition: service_healthy
+      cronmanager-agent:
+        condition: service_started
+
+  cronmanager-db:
+    image: mariadb:lts
+    container_name: cronmanager-db
+    restart: unless-stopped
+    volumes:
+      - ${DB_DATA}:/var/lib/mysql
+      - ${DB_CONF}:/etc/mysql
+      - ${DB_LOG}:/var/log/mysql
+      - ${DB_INIT}:/docker-entrypoint-initdb.d
+    ports:
+      - "127.0.0.1:3306:3306"
+    environment:
+      MARIADB_DATABASE:      \${DB_NAME}
+      MARIADB_USER:          \${DB_USER}
+      MARIADB_PASSWORD:      \${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: \${DB_ROOT_PASSWORD}
+    healthcheck:
+      test:         ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval:     30s
+      timeout:      5s
+      retries:      3
+      start_period: 30s
+COMPOSEEOF
+else
+    # Host-agent mode: web reaches agent via host.docker.internal.
+    cat << COMPOSEEOF | target_write "${COMPOSE_DIR}/docker-compose.yml" \
+        || warn_continue "Failed to write docker-compose.yml."
+# Cronmanager – docker-compose.yml
+# Generated by simple_debian_setup.sh
+# Deployment mode: host-agent
 
 services:
 
@@ -939,6 +1140,7 @@ services:
       retries:      3
       start_period: 30s
 COMPOSEEOF
+fi
 ok "docker-compose.yml written."
 
 # Display the generated credential files and docker-compose.yml
@@ -1039,28 +1241,53 @@ else
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  16. START HOST AGENT + HEALTH CHECK  (on target)
+#  16. START / VERIFY AGENT  (on target)
 #  Runs last so MariaDB is already up and the schema is applied.
 # ═════════════════════════════════════════════════════════════════════════════
 
-header "Step 15 – Start Host Agent"
+header "Step 15 – Start Agent"
 
-step "Starting cronmanager-agent service..."
-if target_exec "systemctl start cronmanager-agent.service" 2>&1; then
-    sleep 2
-    step "Health check: http://127.0.0.1:${AGENT_PORT}/health"
-    HTTP_CODE=$(target_exec \
-        "curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
-         http://127.0.0.1:${AGENT_PORT}/health 2>/dev/null || echo 000")
-    if [[ "$HTTP_CODE" == "200" ]]; then
-        ok "Agent health check passed  (HTTP ${HTTP_CODE})."
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    # Docker-only: the agent container was already started by docker compose up.
+    # Run a health check against the container.
+    if [[ "$DOCKER_DEPLOYED" == true ]]; then
+        step "Waiting for agent container to start..."
+        sleep 3
+        step "Health check: http://127.0.0.1:${AGENT_PORT}/health (via host port)"
+        # The agent container binds to 0.0.0.0 inside the container but is NOT
+        # exposed externally (no ports: mapping in compose).  Access it via
+        # docker exec on the host.
+        HTTP_CODE=$(target_exec \
+            "docker exec cronmanager-agent \
+             curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+             http://127.0.0.1:${AGENT_PORT}/health 2>/dev/null || echo 000")
+        if [[ "$HTTP_CODE" == "200" ]]; then
+            ok "Agent health check passed (HTTP ${HTTP_CODE})."
+        else
+            warn "Agent health check returned HTTP ${HTTP_CODE}."
+            warn "Check logs with:  docker logs cronmanager-agent"
+        fi
     else
-        warn "Agent health check returned HTTP ${HTTP_CODE}."
-        warn "Check logs with:  journalctl -u cronmanager-agent -n 50"
+        info "Docker stack not deployed – skipping agent health check."
     fi
 else
-    warn "Agent service could not be started."
-    warn "Check logs with:  journalctl -u cronmanager-agent -n 50"
+    step "Starting cronmanager-agent service..."
+    if target_exec "systemctl start cronmanager-agent.service" 2>&1; then
+        sleep 2
+        step "Health check: http://127.0.0.1:${AGENT_PORT}/health"
+        HTTP_CODE=$(target_exec \
+            "curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+             http://127.0.0.1:${AGENT_PORT}/health 2>/dev/null || echo 000")
+        if [[ "$HTTP_CODE" == "200" ]]; then
+            ok "Agent health check passed  (HTTP ${HTTP_CODE})."
+        else
+            warn "Agent health check returned HTTP ${HTTP_CODE}."
+            warn "Check logs with:  journalctl -u cronmanager-agent -n 50"
+        fi
+    else
+        warn "Agent service could not be started."
+        warn "Check logs with:  journalctl -u cronmanager-agent -n 50"
+    fi
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1080,31 +1307,54 @@ else
 fi
 
 echo -e "  ${GREEN}${BOLD}Cronmanager has been installed on ${_label}.${NC}"
+echo -e "  ${BOLD}Deployment mode: ${CYAN}${DEPLOY_MODE}${NC}"
 blank
 echo -e "  ${BOLD}Installed paths:${NC}"
-echo -e "    Host agent    : ${CYAN}${AGENT_DIR}${NC}"
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    echo -e "    Agent source  : ${CYAN}${AGENT_DIR}${NC}  (mounted into container)"
+    echo -e "    Agent image   : ${CYAN}cs1711/cs_cronmanageragent:latest${NC}"
+    echo -e "    SSH keys      : ${CYAN}${DOCKER_SSH_DIR}${NC}  (mounted read-only)"
+else
+    echo -e "    Host agent    : ${CYAN}${AGENT_DIR}${NC}"
+fi
 echo -e "    Web app       : ${CYAN}${WEB_WWW}${NC}"
 echo -e "    Web config    : ${CYAN}${WEB_CONF}/config.json${NC}"
 echo -e "    Agent config  : ${CYAN}${AGENT_DIR}/config/config.json${NC}"
 echo -e "    Docker Compose: ${CYAN}${COMPOSE_DIR}/${NC}"
 echo -e "    DB data       : ${CYAN}${DB_DATA}${NC}"
 blank
-echo -e "  ${BOLD}Service management:${NC}"
-echo -e "    ${CYAN}${_ssh_pfx}systemctl status cronmanager-agent${NC}"
-echo -e "    ${CYAN}${_ssh_pfx}systemctl restart cronmanager-agent${NC}"
-echo -e "    ${CYAN}${_ssh_pfx}journalctl -u cronmanager-agent -f${NC}"
-blank
+if [[ "$DEPLOY_MODE" == "host" ]]; then
+    echo -e "  ${BOLD}Agent service management:${NC}"
+    echo -e "    ${CYAN}${_ssh_pfx}systemctl status cronmanager-agent${NC}"
+    echo -e "    ${CYAN}${_ssh_pfx}systemctl restart cronmanager-agent${NC}"
+    echo -e "    ${CYAN}${_ssh_pfx}journalctl -u cronmanager-agent -f${NC}"
+    blank
+fi
 echo -e "  ${BOLD}Docker stack (from ${COMPOSE_DIR}):${NC}"
 echo -e "    ${CYAN}${_ssh_pfx}sh -c 'cd ${COMPOSE_DIR} && docker compose up -d'${NC}"
 echo -e "    ${CYAN}${_ssh_pfx}sh -c 'cd ${COMPOSE_DIR} && docker compose logs -f'${NC}"
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    echo -e "    ${CYAN}${_ssh_pfx}docker logs cronmanager-agent${NC}"
+fi
 blank
 echo -e "  ${BOLD}Agent health check:${NC}"
-echo -e "    ${CYAN}${_ssh_pfx}curl http://127.0.0.1:${AGENT_PORT}/health${NC}"
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    echo -e "    ${CYAN}${_ssh_pfx}docker exec cronmanager-agent curl http://127.0.0.1:${AGENT_PORT}/health${NC}"
+else
+    echo -e "    ${CYAN}${_ssh_pfx}curl http://127.0.0.1:${AGENT_PORT}/health${NC}"
+fi
 blank
 echo -e "  ${BOLD}Web UI:${NC}"
 echo -e "    ${CYAN}http://${_host_ip}:${WEB_PORT}/${NC}"
 echo -e "    Open this URL to complete setup and create the admin account."
 blank
+if [[ "$DEPLOY_MODE" == "docker" ]]; then
+    echo -e "  ${BOLD}Important – Docker-only mode:${NC}"
+    echo -e "    • Cron jobs must use ${CYAN}root${NC} as the Linux user (only user in container)."
+    echo -e "    • Remote targets use SSH aliases from ${CYAN}${DOCKER_SSH_DIR}${NC}."
+    echo -e "    • To update the agent: pull new image and run ${CYAN}docker compose up -d${NC}."
+    blank
+fi
 echo -e "  ${BOLD}HMAC secret${NC}  (store securely – needed if you reinstall):"
 echo -e "    ${YELLOW}${HMAC_SECRET}${NC}"
 blank

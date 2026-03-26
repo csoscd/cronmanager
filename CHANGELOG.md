@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `agentless`
+
+### Added
+
+- **Docker-only deployment mode** – New deployment option where the Cronmanager agent runs in a Docker container (`cs1711/cs_cronmanageragent:latest`) alongside the web app and MariaDB, instead of being installed directly on the host as a systemd service. No PHP installation on the host is required in this mode.
+- **`docker/agent/entrypoint.sh`** – Container entrypoint script that fixes SSH key permissions, starts the cron daemon in the background, reads bind address and port from `config.json`, and starts the PHP built-in server as the foreground process.
+- **`simple_debian_setup.sh`: deployment type selection** – New interactive step (Step 1b) asks whether to install in `host-agent` mode (classic, PHP CLI + systemd) or `docker-only` mode. All subsequent steps adapt accordingly.
+
+### Changed
+
+- **`simple_debian_setup.sh`: conditional prerequisites** – In docker-only mode, PHP 8.4 CLI and PHP extension checks on the host are skipped (PHP runs inside the container). Composer installation on the host is also skipped.
+- **`simple_debian_setup.sh`: agent path patching** – In docker-only mode, hardcoded paths in agent files are patched to the fixed container path `/opt/cronmanager/agent` instead of the host `AGENT_DIR`, since the agent always runs from that path inside the container.
+- **`simple_debian_setup.sh`: agent `config.json`** – In docker-only mode the database host is set to `cronmanager-db` (Docker service name) and log/wrapper paths use the container path. In host-agent mode the database host remains `127.0.0.1`.
+- **`simple_debian_setup.sh`: web `config.json`** – Agent URL is set to `http://cronmanager-agent:${AGENT_PORT}` in docker-only mode (container-to-container) and `http://host.docker.internal:${AGENT_PORT}` in host-agent mode.
+- **`simple_debian_setup.sh`: docker-compose.yml** – In docker-only mode a `cronmanager-agent` service is added to the compose file. The agent source directory, config, log, SSH keys, and entrypoint are mounted as volumes. The web container no longer needs `extra_hosts` in docker-only mode. In host-agent mode the compose file is unchanged.
+- **`simple_debian_setup.sh`: systemd step** – Skipped in docker-only mode; informational message shown instead.
+- **`simple_debian_setup.sh`: start agent step** – In docker-only mode the agent health check uses `docker exec` instead of a host curl call. systemctl commands are not shown in the final summary.
+
+---
+
 ## [1.3.0] – branch: `misc_optimisations`
 
 ### Changed

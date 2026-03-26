@@ -76,6 +76,9 @@ final class HistoryEndpoint
     /** Allowed values for the ?status query parameter. */
     private const VALID_STATUSES = ['failed', 'success', 'running'];
 
+    /** Allowed values for the ?result query parameter. */
+    private const VALID_RESULTS = ['ok', 'failed', 'not_run'];
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -108,9 +111,7 @@ final class HistoryEndpoint
      */
     public function handle(array $params): void
     {
-        $this->logger->debug('HistoryEndpoint: handling GET /history', [
-            'query' => $_GET,
-        ]);
+        $this->logger->debug('HistoryEndpoint: handling GET /history', ['query' => $_GET]);
 
         // ------------------------------------------------------------------
         // 1. Parse and validate query parameters
@@ -121,6 +122,7 @@ final class HistoryEndpoint
         $user   = isset($_GET['user'])   && $_GET['user']   !== '' ? (string) $_GET['user']   : null;
         $target = isset($_GET['target']) && $_GET['target'] !== '' ? (string) $_GET['target'] : null;
         $status = isset($_GET['status']) && $_GET['status'] !== '' ? (string) $_GET['status'] : null;
+        $result = isset($_GET['result']) && $_GET['result'] !== '' ? (string) $_GET['result'] : null;
         $limit  = $this->parseLimit($_GET['limit']   ?? null);
         $offset = $this->parseOffset($_GET['offset'] ?? null);
         $from   = $this->parseDate($_GET['from'] ?? null);
@@ -133,6 +135,19 @@ final class HistoryEndpoint
                 'message' => sprintf(
                     'Parameter "status" must be one of: %s.',
                     implode(', ', self::VALID_STATUSES)
+                ),
+                'code'    => 400,
+            ]);
+            return;
+        }
+
+        // Validate result value
+        if ($result !== null && !in_array($result, self::VALID_RESULTS, true)) {
+            jsonResponse(400, [
+                'error'   => 'Bad Request',
+                'message' => sprintf(
+                    'Parameter "result" must be one of: %s.',
+                    implode(', ', self::VALID_RESULTS)
                 ),
                 'code'    => 400,
             ]);
@@ -200,6 +215,15 @@ final class HistoryEndpoint
             $conditions[] = 'el.finished_at IS NOT NULL AND el.exit_code = 0';
         } elseif ($status === 'failed') {
             $conditions[] = 'el.finished_at IS NOT NULL AND el.exit_code != 0';
+        }
+
+        // result filter: ok = exit_code 0, failed = exit_code != 0, not_run = still running
+        if ($result === 'ok') {
+            $conditions[] = 'el.finished_at IS NOT NULL AND el.exit_code = 0';
+        } elseif ($result === 'failed') {
+            $conditions[] = 'el.finished_at IS NOT NULL AND el.exit_code != 0';
+        } elseif ($result === 'not_run') {
+            $conditions[] = 'el.finished_at IS NULL';
         }
 
         if ($from !== null) {

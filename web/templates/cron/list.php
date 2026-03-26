@@ -30,6 +30,7 @@ $filterTag    = isset($filterTag)    ? (string) $filterTag      : '';
 $filterUser   = isset($filterUser)   ? (string) $filterUser     : '';
 $filterTarget = isset($filterTarget) ? (string) $filterTarget   : '';
 $filterSearch = isset($filterSearch) ? (string) $filterSearch   : '';
+$filterResult = isset($filterResult) ? (string) $filterResult   : '';
 $isAdmin      = isset($isAdmin)      && (bool)  $isAdmin;
 
 // Pagination
@@ -46,12 +47,13 @@ $showTo   = $pageSize > 0 ? min($currentPage * $pageSize, $totalJobs) : $totalJo
  *
  * @param int $targetPage The page number for the link.
  */
-$pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filterTarget, $filterSearch, $pageSize): string {
+$pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filterTarget, $filterSearch, $filterResult, $pageSize): string {
     $params = array_filter([
         'tag'    => $filterTag,
         'user'   => $filterUser,
         'target' => $filterTarget,
         'search' => $filterSearch,
+        'result' => $filterResult,
         'limit'  => $pageSize > 0 ? (string) $pageSize : '0',
         'page'   => (string) $targetPage,
     ], static fn(string $v): bool => $v !== '');
@@ -180,6 +182,28 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
         </div>
         <?php endif; ?>
 
+        <!-- Last result filter -->
+        <div class="flex-1 min-w-36">
+            <label for="filter-result" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                <?= htmlspecialchars($t('filter_result'), ENT_QUOTES, 'UTF-8') ?>
+            </label>
+            <select id="filter-result" name="result"
+                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                           focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value=""><?= htmlspecialchars($t('filter_result_all'), ENT_QUOTES, 'UTF-8') ?></option>
+                <option value="ok"<?= $filterResult === 'ok' ? ' selected' : '' ?>>
+                    <?= htmlspecialchars($t('filter_result_ok'), ENT_QUOTES, 'UTF-8') ?>
+                </option>
+                <option value="failed"<?= $filterResult === 'failed' ? ' selected' : '' ?>>
+                    <?= htmlspecialchars($t('filter_result_failed'), ENT_QUOTES, 'UTF-8') ?>
+                </option>
+                <option value="not_run"<?= $filterResult === 'not_run' ? ' selected' : '' ?>>
+                    <?= htmlspecialchars($t('filter_result_not_run'), ENT_QUOTES, 'UTF-8') ?>
+                </option>
+            </select>
+        </div>
+
         <!-- Page size selector -->
         <div class="flex-1 min-w-28">
             <label for="filter-limit" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -210,7 +234,7 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
             </button>
         </div>
 
-        <?php if ($filterTag !== '' || $filterUser !== '' || $filterTarget !== '' || $filterSearch !== ''): ?>
+        <?php if ($filterTag !== '' || $filterUser !== '' || $filterTarget !== '' || $filterSearch !== '' || $filterResult !== ''): ?>
             <div>
                 <a href="/crons?_reset=1"
                    class="text-sm text-gray-500 hover:text-gray-700 underline py-2 block">
@@ -273,11 +297,9 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             <?= htmlspecialchars($t('exit_code'), ENT_QUOTES, 'UTF-8') ?>
                         </th>
-                        <?php if ($isAdmin): ?>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                <?= htmlspecialchars($t('actions'), ENT_QUOTES, 'UTF-8') ?>
-                            </th>
-                        <?php endif; ?>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <?= htmlspecialchars($t('actions'), ENT_QUOTES, 'UTF-8') ?>
+                        </th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -391,45 +413,16 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                                 <?= $exitBadge ?>
                             </td>
 
-                            <!-- Admin actions -->
-                            <?php if ($isAdmin): ?>
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    <div class="flex items-center gap-1.5">
-                                        <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/edit?_return=<?= htmlspecialchars(rawurlencode($pageUrl($currentPage)), ENT_QUOTES, 'UTF-8') ?>"
-                                           class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold transition"
-                                           style="background:rgba(129,140,248,.12);color:var(--cm-indigo);border:1px solid rgba(129,140,248,.2)">
-                                            <?= htmlspecialchars($t('cron_edit'), ENT_QUOTES, 'UTF-8') ?>
-                                        </a>
-                                        <a href="/crons/new?copy_from=<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>&_return=<?= htmlspecialchars(rawurlencode($pageUrl($currentPage)), ENT_QUOTES, 'UTF-8') ?>"
-                                           class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold transition"
-                                           style="background:rgba(52,211,153,.1);color:var(--cm-success);border:1px solid rgba(52,211,153,.2)">
-                                            <?= htmlspecialchars($t('cron_copy'), ENT_QUOTES, 'UTF-8') ?>
-                                        </a>
-                                        <form method="POST"
-                                              action="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/delete"
-                                              onsubmit="return confirm('<?= htmlspecialchars($t('cron_delete_confirm'), ENT_QUOTES, 'UTF-8') ?>')">
-                                            <input type="hidden" name="_csrf"   value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                                            <input type="hidden" name="_return" value="<?= htmlspecialchars($pageUrl($currentPage), ENT_QUOTES, 'UTF-8') ?>">
-                                            <button type="submit"
-                                                    class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold transition"
-                                                    style="background:rgba(248,113,113,.1);color:var(--cm-danger);border:1px solid rgba(248,113,113,.2)">
-                                                <?= htmlspecialchars($t('cron_delete'), ENT_QUOTES, 'UTF-8') ?>
-                                            </button>
-                                        </form>
-                                        <form method="POST"
-                                              action="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/execute"
-                                              onsubmit="return confirm('<?= htmlspecialchars($t('cron_run_confirm'), ENT_QUOTES, 'UTF-8') ?>')">
-                                            <input type="hidden" name="_csrf"   value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                                            <input type="hidden" name="_return" value="<?= htmlspecialchars($pageUrl($currentPage), ENT_QUOTES, 'UTF-8') ?>">
-                                            <button type="submit"
-                                                    class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold transition"
-                                                    style="background:rgba(251,191,36,.1);color:var(--cm-warning);border:1px solid rgba(251,191,36,.2)">
-                                                <?= htmlspecialchars($t('cron_run_now'), ENT_QUOTES, 'UTF-8') ?>
-                                            </button>
-                                        </form>
-                                    </div>
-                                </td>
-                            <?php endif; ?>
+                            <!-- Open button (all users) -->
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <?php if ($jobId !== ''): ?>
+                                    <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>"
+                                       class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold transition"
+                                       style="background:rgba(59,130,246,.1);color:var(--cm-primary);border:1px solid rgba(59,130,246,.2)">
+                                        <?= htmlspecialchars($t('cron_open'), ENT_QUOTES, 'UTF-8') ?>
+                                    </a>
+                                <?php endif; ?>
+                            </td>
 
                         </tr>
                     <?php endforeach; ?>

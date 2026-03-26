@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `misc_optimisations`
+
+### Changed
+
+- **Cron list: actions replaced by single "Open" button** – The four per-row admin action buttons (Edit, Copy, Delete, Run) on the cron list have been removed. All rows now show a single "Open" button (visible to all users, not admin-only) that navigates to the job detail page. The actions column is always rendered regardless of role.
+- **Job detail page: full action toolbar** – Monitor, Edit, Copy, Delete, and Run Now buttons are all available on the detail page. Edit, Copy, Delete, and Run Now are shown to admin users only; Monitor is accessible to all users. The Copy button was previously missing from the detail page.
+- **`cron_run_now` label changed from "Run" to "Run Now"** (EN) / "Jetzt ausführen" (DE) for clarity on the detail page.
+
+### Fixed
+
+- **Run Now: schedule computed in UTC instead of host system timezone** – `new \DateTime('+1 minute')` used PHP's `date.timezone` (defaults to UTC when unset), so the computed `{min} {hour}` fields could be off by the UTC offset, causing cron to fire at the wrong time or not at all. Fixed by resolving the host timezone explicitly before constructing the `DateTime`: checks the `TZ` environment variable first, then `/etc/timezone`, then falls back to `date_default_timezone_get()`.
+
+### Added
+
+- **Run Now: target selection modal for multi-target jobs** – When a job has more than one configured target, clicking "Run Now" on the detail page now opens a modal dialog instead of directly confirming. The modal shows a checkbox for each target (all checked by default). The user can deselect individual targets before scheduling. At least one target must remain checked. Single-target jobs continue to use the previous simple confirm dialog. The agent's `ExecuteNowEndpoint` accepts an optional `targets` array in the JSON body and schedules only the specified subset (unknown values are silently ignored; falls back to all targets when the body is empty).
+- **"Last Result" filter on cron list** – New dropdown filter with options All / Ok / Failed / Not run. "Ok" shows jobs whose last finished execution exited with code 0; "Failed" shows jobs with a non-zero last exit code; "Not run" shows jobs that have never been started. Filter value is persisted via cookie (`cronmgr_crons_result`).
+- **"Last Result" filter on timeline** – Same Ok / Failed / Not run filter added to the timeline page. In the timeline context "Not run" maps to executions that are still running (no `finished_at` yet). Backed by a new `?result=` query parameter on the agent's `/history` endpoint. Filter value is persisted via cookie (`cronmgr_tl_result`).
+
+---
+
 ## [Unreleased] – branch: `simple_setup_fix`
 
 ### Fixed

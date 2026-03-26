@@ -114,21 +114,45 @@ final class ExecuteNowEndpoint
 
         // ------------------------------------------------------------------
         // 2. Resolve targets (fall back to 'local' for legacy jobs)
+        //    If the request body contains a non-empty 'targets' array, only
+        //    the targets listed there are scheduled (must be a subset of the
+        //    job's configured targets; unknown values are silently dropped).
         // ------------------------------------------------------------------
 
-        $targets = $this->fetchTargets($jobId);
-        if ($targets === []) {
-            $targets = ['local'];
+        $allTargets = $this->fetchTargets($jobId);
+        if ($allTargets === []) {
+            $allTargets = ['local'];
         }
+
+        $body            = (string) file_get_contents('php://input');
+        $requestedSubset = [];
+        if ($body !== '') {
+            $decoded = json_decode($body, true);
+            if (is_array($decoded) && isset($decoded['targets']) && is_array($decoded['targets'])) {
+                // Accept only targets that are actually configured for this job
+                foreach ($decoded['targets'] as $t) {
+                    if (is_string($t) && in_array($t, $allTargets, strict: true)) {
+                        $requestedSubset[] = $t;
+                    }
+                }
+            }
+        }
+
+        $targets = $requestedSubset !== [] ? $requestedSubset : $allTargets;
 
         // ------------------------------------------------------------------
         // 3. Compute full-date schedule for next minute
         //    Format: "{min} {hour} {dom} {month} *"
         //    Using day-of-month + month means the entry fires at most once per
         //    year if the cleanup step fails – far safer than "* * * * *".
+        //
+        //    We explicitly use the host system timezone so that the computed
+        //    minute/hour values match what cron sees on its clock.
+        //    Detection order: TZ env var → /etc/timezone → PHP default.
         // ------------------------------------------------------------------
 
-        $next     = new \DateTime('+1 minute');
+        $tz   = new \DateTimeZone($this->resolveSystemTimezone());
+        $next = new \DateTime('+1 minute', $tz);
         $schedule = sprintf(
             '%d %d %d %d *',
             (int) $next->format('i'),  // minute
@@ -221,5 +245,51 @@ final class ExecuteNowEndpoint
         $stmt->execute([':id' => $jobId]);
 
         return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    }
+
+    /**
+     * Resolve the host system timezone for accurate schedule computation.
+     *
+     * The cron daemon uses the OS timezone, not PHP's configured timezone.
+     * We detect it in priority order:
+     *   1. TZ environment variable (set by systemd or shell)
+     *   2. /etc/localtime symlink target (most reliable on modern Linux –
+     *      e.g. /usr/share/zoneinfo/Europe/Berlin → "Europe/Berlin")
+     *   3. /etc/timezone plain-text file (Debian/Ubuntu)
+     *   4. PHP's configured date.timezone (php.ini fallback)
+     *
+     * @return string A valid timezone identifier (e.g. "Europe/Berlin").
+     */
+    private function resolveSystemTimezone(): string
+    {
+        // 1. TZ environment variable (set by systemd or shell)
+        $envTz = getenv('TZ');
+        if ($envTz !== false && $envTz !== '') {
+            return $envTz;
+        }
+
+        // 2. /etc/localtime symlink → /usr/share/zoneinfo/<Zone/Name>
+        //    This is the canonical source on systemd-based distros.
+        $link = @readlink('/etc/localtime');
+        if ($link !== false) {
+            $pos = strpos($link, 'zoneinfo/');
+            if ($pos !== false) {
+                $tz = substr($link, $pos + strlen('zoneinfo/'));
+                if ($tz !== '') {
+                    return $tz;
+                }
+            }
+        }
+
+        // 3. /etc/timezone plain-text file (Debian/Ubuntu)
+        if (is_readable('/etc/timezone')) {
+            $tz = trim((string) file_get_contents('/etc/timezone'));
+            if ($tz !== '') {
+                return $tz;
+            }
+        }
+
+        // 4. PHP's own configured timezone (date.timezone in php.ini)
+        return date_default_timezone_get();
     }
 }

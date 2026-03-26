@@ -65,6 +65,7 @@ class CronController extends BaseController
         $filterUser   = $this->filterParam('user',   'cronmgr_crons_user');
         $filterTarget = $this->filterParam('target', 'cronmgr_crons_target');
         $filterSearch = $this->filterParam('search', 'cronmgr_crons_search');
+        $filterResult = $this->filterParam('result', 'cronmgr_crons_result');
 
         // ------------------------------------------------------------------
         // Resolve page-size preference
@@ -125,6 +126,20 @@ class CronController extends BaseController
             }));
         }
 
+        // Apply last-result filter (ok = exit_code 0, failed = exit_code != 0, not_run = never started)
+        if ($filterResult !== '') {
+            $jobs = array_values(array_filter($jobs, static function (array $job) use ($filterResult): bool {
+                $lastExitCode = isset($job['last_exit_code']) ? (int) $job['last_exit_code'] : null;
+                $lastRun      = isset($job['last_run'])       ? $job['last_run']              : null;
+                return match ($filterResult) {
+                    'ok'      => $lastExitCode !== null && $lastExitCode === 0,
+                    'failed'  => $lastExitCode !== null && $lastExitCode !== 0,
+                    'not_run' => $lastRun === null,
+                    default   => true,
+                };
+            }));
+        }
+
         // Collect unique users and all unique targets from the full unfiltered list
         $users          = [];
         $allTargets     = [];  // All distinct target values (for filter dropdown)
@@ -170,6 +185,7 @@ class CronController extends BaseController
             'filterUser'    => $filterUser,
             'filterTarget'  => $filterTarget,
             'filterSearch'  => $filterSearch,
+            'filterResult'  => $filterResult,
             'users'         => $users,
             'allTargets'    => $allTargets,
             'isAdmin'       => SessionManager::hasRole('admin'),
@@ -779,8 +795,15 @@ class CronController extends BaseController
 
         $this->logger->info('CronController::executeNow: scheduling immediate execution', ['id' => $id]);
 
+        // Optional target subset selected via the multi-target modal.
+        $selectedTargets = isset($_POST['targets']) && is_array($_POST['targets'])
+            ? array_values(array_filter(array_map('strval', $_POST['targets'])))
+            : [];
+
+        $payload = $selectedTargets !== [] ? ['targets' => $selectedTargets] : [];
+
         try {
-            $this->agentClient()->post("/crons/{$id}/execute", []);
+            $this->agentClient()->post("/crons/{$id}/execute", $payload);
         } catch (\RuntimeException $e) {
             $this->logger->error('CronController::executeNow: agent error', [
                 'id'    => $id,

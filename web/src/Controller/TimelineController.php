@@ -61,6 +61,7 @@ class TimelineController extends BaseController
         $filterUser   = $this->filterParam('user',   'cronmgr_tl_user');
         $filterTarget = $this->filterParam('target', 'cronmgr_tl_target');
         $filterStatus = $this->filterParam('status', 'cronmgr_tl_status');
+        $filterResult = $this->filterParam('result', 'cronmgr_tl_result');
         $filterFrom   = $this->filterParam('from',   'cronmgr_tl_from');
         $filterTo     = $this->filterParam('to',     'cronmgr_tl_to');
 
@@ -78,6 +79,7 @@ class TimelineController extends BaseController
         if ($filterUser   !== '') { $query['user']   = $filterUser; }
         if ($filterTarget !== '') { $query['target'] = $filterTarget; }
         if ($filterStatus !== '') { $query['status'] = $filterStatus; }
+        if ($filterResult !== '') { $query['result'] = $filterResult; }
         if ($filterFrom   !== '') { $query['from']   = $filterFrom; }
         if ($filterTo     !== '') { $query['to']     = $filterTo; }
 
@@ -141,6 +143,7 @@ class TimelineController extends BaseController
             'user'   => $filterUser,
             'target' => $filterTarget,
             'status' => $filterStatus,
+            'result' => $filterResult,
             'from'   => $filterFrom,
             'to'     => $filterTo,
         ];

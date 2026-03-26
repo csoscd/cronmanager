@@ -762,6 +762,42 @@ class CronController extends BaseController
         (new Response())->redirect($safe);
     }
 
+    /**
+     * Schedule a job for immediate (next-minute) execution via the Run Now button.
+     *
+     * Calls POST /crons/{id}/execute on the agent, which adds a temporary
+     * once-only crontab entry with a full-date schedule.  After execution the
+     * wrapper script calls the cleanup endpoint to remove the entry.
+     *
+     * @param array<string,string> $params Path parameters. Expected key: 'id'.
+     *
+     * @return void
+     */
+    public function executeNow(array $params): void
+    {
+        $id = isset($params['id']) ? (int) $params['id'] : 0;
+
+        $this->logger->info('CronController::executeNow: scheduling immediate execution', ['id' => $id]);
+
+        try {
+            $this->agentClient()->post("/crons/{$id}/execute", []);
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::executeNow: agent error', [
+                'id'    => $id,
+                'error' => $e->getMessage(),
+            ]);
+            $this->renderError(503, 'error_agent_unavailable', '/crons');
+            return;
+        }
+
+        // Redirect back to the referring page (list or detail), validated to
+        // prevent open-redirect.
+        $returnUrl = trim((string) ($_POST['_return'] ?? ''));
+        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons';
+
+        (new Response())->redirect($safe);
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------

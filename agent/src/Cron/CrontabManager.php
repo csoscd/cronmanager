@@ -49,6 +49,9 @@ final class CrontabManager
     /** @var string Prefix for the marker comment line written above each managed entry */
     private const MARKER_PREFIX = '# cronmanager:';
 
+    /** @var string Prefix for once-only marker comment lines (Run Now feature) */
+    private const ONCE_MARKER_PREFIX = '# cronmanager-once:';
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -586,6 +589,129 @@ final class CrontabManager
 
         // Matches legacy "# cronmanager:42" and new "# cronmanager:42:target"
         return str_contains($raw, $markerPrefix);
+    }
+
+    // -------------------------------------------------------------------------
+    // Once-only entry management (Run Now feature)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Add a once-only crontab entry that executes the job at the next minute.
+     *
+     * The entry uses a full-date schedule (minute, hour, day-of-month, month)
+     * so that even if cleanup fails after execution, the entry fires at most
+     * once per year rather than on every matching minute.
+     *
+     * Entry format written to the crontab:
+     *
+     *   # cronmanager-once:{jobId}:{target}
+     *   {schedule} {wrapperScript} {jobId} {target} --once
+     *
+     * The "--once" flag tells the wrapper script to call the cleanup endpoint
+     * after execution to remove this temporary entry.
+     *
+     * @param string $user          Linux user name.
+     * @param int    $jobId         Cronmanager job ID.
+     * @param string $schedule      Full-date cron expression, e.g. "37 14 26 3 *".
+     * @param string $wrapperScript Absolute path to the wrapper script.
+     * @param string $target        Execution target ('local' or SSH alias).
+     *
+     * @return void
+     *
+     * @throws InvalidArgumentException When $user contains disallowed characters.
+     * @throws RuntimeException         When writing the crontab fails.
+     */
+    public function addOnceEntry(
+        string $user,
+        int    $jobId,
+        string $schedule,
+        string $wrapperScript,
+        string $target,
+    ): void {
+        $this->validateUser($user);
+
+        $existing = rtrim($this->readCrontab($user));
+        if ($existing !== '') {
+            $existing .= "\n";
+        }
+
+        $entry = sprintf(
+            "%s%d:%s\n%s %s %d %s --once\n",
+            self::ONCE_MARKER_PREFIX,
+            $jobId,
+            $target,
+            $schedule,
+            $wrapperScript,
+            $jobId,
+            $target,
+        );
+
+        $this->writeCrontab($user, $existing . $entry);
+
+        $this->logger->info('CrontabManager: once-entry added', [
+            'user'     => $user,
+            'job_id'   => $jobId,
+            'schedule' => $schedule,
+            'target'   => $target,
+        ]);
+    }
+
+    /**
+     * Remove the once-only crontab entry for the given job ID and target.
+     *
+     * Called by the cleanup endpoint after the wrapper finishes a once-only run.
+     * Silently succeeds if no matching entry is found (idempotent).
+     *
+     * @param string $user   Linux user name.
+     * @param int    $jobId  Cronmanager job ID.
+     * @param string $target Execution target to match (e.g. 'local').
+     *
+     * @return void
+     *
+     * @throws InvalidArgumentException When $user contains disallowed characters.
+     * @throws RuntimeException         When writing the updated crontab fails.
+     */
+    public function removeOnceEntries(string $user, int $jobId, string $target): void
+    {
+        $this->validateUser($user);
+
+        $markerLine = self::ONCE_MARKER_PREFIX . $jobId . ':' . $target;
+        $raw        = $this->readCrontab($user);
+
+        if (!str_contains($raw, $markerLine)) {
+            $this->logger->debug('CrontabManager: removeOnceEntries – no entry found (no-op)', [
+                'user'   => $user,
+                'job_id' => $jobId,
+                'target' => $target,
+            ]);
+            return;
+        }
+
+        $lines    = explode("\n", $raw);
+        $filtered = [];
+        $skipNext = false;
+
+        foreach ($lines as $line) {
+            if ($skipNext) {
+                $skipNext = false;
+                continue;
+            }
+
+            if (trim($line) === $markerLine) {
+                $skipNext = true;
+                continue;
+            }
+
+            $filtered[] = $line;
+        }
+
+        $this->writeCrontab($user, implode("\n", $filtered));
+
+        $this->logger->info('CrontabManager: once-entry removed', [
+            'user'   => $user,
+            'job_id' => $jobId,
+            'target' => $target,
+        ]);
     }
 
     // -------------------------------------------------------------------------

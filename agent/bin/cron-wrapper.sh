@@ -88,6 +88,12 @@ fi
 # When absent, the target is derived from the agent response (backward compat).
 TARGET="${2:-}"
 
+# Optional third argument: "--once" flag.
+# When present the wrapper was invoked from a once-only crontab entry created
+# by the Run Now feature.  After execution it calls the cleanup endpoint to
+# remove that temporary entry from the crontab.
+RUN_ONCE="${3:-}"
+
 # =============================================================================
 # Read configuration via PHP JSON parser
 # =============================================================================
@@ -410,6 +416,34 @@ elif [[ "$EXECUTION_ID" != "0" ]]; then
     fi
 else
     log_warn "Job ${JOB_ID}: skipping /execution/finish notification (no execution_id)"
+fi
+
+# =============================================================================
+# Step 5 (once-only): Remove the temporary crontab entry
+# =============================================================================
+#
+# When invoked with "--once" the job was scheduled via the Run Now feature.
+# Notify the agent cleanup endpoint so the temporary crontab entry is removed
+# immediately.  This is best-effort: if it fails the entry will fire at most
+# once per year due to its full-date schedule.
+
+if [[ "${RUN_ONCE}" == "--once" ]]; then
+    log_info "Job ${JOB_ID}: removing once-only crontab entry (target=${TARGET})"
+
+    CLEANUP_PATH="/crons/${JOB_ID}/execute/cleanup"
+    CLEANUP_BODY="$(php -r "
+        echo json_encode(['target' => '${TARGET}'], JSON_UNESCAPED_UNICODE);
+    ")"
+
+    if agent_request "POST" "${CLEANUP_PATH}" "${CLEANUP_BODY}" >/dev/null; then
+        if [[ "${_HTTP_CODE}" -ge 200 && "${_HTTP_CODE}" -lt 300 ]]; then
+            log_info "Job ${JOB_ID}: once-entry removed from crontab (http_code=${_HTTP_CODE})"
+        else
+            log_warn "Job ${JOB_ID}: cleanup returned HTTP ${_HTTP_CODE} – once-entry may remain in crontab (harmless, expires next year)"
+        fi
+    else
+        log_warn "Job ${JOB_ID}: could not reach agent for cleanup – once-entry may remain in crontab (harmless, expires next year)"
+    fi
 fi
 
 # =============================================================================

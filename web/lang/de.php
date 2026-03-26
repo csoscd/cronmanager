@@ -92,6 +92,8 @@ return [
     'cron_copy_title'         => 'Kopie von: {name}',
     'cron_copy_notice'        => 'Felder aus einem bestehenden Job vorausgefüllt. Anpassen und speichern, um einen neuen eigenständigen Job zu erstellen.',
     'cron_delete_confirm'     => 'Möchten Sie diesen Job wirklich löschen?',
+    'cron_run_now'            => 'Ausführen',
+    'cron_run_confirm'        => 'Möchten Sie diesen Job jetzt ausführen? Er wird für die nächste Minute eingeplant.',
     'cron_schedule'           => 'Zeitplan',
     'cron_command'            => 'Befehl',
     'cron_description'        => 'Beschreibung',

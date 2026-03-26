@@ -92,6 +92,8 @@ return [
     'cron_copy_title'         => 'Copy of: {name}',
     'cron_copy_notice'        => 'Pre-filled from an existing job. Adjust as needed and save to create a new independent job.',
     'cron_delete_confirm'     => 'Are you sure you want to delete this job?',
+    'cron_run_now'            => 'Run',
+    'cron_run_confirm'        => 'Are you sure you want to execute this job now? It will be scheduled for the next minute.',
     'cron_schedule'           => 'Schedule',
     'cron_command'            => 'Command',
     'cron_description'        => 'Description',

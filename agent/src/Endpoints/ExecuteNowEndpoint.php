@@ -234,20 +234,35 @@ final class ExecuteNowEndpoint
      * The cron daemon uses the OS timezone, not PHP's configured timezone.
      * We detect it in priority order:
      *   1. TZ environment variable (set by systemd or shell)
-     *   2. /etc/timezone (Debian/Ubuntu/most Linux distros)
-     *   3. PHP's configured date.timezone (php.ini fallback)
+     *   2. /etc/localtime symlink target (most reliable on modern Linux –
+     *      e.g. /usr/share/zoneinfo/Europe/Berlin → "Europe/Berlin")
+     *   3. /etc/timezone plain-text file (Debian/Ubuntu)
+     *   4. PHP's configured date.timezone (php.ini fallback)
      *
      * @return string A valid timezone identifier (e.g. "Europe/Berlin").
      */
     private function resolveSystemTimezone(): string
     {
-        // 1. TZ environment variable
+        // 1. TZ environment variable (set by systemd or shell)
         $envTz = getenv('TZ');
         if ($envTz !== false && $envTz !== '') {
             return $envTz;
         }
 
-        // 2. /etc/timezone (Debian / Ubuntu / most systemd distros)
+        // 2. /etc/localtime symlink → /usr/share/zoneinfo/<Zone/Name>
+        //    This is the canonical source on systemd-based distros.
+        $link = @readlink('/etc/localtime');
+        if ($link !== false) {
+            $pos = strpos($link, 'zoneinfo/');
+            if ($pos !== false) {
+                $tz = substr($link, $pos + strlen('zoneinfo/'));
+                if ($tz !== '') {
+                    return $tz;
+                }
+            }
+        }
+
+        // 3. /etc/timezone plain-text file (Debian/Ubuntu)
         if (is_readable('/etc/timezone')) {
             $tz = trim((string) file_get_contents('/etc/timezone'));
             if ($tz !== '') {
@@ -255,7 +270,7 @@ final class ExecuteNowEndpoint
             }
         }
 
-        // 3. PHP's own configured timezone (date.timezone in php.ini)
+        // 4. PHP's own configured timezone (date.timezone in php.ini)
         return date_default_timezone_get();
     }
 }

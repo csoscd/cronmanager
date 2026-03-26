@@ -182,11 +182,18 @@ try {
     $router->addRoute('GET',    '/crons/unmanaged',      [$cronUnmanaged, 'handle']);
     // /crons/{id}/monitor must be registered before /crons/{id} so the router
     // tries the more specific pattern first and does not mis-route the request.
-    $router->addRoute('GET',    '/crons/{id}/monitor',   [$cronMonitor,   'handle']);
-    $router->addRoute('GET',    '/crons/{id}',           [$cronGet,       'handle']);
-    $router->addRoute('POST',   '/crons',                [$cronCreate,    'handle']);
-    $router->addRoute('PUT',    '/crons/{id}',           [$cronUpdate,    'handle']);
-    $router->addRoute('DELETE', '/crons/{id}',           [$cronDelete,    'handle']);
+    $executeNow     = new \Cronmanager\Agent\Endpoints\ExecuteNowEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
+    $executeCleanup = new \Cronmanager\Agent\Endpoints\ExecuteCleanupEndpoint($pdo, $logger, $crontabManager);
+
+    $router->addRoute('GET',    '/crons/{id}/monitor',          [$cronMonitor,   'handle']);
+    // /crons/{id}/execute/cleanup and /crons/{id}/execute must be registered
+    // before /crons/{id} so the more-specific patterns are tried first.
+    $router->addRoute('POST',   '/crons/{id}/execute/cleanup',  [$executeCleanup, 'handle']);
+    $router->addRoute('POST',   '/crons/{id}/execute',          [$executeNow,     'handle']);
+    $router->addRoute('GET',    '/crons/{id}',                  [$cronGet,       'handle']);
+    $router->addRoute('POST',   '/crons',                       [$cronCreate,    'handle']);
+    $router->addRoute('PUT',    '/crons/{id}',                  [$cronUpdate,    'handle']);
+    $router->addRoute('DELETE', '/crons/{id}',                  [$cronDelete,    'handle']);
 
     // -- Execution lifecycle --------------------------------------------------
 

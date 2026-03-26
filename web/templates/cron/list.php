@@ -416,6 +416,17 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                                                 <?= htmlspecialchars($t('cron_delete'), ENT_QUOTES, 'UTF-8') ?>
                                             </button>
                                         </form>
+                                        <form method="POST"
+                                              action="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/execute"
+                                              onsubmit="return confirm('<?= htmlspecialchars($t('cron_run_confirm'), ENT_QUOTES, 'UTF-8') ?>')">
+                                            <input type="hidden" name="_csrf"   value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                            <input type="hidden" name="_return" value="<?= htmlspecialchars($pageUrl($currentPage), ENT_QUOTES, 'UTF-8') ?>">
+                                            <button type="submit"
+                                                    class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold transition"
+                                                    style="background:rgba(251,191,36,.1);color:var(--cm-warning);border:1px solid rgba(251,191,36,.2)">
+                                                <?= htmlspecialchars($t('cron_run_now'), ENT_QUOTES, 'UTF-8') ?>
+                                            </button>
+                                        </form>
                                     </div>
                                 </td>
                             <?php endif; ?>

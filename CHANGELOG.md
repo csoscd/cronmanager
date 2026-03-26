@@ -49,6 +49,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `execute_now`
+
+### Added
+
+- **Run Now button on cron list** – Each job row has a new "Run" button (yellow, next to Delete). Clicking it shows a confirmation dialog and then immediately schedules the job for execution at the next clock minute without leaving the current list page (filter state is preserved via `_return`).
+  - The button submits a `POST /crons/{id}/execute` form. The web controller forwards the request to the host agent and redirects back to the filtered list.
+  - The host agent `ExecuteNowEndpoint` builds a full-date one-time schedule (`{min} {hour} {dom} {month} *`) for the next minute and injects a `# cronmanager-once:{id}:{target}` + command line into the crontab of every configured target for the job. Using a full-date schedule means that a missed cleanup at most causes one spurious re-run per year (not once per hour).
+  - After the job finishes, `cron-wrapper.sh` detects the `--once` flag (third argument) and calls the new `POST /crons/{id}/execute/cleanup` agent endpoint, which removes the marker and command lines from the crontab. The cleanup call is fire-and-forget; a failure only means the entry expires naturally in at most one year.
+  - New agent endpoints: `ExecuteNowEndpoint` (`POST /crons/{id}/execute`) and `ExecuteCleanupEndpoint` (`POST /crons/{id}/execute/cleanup`).
+  - New `CrontabManager` methods: `addOnceEntry()` and `removeOnceEntries()`.
+  - New translation keys: `cron_run_now`, `cron_run_confirm` (EN + DE).
+
+---
+
 ## [Unreleased] – branch: `monitor_filter`
 
 ### Added

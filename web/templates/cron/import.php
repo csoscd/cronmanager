@@ -9,8 +9,10 @@ declare(strict_types=1);
  * unmanaged crontab entries that can be bulk-imported as Cronmanager jobs.
  *
  * Variables available in this template:
- *   array       $users            – known linux_user strings (from managed jobs)
+ *   array       $users            – linux user strings found on the selected target
  *   string|null $selectedUser     – the currently selected Linux user, or null
+ *   string      $selectedTarget   – the currently selected target ('local' or SSH alias)
+ *   array       $sshTargets       – SSH host aliases available for target selection
  *   array       $unmanagedEntries – array of {'schedule', 'command'} maps
  *   array       $tags             – all known tag records from the agent
  *   bool        $isAdmin          – whether the current user has admin role
@@ -24,6 +26,8 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
 $users            = isset($users)            && is_array($users)            ? $users            : [];
 $selectedUser     = isset($selectedUser)     && $selectedUser !== null      ? (string) $selectedUser : null;
+$selectedTarget   = isset($selectedTarget)   && $selectedTarget !== ''      ? (string) $selectedTarget : 'local';
+$sshTargets       = isset($sshTargets)       && is_array($sshTargets)       ? $sshTargets       : [];
 $unmanagedEntries = isset($unmanagedEntries) && is_array($unmanagedEntries) ? $unmanagedEntries : [];
 $tags             = isset($tags)             && is_array($tags)             ? $tags             : [];
 $isAdmin          = isset($isAdmin)          && (bool) $isAdmin;
@@ -62,6 +66,28 @@ if ($flashSuccess !== null) {
      ====================================================================== -->
 <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5 mb-6">
     <form method="GET" action="/crons/import" class="flex flex-wrap items-end gap-3">
+
+        <!-- Target selector -->
+        <div class="flex-1 min-w-48">
+            <label for="import-target-select" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                <?= htmlspecialchars($t('import_select_target'), ENT_QUOTES, 'UTF-8') ?>
+            </label>
+            <select id="import-target-select" name="target"
+                    onchange="this.form.submit()"
+                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                           focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="local"<?= $selectedTarget === 'local' ? ' selected' : '' ?>>
+                    local
+                </option>
+                <?php foreach ($sshTargets as $sshTarget): ?>
+                    <?php $sel = ($selectedTarget === $sshTarget) ? ' selected' : ''; ?>
+                    <option value="<?= htmlspecialchars($sshTarget, ENT_QUOTES, 'UTF-8') ?>"<?= $sel ?>>
+                        <?= htmlspecialchars($sshTarget, ENT_QUOTES, 'UTF-8') ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
 
         <!-- Known-user dropdown -->
         <div class="flex-1 min-w-48">
@@ -141,9 +167,10 @@ if ($flashSuccess !== null) {
     <?php else: ?>
 
         <form method="POST" action="/crons/import">
-            <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
-            <!-- Pass the user to the controller -->
-            <input type="hidden" name="user" value="<?= htmlspecialchars($selectedUser, ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="_csrf"   value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
+            <!-- Pass the user and target to the controller -->
+            <input type="hidden" name="user"    value="<?= htmlspecialchars($selectedUser,   ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="target"  value="<?= htmlspecialchars($selectedTarget, ENT_QUOTES, 'UTF-8') ?>">
 
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden mb-4">
 

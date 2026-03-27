@@ -43,6 +43,7 @@ return [
     'nav_swimlane'            => 'Swimlane',
     'nav_export'              => 'Export',
     'nav_users'               => 'Users',
+    'nav_maintenance'         => 'Maintenance',
 
     // -------------------------------------------------------------------------
     // Roles
@@ -250,6 +251,7 @@ return [
     // Import from Crontab
     // -------------------------------------------------------------------------
     'import_title'           => 'Import from Crontab',
+    'import_select_target'   => 'Target',
     'import_select_user'     => 'Select Linux User',
     'import_load'            => 'Load Crontab',
     'import_none_found'      => 'No unmanaged crontab entries found for this user.',
@@ -305,8 +307,59 @@ return [
     'started_at'              => 'Started',
     'finished_at'             => 'Finished',
     'actions'                 => 'Actions',
+    'select_all'              => 'Select all',
     'save'                    => 'Save',
     'cancel'                  => 'Cancel',
     'back'                    => 'Back',
     'no_results'              => 'No results found.',
+
+    // -------------------------------------------------------------------------
+    // Maintenance page
+    // -------------------------------------------------------------------------
+    'maintenance_title'                  => 'Maintenance',
+
+    // Crontab resync
+    'maintenance_resync_title'           => 'Crontab Sync',
+    'maintenance_resync_desc'            => 'Re-writes all crontab entries from the database. Active jobs are synced (entries added / updated); inactive jobs have their entries removed. Use this after a migration or if crontab entries are out of sync.',
+    'maintenance_resync_btn'             => 'Sync Now',
+    'maintenance_resync_confirm'         => 'Re-sync all crontab entries from the database? This will overwrite any manual crontab edits.',
+    'maintenance_resync_success'         => 'Crontab sync complete: {synced} active job(s) synced.',
+    'maintenance_resync_error'           => 'Crontab sync failed. Check the agent log for details.',
+
+    // Stuck executions
+    'maintenance_stuck_title'            => 'Stuck Executions',
+    'maintenance_stuck_desc'             => 'Executions that have been running longer than the configured threshold. These may indicate crashed jobs whose finish event was never received.',
+    'maintenance_stuck_hours'            => 'Running for more than',
+    'maintenance_stuck_hours_unit'       => 'hours',
+    'maintenance_stuck_refresh'          => 'Refresh',
+    'maintenance_stuck_none'             => 'No stuck executions found for this threshold.',
+    'maintenance_stuck_resolve'          => 'Mark Finished',
+    'maintenance_stuck_delete'           => 'Delete',
+    'maintenance_stuck_resolve_confirm'  => 'Mark this execution as finished (exit code −1)? It will remain visible in the history.',
+    'maintenance_stuck_delete_confirm'   => 'Permanently delete this execution record? This cannot be undone.',
+    'maintenance_stuck_resolved'         => 'Execution marked as finished.',
+    'maintenance_stuck_deleted'          => 'Execution record deleted.',
+    'maintenance_stuck_bulk_resolve'         => 'Mark Finished',
+    'maintenance_stuck_bulk_delete'          => 'Delete Selected',
+    'maintenance_stuck_selected'             => '{count} selected',
+    'maintenance_stuck_bulk_resolve_confirm' => 'Mark {count} execution(s) as finished (exit code −1)?',
+    'maintenance_stuck_bulk_delete_confirm'  => 'Permanently delete {count} execution record(s)? This cannot be undone.',
+    'maintenance_stuck_bulk_resolved'        => '{count} execution(s) marked as finished.',
+    'maintenance_stuck_bulk_deleted'         => '{count} execution record(s) deleted.',
+
+    // History cleanup
+    'maintenance_cleanup_title'          => 'History Cleanup',
+    'maintenance_cleanup_desc'           => 'Permanently delete finished execution history records older than the specified number of days. Running executions are never deleted.',
+    'maintenance_cleanup_older_than'     => 'Delete records older than',
+    'maintenance_cleanup_days'           => 'days',
+    'maintenance_cleanup_btn'            => 'Clean Up',
+    'maintenance_cleanup_confirm'        => 'Delete all finished execution history older than {days} days? This cannot be undone.',
+    'maintenance_cleanup_success'        => 'History cleanup complete: {count} record(s) deleted.',
+
+    'maintenance_once_title'             => 'Run Now Cleanup',
+    'maintenance_once_desc'              => 'Remove stale once-only crontab entries left behind by Run Now jobs. These entries are normally self-removing after execution, but can remain if the agent was unreachable at cleanup time.',
+    'maintenance_once_btn'               => 'Remove Stale Entries',
+    'maintenance_once_confirm'           => 'Remove all stale Run Now crontab entries? This only removes temporary schedule lines — no jobs or history records are affected.',
+    'maintenance_once_success'           => 'Run Now cleanup complete: {count} stale entry(s) removed.',
+    'maintenance_once_none'              => 'No stale Run Now entries found.',
 ];

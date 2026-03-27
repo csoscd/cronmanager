@@ -442,7 +442,116 @@ final class CrontabManager
     {
         $this->validateUser($user);
 
-        $raw   = $this->readCrontab($user);
+        $raw = $this->readCrontab($user);
+
+        return $this->parseUnmanagedEntries($raw);
+    }
+
+    /**
+     * Return all users that have any crontab entries on a remote SSH host.
+     *
+     * Connects to the target via a single SSH command that enumerates all
+     * candidate users (root + UID >= 1000) and tests whether each has a
+     * non-empty crontab.
+     *
+     * @param  string  $target  SSH host alias (must pass validateSshTarget()).
+     * @return string[]         Sorted array of Linux user names.
+     *
+     * @throws InvalidArgumentException  On invalid SSH target name.
+     * @throws RuntimeException          On SSH connection or execution failure.
+     */
+    public function getRemoteUsersWithCrontab(string $target): array
+    {
+        $this->validateSshTarget($target);
+
+        // Single SSH connection: enumerate candidate users and check crontabs
+        $shellCmd = 'getent passwd | awk -F: \'($3==0||$3>=1000){print $1}\' | ' .
+                    'while read u; do ' .
+                    '  ct=$(crontab -l -u "$u" 2>/dev/null); ' .
+                    '  [ -n "$ct" ] && echo "$u"; ' .
+                    'done';
+
+        $cmd = sprintf(
+            'ssh -o BatchMode=yes -o ConnectTimeout=10 %s %s 2>/dev/null',
+            escapeshellarg($target),
+            escapeshellarg($shellCmd)
+        );
+
+        exec($cmd, $output, $exitCode);
+
+        // Non-zero exit is only fatal when no output at all (connection refused etc.)
+        if ($exitCode !== 0 && empty($output)) {
+            throw new RuntimeException(
+                sprintf('SSH failed (exit %d) connecting to target "%s".', $exitCode, $target)
+            );
+        }
+
+        $users = array_values(array_filter(array_map('trim', $output)));
+        sort($users);
+
+        $this->logger->debug('CrontabManager: getRemoteUsersWithCrontab result', [
+            'target' => $target,
+            'users'  => $users,
+        ]);
+
+        return $users;
+    }
+
+    /**
+     * Return all unmanaged crontab entries for a user on a remote SSH host.
+     *
+     * Retrieves the raw crontab via SSH and applies the same parsing logic
+     * as {@see getUnmanagedEntries()}.
+     *
+     * @param  string  $target  SSH host alias.
+     * @param  string  $user    Linux user name on the remote host.
+     * @return array<int, array{schedule: string, command: string}>
+     *
+     * @throws InvalidArgumentException  On invalid target or user name.
+     * @throws RuntimeException          On SSH connection failure.
+     */
+    public function getRemoteUnmanagedEntries(string $target, string $user): array
+    {
+        $this->validateSshTarget($target);
+        $this->validateUser($user);
+
+        $cmd = sprintf(
+            'ssh -o BatchMode=yes -o ConnectTimeout=10 %s crontab -l -u %s 2>/dev/null',
+            escapeshellarg($target),
+            escapeshellarg($user)
+        );
+
+        exec($cmd, $outputLines, $exitCode);
+
+        // exit code 1 from `crontab -l` means "no crontab for user" – non-fatal
+        $raw = implode("\n", $outputLines);
+
+        $this->logger->debug('CrontabManager: getRemoteUnmanagedEntries', [
+            'target' => $target,
+            'user'   => $user,
+            'lines'  => count($outputLines),
+        ]);
+
+        return $this->parseUnmanagedEntries($raw);
+    }
+
+    // =========================================================================
+    // Internal parsing helper (shared by local + remote unmanaged reads)
+    // =========================================================================
+
+    /**
+     * Parse raw crontab content and return only unmanaged entries.
+     *
+     * An entry is "unmanaged" when it has no "# cronmanager:{id}" marker.
+     * Environment variable assignments, blank lines, and comment lines are
+     * skipped. Both standard 5-field schedules and @-syntax specials are
+     * supported.
+     *
+     * @param  string  $raw  Full crontab content as a single string.
+     * @return array<int, array{schedule: string, command: string}>
+     */
+    private function parseUnmanagedEntries(string $raw): array
+    {
         $lines = explode("\n", $raw);
 
         $entries  = [];
@@ -509,11 +618,6 @@ final class CrontabManager
                 'command'  => $command,
             ];
         }
-
-        $this->logger->debug('CrontabManager: getUnmanagedEntries result', [
-            'user'  => $user,
-            'count' => count($entries),
-        ]);
 
         return $entries;
     }
@@ -714,9 +818,89 @@ final class CrontabManager
         ]);
     }
 
+    /**
+     * Remove ALL once-only crontab entries for a given user.
+     *
+     * Scans the user's crontab for every line starting with ONCE_MARKER_PREFIX
+     * and strips both the marker comment line and the schedule line that follows it.
+     *
+     * @param string $user Linux user name.
+     *
+     * @return int Number of once-entries removed.
+     *
+     * @throws InvalidArgumentException When $user contains disallowed characters.
+     * @throws RuntimeException         When writing the updated crontab fails.
+     */
+    public function removeAllOnceEntriesForUser(string $user): int
+    {
+        $this->validateUser($user);
+
+        $raw = $this->readCrontab($user);
+
+        if (!str_contains($raw, self::ONCE_MARKER_PREFIX)) {
+            return 0;
+        }
+
+        $lines    = explode("\n", $raw);
+        $filtered = [];
+        $removed  = 0;
+        $skipNext = false;
+
+        foreach ($lines as $line) {
+            if ($skipNext) {
+                $skipNext = false;
+                continue;
+            }
+
+            if (str_starts_with(trim($line), self::ONCE_MARKER_PREFIX)) {
+                $skipNext = true;
+                $removed++;
+                continue;
+            }
+
+            $filtered[] = $line;
+        }
+
+        if ($removed > 0) {
+            $this->writeCrontab($user, implode("\n", $filtered));
+            $this->logger->info('CrontabManager: all once-entries removed for user', [
+                'user'    => $user,
+                'removed' => $removed,
+            ]);
+        }
+
+        return $removed;
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Validate that an SSH target alias contains only safe characters.
+     *
+     * Allowed: alphanumeric, dot, hyphen, underscore – covers all valid SSH
+     * Host alias names and prevents shell injection.
+     *
+     * @param string $target SSH host alias to validate.
+     *
+     * @throws InvalidArgumentException When $target is empty or contains forbidden characters.
+     */
+    private function validateSshTarget(string $target): void
+    {
+        if ($target === '') {
+            throw new InvalidArgumentException('SSH target must not be empty.');
+        }
+
+        if (!preg_match('/^[a-zA-Z0-9._-]+$/', $target)) {
+            throw new InvalidArgumentException(
+                sprintf(
+                    'Invalid SSH target "%s": only alphanumeric, dot, hyphen, and underscore are allowed.',
+                    $target
+                )
+            );
+        }
+    }
 
     /**
      * Validate that a Linux user name contains only safe characters.

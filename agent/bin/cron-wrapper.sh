@@ -46,7 +46,7 @@ set -uo pipefail
 # Constants
 # =============================================================================
 
-readonly CONFIG_FILE="/opt/phpscripts/cronmanager/agent/config/config.json"
+readonly CONFIG_FILE="/opt/cronmanager/agent/config/config.json"
 readonly MAX_OUTPUT_BYTES=50000   # Truncate captured output to this many bytes
 
 # =============================================================================

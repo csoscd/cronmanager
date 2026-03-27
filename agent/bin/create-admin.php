@@ -59,7 +59,7 @@ function writeLine(string $msg): void
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-$configPath = '/opt/phpscripts/cronmanager/agent/config/config.json';
+$configPath = '/opt/cronmanager/agent/config/config.json';
 $devPath    = __DIR__ . '/../config/config.json';
 
 if (!file_exists($configPath) && file_exists($devPath)) {

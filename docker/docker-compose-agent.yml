@@ -1,0 +1,122 @@
+---
+# Cronmanager – docker-compose-agent.yml
+# Deployment mode: docker-only
+#
+# Brings up all three services: the agent container, the web UI, and MariaDB.
+# Use this file instead of docker-compose.yml when running the agent as a
+# container rather than as a systemd service on the host.
+#
+# The agent container mounts the agent source read-only and connects to MariaDB
+# and to the web container via the shared internal Docker network.  No PHP
+# installation is required on the host.
+#
+# Adjust volume paths to match your installation before deploying.
+# Default install paths are shown below.
+#
+# Required environment variables (define in .env next to this file):
+#   DB_NAME           – MariaDB database name
+#   DB_USER           – MariaDB application user
+#   DB_PASSWORD       – MariaDB application password
+#   DB_ROOT_PASSWORD  – MariaDB root password
+#
+# NOTE: Cron jobs inside the agent container run as root.
+#       Ensure all managed jobs have linux_user set to "root", then run
+#       Maintenance → Crontab Sync in the web UI to apply.
+#
+# @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+# @license GNU General Public License version 3 or later
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Host Agent (containerised)
+  # ---------------------------------------------------------------------------
+  cronmanager-agent:
+    image: cs1711/cs_cronmanageragent:latest
+    container_name: cronmanager-agent
+    restart: unless-stopped
+    entrypoint: ["/entrypoint.sh"]
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      # Agent source – mounted read-only; config overlay makes config writable
+      - /opt/cronmanager/agent:/opt/cronmanager/agent:ro
+      - /opt/cronmanager/agent/config:/opt/cronmanager/agent/config
+      - /opt/cronmanager/agent/log:/opt/cronmanager/agent/log
+      # SSH keys for remote job execution
+      - /root/.ssh:/root/.ssh:ro
+      # Shared PHP libraries
+      - /opt/phplib/vendor:/opt/phplib/vendor:ro
+      # Container entrypoint script
+      - /opt/cronmanager/agent/docker/agent/entrypoint.sh:/entrypoint.sh:ro
+    networks:
+      - cronmanager-internal
+    depends_on:
+      cronmanager-db:
+        condition: service_healthy
+    labels:
+      - "com.centurylinklabs.watchtower.scope=doupdate"
+
+  # ---------------------------------------------------------------------------
+  # Web UI (PHP-FPM + Nginx)
+  # ---------------------------------------------------------------------------
+  cronmanager-web:
+    image: cs1711/cs_php-nginx-fpm:latest-alpine
+    container_name: cronmanager-web
+    restart: unless-stopped
+    # No extra_hosts needed – agent is reachable via Docker service name
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /opt/cronmanager/www/conf:/var/www/conf
+      - /opt/cronmanager/www/html:/var/www/html
+      - /opt/cronmanager/www/log:/var/www/log
+      - /opt/phplib/vendor:/var/www/libs/vendor
+    ports:
+      - "8880:8080"
+    networks:
+      - cronmanager-internal
+    depends_on:
+      cronmanager-db:
+        condition: service_healthy
+      cronmanager-agent:
+        condition: service_started
+    labels:
+      - "com.centurylinklabs.watchtower.scope=doupdate"
+
+  # ---------------------------------------------------------------------------
+  # MariaDB Database
+  # ---------------------------------------------------------------------------
+  cronmanager-db:
+    image: mariadb:lts
+    container_name: cronmanager-db
+    restart: unless-stopped
+    volumes:
+      - /opt/cronmanager/db/data:/var/lib/mysql
+      - /opt/cronmanager/db/conf:/etc/mysql
+      - /opt/cronmanager/db/log:/var/log/mysql
+      - /opt/cronmanager/db/init:/docker-entrypoint-initdb.d
+    # Port binding removed: agent reaches MariaDB via the internal Docker network.
+    # Uncomment the lines below if direct host access is needed for maintenance.
+    # ports:
+    #   - "127.0.0.1:3306:3306"
+    environment:
+      MARIADB_DATABASE:      ${DB_NAME}
+      MARIADB_USER:          ${DB_USER}
+      MARIADB_PASSWORD:      ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - cronmanager-internal
+    labels:
+      - "com.centurylinklabs.watchtower.scope=doupdate"
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  cronmanager-internal:
+    driver: bridge

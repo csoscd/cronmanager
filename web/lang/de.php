@@ -43,6 +43,7 @@ return [
     'nav_swimlane'            => 'Swimlane',
     'nav_export'              => 'Export',
     'nav_users'               => 'Benutzer',
+    'nav_maintenance'         => 'Wartung',
 
     // -------------------------------------------------------------------------
     // Rollen
@@ -250,6 +251,7 @@ return [
     // Crontab-Import
     // -------------------------------------------------------------------------
     'import_title'           => 'Aus Crontab importieren',
+    'import_select_target'   => 'Ziel',
     'import_select_user'     => 'Linux-Benutzer auswählen',
     'import_load'            => 'Crontab laden',
     'import_none_found'      => 'Keine nicht verwalteten Crontab-Einträge für diesen Benutzer gefunden.',
@@ -305,8 +307,59 @@ return [
     'started_at'              => 'Gestartet',
     'finished_at'             => 'Beendet',
     'actions'                 => 'Aktionen',
+    'select_all'              => 'Alle auswählen',
     'save'                    => 'Speichern',
     'cancel'                  => 'Abbrechen',
     'back'                    => 'Zurück',
     'no_results'              => 'Keine Ergebnisse gefunden.',
+
+    // -------------------------------------------------------------------------
+    // Wartungsseite
+    // -------------------------------------------------------------------------
+    'maintenance_title'                  => 'Wartung',
+
+    // Crontab-Synchronisation
+    'maintenance_resync_title'           => 'Crontab-Synchronisation',
+    'maintenance_resync_desc'            => 'Schreibt alle Crontab-Einträge aus der Datenbank neu. Aktive Jobs werden synchronisiert (Einträge hinzugefügt / aktualisiert); inaktive Jobs erhalten ihre Einträge entfernt. Verwenden Sie dies nach einer Migration oder wenn Crontab-Einträge nicht mehr aktuell sind.',
+    'maintenance_resync_btn'             => 'Jetzt synchronisieren',
+    'maintenance_resync_confirm'         => 'Alle Crontab-Einträge aus der Datenbank neu synchronisieren? Manuelle Crontab-Änderungen werden dabei überschrieben.',
+    'maintenance_resync_success'         => 'Crontab-Synchronisation abgeschlossen: {synced} aktive(r) Job(s) synchronisiert.',
+    'maintenance_resync_error'           => 'Crontab-Synchronisation fehlgeschlagen. Prüfen Sie das Agent-Protokoll.',
+
+    // Hängende Ausführungen
+    'maintenance_stuck_title'            => 'Hängende Ausführungen',
+    'maintenance_stuck_desc'             => 'Ausführungen, die länger als der konfigurierte Schwellenwert laufen. Dies kann auf abgestürzte Jobs hinweisen, deren Abschluss-Ereignis nie empfangen wurde.',
+    'maintenance_stuck_hours'            => 'Läuft seit mehr als',
+    'maintenance_stuck_hours_unit'       => 'Stunden',
+    'maintenance_stuck_refresh'          => 'Aktualisieren',
+    'maintenance_stuck_none'             => 'Keine hängenden Ausführungen für diesen Schwellenwert gefunden.',
+    'maintenance_stuck_resolve'          => 'Als beendet markieren',
+    'maintenance_stuck_delete'           => 'Löschen',
+    'maintenance_stuck_resolve_confirm'  => 'Diese Ausführung als beendet markieren (Exit-Code −1)? Der Eintrag bleibt in der Historie sichtbar.',
+    'maintenance_stuck_delete_confirm'   => 'Diesen Ausführungseintrag dauerhaft löschen? Dies kann nicht rückgängig gemacht werden.',
+    'maintenance_stuck_resolved'         => 'Ausführung als beendet markiert.',
+    'maintenance_stuck_deleted'          => 'Ausführungseintrag gelöscht.',
+    'maintenance_stuck_bulk_resolve'         => 'Als beendet markieren',
+    'maintenance_stuck_bulk_delete'          => 'Auswahl löschen',
+    'maintenance_stuck_selected'             => '{count} ausgewählt',
+    'maintenance_stuck_bulk_resolve_confirm' => '{count} Ausführung(en) als beendet markieren (Exit-Code −1)?',
+    'maintenance_stuck_bulk_delete_confirm'  => '{count} Ausführungseintrag/-einträge dauerhaft löschen? Dies kann nicht rückgängig gemacht werden.',
+    'maintenance_stuck_bulk_resolved'        => '{count} Ausführung(en) als beendet markiert.',
+    'maintenance_stuck_bulk_deleted'         => '{count} Ausführungseintrag/-einträge gelöscht.',
+
+    // Historien-Bereinigung
+    'maintenance_cleanup_title'          => 'Historien-Bereinigung',
+    'maintenance_cleanup_desc'           => 'Löscht dauerhaft abgeschlossene Ausführungsprotokoll-Einträge, die älter als die angegebene Anzahl von Tagen sind. Laufende Ausführungen werden nie gelöscht.',
+    'maintenance_cleanup_older_than'     => 'Einträge älter als löschen',
+    'maintenance_cleanup_days'           => 'Tage',
+    'maintenance_cleanup_btn'            => 'Bereinigen',
+    'maintenance_cleanup_confirm'        => 'Alle abgeschlossenen Ausführungsprotokoll-Einträge älter als {days} Tage löschen? Dies kann nicht rückgängig gemacht werden.',
+    'maintenance_cleanup_success'        => 'Historien-Bereinigung abgeschlossen: {count} Eintrag/Einträge gelöscht.',
+
+    'maintenance_once_title'             => 'Run-Now-Bereinigung',
+    'maintenance_once_desc'              => 'Entfernt veraltete Einmal-Crontab-Einträge, die von Run-Now-Jobs hinterlassen wurden. Diese Einträge entfernen sich normalerweise nach der Ausführung selbst, können aber verbleiben, wenn der Agent beim Bereinigungsaufruf nicht erreichbar war.',
+    'maintenance_once_btn'               => 'Veraltete Einträge entfernen',
+    'maintenance_once_confirm'           => 'Alle veralteten Run-Now-Crontab-Einträge entfernen? Es werden nur temporäre Zeitplanzeilen entfernt – keine Jobs oder Historiendaten werden verändert.',
+    'maintenance_once_success'           => 'Run-Now-Bereinigung abgeschlossen: {count} veralteter Eintrag/Einträge entfernt.',
+    'maintenance_once_none'              => 'Keine veralteten Run-Now-Einträge gefunden.',
 ];

@@ -6,22 +6,32 @@
 # Database credentials are read from db.credentials in the same directory.
 #
 # Usage:
-#   ./deploy.sh [full|update] [ssh-host] [--agent|--web]
+#   ./deploy.sh <--host-agent|--docker> [full|update|migrate] [ssh-host] [--agent|--web]
 #
-#   full    – Create folder structure + deploy all files (default)
-#   update  – Deploy only changed files (rsync checksum comparison)
-#   --agent – Deploy agent only  (skip web app)
-#   --web   – Deploy web app only (skip agent)
+#   --host-agent  – Target is a host-agent installation (installs/restarts systemd service)
+#   --docker      – Target is a docker-agent installation (skips systemd; use docker-compose)
+#
+#   full     – Create folder structure + deploy all files (default)
+#   update   – Deploy only changed files (rsync checksum comparison)
+#   migrate  – Migrate host-agent installation → docker-agent:
+#              deploys changed files, stops+disables systemd service,
+#              patches agent and web config.json for docker-mode values.
+#   undeploy – Remove systemd service only (--host-agent only);
+#              PHP files and config are kept on the target system.
+#   --agent  – Deploy agent only  (skip web app)
+#   --web    – Deploy web app only (skip agent)
 #   ssh-host – Override DEPLOY_SSH from deploy.env (SSH transport only)
 #
 # deploy.env variables:
 #   DEPLOY_TYPE          – Transport: SSH or LOCAL
 #   DEPLOY_SSH           – SSH host alias from ~/.ssh/config (SSH only)
-#   DEPLOY_DB            – Target path for MariaDB data directory
-#   DEPLOY_WEB           – Target base path for the web application
-#   DEPLOY_AGENT         – Target path for the host agent
 #   DEPLOY_COMPOSER      – Target path for the shared composer.json
 #   DEPLOY_COMPOSER_VENDOR – Target path for the shared vendor directory
+#
+# Fixed deployment paths (not configurable):
+#   Agent : /opt/cronmanager/agent
+#   Web   : /opt/cronmanager/www
+#   DB    : /opt/cronmanager/db
 #
 # @author  Christian Schulz <technik@meinetechnikwelt.rocks>
 # @license GNU General Public License version 3 or later
@@ -46,7 +56,7 @@ fi
 source "${DEPLOY_ENV_FILE}"
 
 # Validate required deploy.env variables
-for var in DEPLOY_TYPE DEPLOY_DB DEPLOY_WEB DEPLOY_AGENT DEPLOY_COMPOSER DEPLOY_COMPOSER_VENDOR; do
+for var in DEPLOY_TYPE DEPLOY_COMPOSER DEPLOY_COMPOSER_VENDOR; do
     if [[ -z "${!var:-}" ]]; then
         echo "[deploy] ERROR: '${var}' is not set in ${DEPLOY_ENV_FILE}" >&2
         exit 1
@@ -68,13 +78,20 @@ fi
 # ---------------------------------------------------------------------------
 
 DEPLOY_MODE="full"           # full = mirror; update = changed files only
+DEPLOY_TARGET=""             # host-agent or docker (required)
 DEPLOY_AGENT_PART=true       # deploy the host agent?
 DEPLOY_WEB_PART=true         # deploy the web application?
 SSH_HOST="${DEPLOY_SSH:-}"   # may be overridden by positional CLI arg
 
 for arg in "$@"; do
     case "${arg}" in
-        full|update)
+        --host-agent)
+            DEPLOY_TARGET="host-agent"
+            ;;
+        --docker)
+            DEPLOY_TARGET="docker"
+            ;;
+        full|update|migrate|undeploy)
             DEPLOY_MODE="${arg}"
             ;;
         --agent)
@@ -86,7 +103,8 @@ for arg in "$@"; do
             DEPLOY_WEB_PART=true
             ;;
         -*)
-            echo "[deploy] ERROR: Unknown option '${arg}'. Use --agent or --web." >&2
+            echo "[deploy] ERROR: Unknown option '${arg}'." >&2
+            echo "[deploy]        Usage: ./deploy.sh <--host-agent|--docker> [full|update|migrate] [ssh-host] [--agent|--web]" >&2
             exit 1
             ;;
         *)
@@ -96,22 +114,29 @@ for arg in "$@"; do
     esac
 done
 
+if [[ -z "${DEPLOY_TARGET}" ]]; then
+    echo "[deploy] ERROR: --host-agent or --docker is required." >&2
+    echo "[deploy]        Usage: ./deploy.sh <--host-agent|--docker> [full|update|migrate] [ssh-host] [--agent|--web]" >&2
+    exit 1
+fi
+
 # ---------------------------------------------------------------------------
 # Resolve source and target paths
 # ---------------------------------------------------------------------------
 
 AGENT_SRC="${SCRIPT_DIR}/agent"
+DOCKER_SRC="${SCRIPT_DIR}/docker"
 WEB_SRC="${SCRIPT_DIR}/web"
 COMPOSER_SRC="${SCRIPT_DIR}/composer.json"
 CREDENTIALS_FILE="${SCRIPT_DIR}/db.credentials"
 
-# Strip trailing slashes from deploy.env paths, then build sub-paths
-AGENT_TARGET="${DEPLOY_AGENT%/}"
-WEB_TARGET="${DEPLOY_WEB%/}"
-WEB_WWW_TARGET="${WEB_TARGET}/www"
+# Fixed deployment paths
+AGENT_TARGET="/opt/cronmanager/agent"
+WEB_TARGET="/opt/cronmanager/www"
+WEB_WWW_TARGET="${WEB_TARGET}/html"
 WEB_CONF_TARGET="${WEB_TARGET}/conf"
 WEB_LOG_TARGET="${WEB_TARGET}/log"
-DB_DIR="${DEPLOY_DB%/}"
+DB_DIR="/opt/cronmanager/db"
 COMPOSER_DIR="${DEPLOY_COMPOSER%/}"
 COMPOSER_VENDOR_DIR="${DEPLOY_COMPOSER_VENDOR%/}"
 
@@ -150,6 +175,20 @@ copy_to_target() {
     else
         cp "$1" "$2"
     fi
+}
+
+# Write a local temp Python script, scp it to the target, run it, clean up.
+# Avoids the SSH+heredoc stdin-consumption problem entirely.
+# Usage: _run_remote_python <script_body> <target_arg>
+_run_remote_python() {
+    local _script_body="$1"
+    local _target_arg="$2"
+    local _tmp
+    _tmp="$(mktemp /tmp/cm_deploy_XXXXXX.py)"
+    printf '%s\n' "${_script_body}" > "${_tmp}"
+    copy_to_target "${_tmp}" "/tmp/cm_deploy_patch.py"
+    rm -f "${_tmp}"
+    run_on_target "python3 /tmp/cm_deploy_patch.py '${_target_arg}'; rm -f /tmp/cm_deploy_patch.py"
 }
 
 # Rsync options
@@ -199,12 +238,17 @@ log "Credentials loaded from ${CREDENTIALS_FILE}"
 # Validate and log configuration
 # ---------------------------------------------------------------------------
 
-if [[ "${DEPLOY_MODE}" != "full" && "${DEPLOY_MODE}" != "update" ]]; then
-    die "Unknown deploy mode '${DEPLOY_MODE}'. Use 'full' or 'update'."
+if [[ "${DEPLOY_MODE}" != "full" && "${DEPLOY_MODE}" != "update" && "${DEPLOY_MODE}" != "migrate" && "${DEPLOY_MODE}" != "undeploy" ]]; then
+    die "Unknown deploy mode '${DEPLOY_MODE}'. Use 'full', 'update', 'migrate', or 'undeploy'."
+fi
+
+if [[ "${DEPLOY_MODE}" == "undeploy" && "${DEPLOY_TARGET}" != "host-agent" ]]; then
+    die "'undeploy' mode is only valid with --host-agent."
 fi
 
 log "============================================================"
 log "  Deploy mode  : ${DEPLOY_MODE}"
+log "  Deploy target: ${DEPLOY_TARGET}"
 log "  Transport    : ${DEPLOY_TYPE}"
 if [[ "${DEPLOY_TYPE}" == "SSH" ]]; then
 log "  SSH host     : ${SSH_HOST}"
@@ -295,6 +339,27 @@ PYEOF
 fi
 
 # ---------------------------------------------------------------------------
+# Undeploy: remove systemd service, keep files
+# ---------------------------------------------------------------------------
+
+if [[ "${DEPLOY_MODE}" == "undeploy" ]]; then
+    log "============================================================"
+    log "Undeploy: removing cronmanager-agent systemd service"
+    log "============================================================"
+    log "Stopping and disabling cronmanager-agent..."
+    run_on_target "systemctl stop    cronmanager-agent 2>/dev/null || true"
+    run_on_target "systemctl disable cronmanager-agent 2>/dev/null || true"
+    run_on_target "rm -f /etc/systemd/system/cronmanager-agent.service"
+    run_on_target "systemctl daemon-reload"
+    log "Systemd service removed."
+    log "PHP files and config kept at ${AGENT_TARGET}."
+    log "============================================================"
+    log "Undeploy complete."
+    log "============================================================"
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------
 # Create target folder structure (always, even on update)
 # ---------------------------------------------------------------------------
 
@@ -311,6 +376,8 @@ if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
     mkdir_on_target "${AGENT_TARGET}/src/Notification"
     mkdir_on_target "${AGENT_TARGET}/sql"
     mkdir_on_target "${AGENT_TARGET}/systemd"
+    mkdir_on_target "${AGENT_TARGET}/docker"
+    mkdir_on_target "${AGENT_TARGET}/docker/agent"
 
     mkdir_on_target "${DB_DIR}/data"
     mkdir_on_target "${DB_DIR}/conf"
@@ -331,6 +398,7 @@ if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
     mkdir_on_target "${WEB_WWW_TARGET}/src/Database"
     mkdir_on_target "${WEB_WWW_TARGET}/src/Repository"
     mkdir_on_target "${WEB_WWW_TARGET}/templates/cron"
+    mkdir_on_target "${WEB_WWW_TARGET}/templates/maintenance"
     mkdir_on_target "${WEB_WWW_TARGET}/lang"
     mkdir_on_target "${WEB_WWW_TARGET}/assets/css"
     mkdir_on_target "${WEB_WWW_TARGET}/assets/js"
@@ -360,9 +428,33 @@ if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
         if ! file_exists_on_target "${AGENT_TARGET}/config/config.json" 2>/dev/null; then
             log "No existing agent config – deploying example config..."
             copy_to_target "${AGENT_SRC}/config/config.json" "${AGENT_TARGET}/config/config.json"
+            # Patch database.host for docker mode (container reaches DB via service name)
+            if [[ "${DEPLOY_TARGET}" == "docker" ]]; then
+                log "Docker mode: patching agent config database.host → cronmanager-db..."
+                _run_remote_python \
+'import json, sys
+path = sys.argv[1]
+with open(path, "r") as fh:
+    cfg = json.load(fh)
+if isinstance(cfg.get("database"), dict):
+    cfg["database"]["host"] = "cronmanager-db"
+with open(path, "w") as fh:
+    json.dump(cfg, fh, indent=4, ensure_ascii=False)
+print("[deploy] Agent config database.host patched.")' \
+                    "${AGENT_TARGET}/config/config.json"
+            fi
         else
             log "Agent config already exists – skipping (update manually if needed)."
         fi
+    fi
+
+    # Deploy docker helper files (entrypoint.sh etc.) alongside the agent
+    if [[ -d "${DOCKER_SRC}" ]]; then
+        # shellcheck disable=SC2086
+        ${RSYNC_UPDATE} ${RSYNC_TRANSPORT} \
+            "${DOCKER_SRC}/" "${TARGET_PREFIX}${AGENT_TARGET}/docker/"
+        run_on_target "find '${AGENT_TARGET}/docker' -name '*.sh' -exec chmod +x {} \;" 2>/dev/null || true
+        log "Docker helper files deployed to ${AGENT_TARGET}/docker/."
     fi
 
     # Ensure scripts are executable
@@ -374,18 +466,24 @@ if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
     log "Agent files deployed."
 
     # -------------------------------------------------------------------------
-    # Install / reload systemd service
+    # Install / reload systemd service  (skipped in migrate mode)
     # -------------------------------------------------------------------------
 
-    log "Installing systemd service..."
-    run_on_target "cp '${AGENT_TARGET}/systemd/cronmanager-agent.service' /etc/systemd/system/cronmanager-agent.service"
-    run_on_target "systemctl daemon-reload"
-    run_on_target "systemctl enable cronmanager-agent"
-    run_on_target "systemctl restart cronmanager-agent"
+    if [[ "${DEPLOY_TARGET}" == "host-agent" && "${DEPLOY_MODE}" != "migrate" ]]; then
+        log "Installing systemd service..."
+        run_on_target "cp '${AGENT_TARGET}/systemd/cronmanager-agent.service' /etc/systemd/system/cronmanager-agent.service"
+        run_on_target "systemctl daemon-reload"
+        run_on_target "systemctl enable cronmanager-agent"
+        run_on_target "systemctl restart cronmanager-agent"
 
-    run_on_target "systemctl is-active --quiet cronmanager-agent \
-        && echo '[deploy] Service is running.' \
-        || echo '[deploy] WARNING: Service is NOT running – check: journalctl -u cronmanager-agent'"
+        run_on_target "systemctl is-active --quiet cronmanager-agent \
+            && echo '[deploy] Service is running.' \
+            || echo '[deploy] WARNING: Service is NOT running – check: journalctl -u cronmanager-agent'"
+    elif [[ "${DEPLOY_MODE}" == "migrate" ]]; then
+        log "Migrate mode: skipping systemd service install (will be stopped in migration step)."
+    else
+        log "Docker mode: skipping systemd service install."
+    fi
 
     # -------------------------------------------------------------------------
     # MariaDB init script (generated from credentials)
@@ -451,12 +549,38 @@ if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
         if ! file_exists_on_target "${WEB_CONF_TARGET}/config.json" 2>/dev/null; then
             log "No existing web config – deploying example config..."
             copy_to_target "${WEB_SRC}/config/config.json" "${WEB_CONF_TARGET}/config.json"
+            # Patch agent.url for docker mode (web → agent via Docker service name)
+            if [[ "${DEPLOY_TARGET}" == "docker" ]]; then
+                log "Docker mode: patching web config agent.url → http://cronmanager-agent:8865..."
+                _run_remote_python \
+'import json, re, sys
+path = sys.argv[1]
+with open(path, "r") as fh:
+    cfg = json.load(fh)
+if isinstance(cfg.get("agent"), dict) and "url" in cfg["agent"]:
+    url = cfg["agent"]["url"]
+    m = re.search(r":(\d+)", url)
+    port = m.group(1) if m else "8865"
+    cfg["agent"]["url"] = "http://cronmanager-agent:" + port
+with open(path, "w") as fh:
+    json.dump(cfg, fh, indent=4, ensure_ascii=False)
+print("[deploy] Web config agent.url patched.")' \
+                    "${WEB_CONF_TARGET}/config.json"
+            fi
         else
             log "Web config already exists – skipping."
         fi
     fi
 
     log "Web application deployed."
+
+    # -------------------------------------------------------------------------
+    # Set ownership on web log and conf directories (PHP-FPM runs as nobody)
+    # -------------------------------------------------------------------------
+
+    run_on_target "chown nobody:nogroup '${WEB_LOG_TARGET}' '${WEB_CONF_TARGET}'" 2>/dev/null \
+        || log "WARNING: Could not set nobody:nogroup on web log/conf dirs – check manually."
+    log "Ownership set: ${WEB_LOG_TARGET}, ${WEB_CONF_TARGET} → nobody:nogroup"
 
     # -------------------------------------------------------------------------
     # Download Tailwind CSS (skip if already present)
@@ -492,6 +616,117 @@ if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Migration: host-agent → docker-agent
+# ---------------------------------------------------------------------------
+
+if [[ "${DEPLOY_MODE}" == "migrate" ]]; then
+
+    AGENT_CONFIG_FILE="${AGENT_TARGET}/config/config.json"
+    WEB_CONFIG_FILE="${WEB_CONF_TARGET}/config.json"
+
+    log "============================================================"
+    log "Migration: host-agent → docker-agent"
+    log "============================================================"
+
+    # -- Stop and disable the systemd service --------------------------------
+
+    log "Stopping and disabling cronmanager-agent systemd service..."
+    run_on_target "systemctl stop    cronmanager-agent 2>/dev/null || true"
+    run_on_target "systemctl disable cronmanager-agent 2>/dev/null || true"
+    log "Systemd service stopped and disabled."
+
+    # -- Remove managed crontab entries from all host users ------------------
+    # The host agent wrote wrapper-script entries into per-user crontabs.
+    # Strip every line referencing the cron-wrapper.sh so orphaned host jobs
+    # no longer execute after the agent moves into the container.
+
+    log "Removing managed crontab entries from host user crontabs..."
+    run_on_target "
+_removed=0
+for _user in \$(cut -d: -f1 /etc/passwd); do
+    if crontab -u \"\$_user\" -l 2>/dev/null | grep -qF 'cron-wrapper.sh'; then
+        ( crontab -u \"\$_user\" -l 2>/dev/null \
+            | grep -vF 'cron-wrapper.sh' ) \
+            | crontab -u \"\$_user\" -
+        echo \"[deploy] Cleared crontab entries for user: \$_user\"
+        _removed=1
+    fi
+done
+[ \"\$_removed\" -eq 0 ] && echo '[deploy] No managed crontab entries found on host.'
+"
+    log "Host crontab cleanup complete."
+
+    # -- Patch agent config.json ---------------------------------------------
+    # Actual config keys: database.host, cron.wrapper_script, logging.path
+
+    if run_on_target "test -f '${AGENT_CONFIG_FILE}'" 2>/dev/null; then
+        log "Patching agent config.json (database.host, cron paths, logging.path)..."
+        _run_remote_python \
+'import json, sys
+path = sys.argv[1]
+with open(path, "r") as fh:
+    cfg = json.load(fh)
+if isinstance(cfg.get("database"), dict):
+    cfg["database"]["host"] = "cronmanager-db"
+if isinstance(cfg.get("cron"), dict):
+    cfg["cron"]["wrapper_script"] = "/opt/cronmanager/agent/bin/cron-wrapper.sh"
+if isinstance(cfg.get("logging"), dict):
+    old = cfg["logging"].get("path", "")
+    fname = old.split("/")[-1] if "/" in old else "cronmanager-agent.log"
+    cfg["logging"]["path"] = "/opt/cronmanager/agent/log/" + fname
+with open(path, "w") as fh:
+    json.dump(cfg, fh, indent=4, ensure_ascii=False)
+print("[deploy] Agent config patched successfully.")' \
+            "${AGENT_CONFIG_FILE}"
+        log "Agent config patched."
+    else
+        log "WARNING: Agent config not found at ${AGENT_CONFIG_FILE} – patch manually:"
+        log "         database.host        → cronmanager-db"
+        log "         cron.wrapper_script  → /opt/cronmanager/agent/bin/cron-wrapper.sh"
+        log "         logging.path         → /opt/cronmanager/agent/log/cronmanager-agent.log"
+    fi
+
+    # -- Patch web config.json -----------------------------------------------
+    # Changes: agent.url host.docker.internal:PORT → cronmanager-agent:PORT
+
+    if run_on_target "test -f '${WEB_CONFIG_FILE}'" 2>/dev/null; then
+        log "Patching web config.json (agent.url → docker service name)..."
+        _run_remote_python \
+'import json, re, sys
+path = sys.argv[1]
+with open(path, "r") as fh:
+    cfg = json.load(fh)
+if isinstance(cfg.get("agent"), dict) and "url" in cfg["agent"]:
+    url = cfg["agent"]["url"]
+    m = re.search(r":(\d+)", url)
+    port = m.group(1) if m else "8865"
+    cfg["agent"]["url"] = "http://cronmanager-agent:" + port
+with open(path, "w") as fh:
+    json.dump(cfg, fh, indent=4, ensure_ascii=False)
+print("[deploy] Web config patched successfully.")' \
+            "${WEB_CONFIG_FILE}"
+        log "Web config patched."
+    else
+        log "WARNING: Web config not found at ${WEB_CONFIG_FILE} – patch agent.url manually:"
+        log "         agent.url → http://cronmanager-agent:<port>"
+    fi
+
+    log "============================================================"
+    log "Migration steps complete. Manual steps remaining:"
+    log "  1. Replace your docker-compose.yml with docker/docker-compose-agent.yml"
+    log "     from the source repository (paths are already standardised)."
+    log "  2. Restart the agent container to pick up the new config:"
+    log "       docker restart cronmanager-agent"
+    log "  3. Verify agent health:"
+    log "       docker exec cronmanager-agent curl -s http://localhost:8865/health"
+    log "  4. Open the web UI → Maintenance → Crontab Sync to write all active"
+    log "     jobs into the agent container's crontab."
+    log "  NOTE: cron jobs run as root inside the container. Ensure linux_user"
+    log "        is set to 'root' for all jobs, or update them before the sync."
+    log "============================================================"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
@@ -513,14 +748,26 @@ if [[ "${DEPLOY_AGENT_PART}" == "true" && "${DEPLOY_WEB_PART}" == "true" ]]; the
 log "Next steps:"
 log "  1. Review and adjust ${AGENT_TARGET}/config/config.json"
 log "  2. Review and adjust ${WEB_CONF_TARGET}/config.json"
+if [[ "${DEPLOY_TARGET}" == "docker" ]]; then
 log "  3. Deploy Docker stack via Portainer:"
-log "       - Paste the contents of docker-compose.yml into a new Portainer stack"
+log "       - Paste the contents of docker/docker-compose-agent.yml into a new Portainer stack"
 log "       - Add the following environment variables in Portainer:"
 log "           DB_NAME          = ${DB_NAME}"
 log "           DB_USER          = ${DB_USER}"
 log "           DB_PASSWORD      = (your password)"
 log "           DB_ROOT_PASSWORD = (your root password)"
 log "  4. Apply DB schema:    docker exec -i cronmanager-db mariadb -u ${DB_USER} -p${DB_PASSWORD} ${DB_NAME} < ${AGENT_TARGET}/sql/schema.sql"
-log "  5. Test agent health:  curl http://<host>:8865/health"
+log "  5. Test agent health:  docker exec cronmanager-agent curl -s http://localhost:8865/health"
+else
+log "  3. Deploy Docker stack via Portainer:"
+log "       - Paste the contents of docker/docker-compose.yml into a new Portainer stack"
+log "       - Add the following environment variables in Portainer:"
+log "           DB_NAME          = ${DB_NAME}"
+log "           DB_USER          = ${DB_USER}"
+log "           DB_PASSWORD      = (your password)"
+log "           DB_ROOT_PASSWORD = (your root password)"
+log "  4. Apply DB schema:    docker exec -i cronmanager-db mariadb -u ${DB_USER} -p${DB_PASSWORD} ${DB_NAME} < ${AGENT_TARGET}/sql/schema.sql"
+log "  5. Test agent health:  curl http://localhost:8865/health"
+fi
 log "  6. Open web UI:        http://<host>:8880/ (first visit creates the admin account)"
 fi

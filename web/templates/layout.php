@@ -115,6 +115,9 @@ $navClass = static function (string $path) use ($currentPath): string {
                             <a href="/users" class="<?= $navClass('/users') ?>">
                                 <?= htmlspecialchars($t('nav_users'), ENT_QUOTES, 'UTF-8') ?>
                             </a>
+                            <a href="/maintenance" class="<?= $navClass('/maintenance') ?>">
+                                <?= htmlspecialchars($t('nav_maintenance'), ENT_QUOTES, 'UTF-8') ?>
+                            </a>
                         <?php endif; ?>
                     </div>
                 </div>

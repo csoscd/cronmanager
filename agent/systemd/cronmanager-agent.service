@@ -8,9 +8,9 @@ Type=simple
 User=root
 
 # Start wrapper script reads bind_address + port from config.json
-ExecStart=/opt/phpscripts/cronmanager/agent/bin/start-agent.sh
+ExecStart=/opt/cronmanager/agent/bin/start-agent.sh
 
-WorkingDirectory=/opt/phpscripts/cronmanager/agent
+WorkingDirectory=/opt/cronmanager/agent
 
 # Restart automatically on failure; wait 5 s before each retry
 Restart=always

@@ -36,6 +36,7 @@ use Cronmanager\Web\Controller\ExportController;
 use Cronmanager\Web\Controller\SetupController;
 use Cronmanager\Web\Controller\SwimlaneController;
 use Cronmanager\Web\Controller\TimelineController;
+use Cronmanager\Web\Controller\MaintenanceController;
 use Cronmanager\Web\Controller\UserController;
 use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Request;
@@ -170,8 +171,9 @@ try {
     $cronCtrl       = new CronController($config, $logger);
     $timelineCtrl   = new TimelineController($config, $logger);
     $swimlaneCtrl   = new SwimlaneController($config, $logger);
-    $exportCtrl     = new ExportController($config, $logger);
-    $userCtrl       = new UserController($config, $logger);
+    $exportCtrl       = new ExportController($config, $logger);
+    $userCtrl         = new UserController($config, $logger);
+    $maintenanceCtrl  = new MaintenanceController($config, $logger);
 
     $router->addProtectedRoute('GET',  '/',                    fn(array $p) => (new Response())->redirect('/dashboard'));
     $router->addProtectedRoute('GET',  '/dashboard',           [$dashboardCtrl, 'index']);
@@ -199,6 +201,15 @@ try {
     $router->addProtectedRoute('GET',  '/users',               [$userCtrl, 'index'],      'admin');
     $router->addProtectedRoute('POST', '/users/{id}/role',     [$userCtrl, 'updateRole'], 'admin');
     $router->addProtectedRoute('POST', '/users/{id}/delete',   [$userCtrl, 'destroy'],    'admin');
+
+    // Maintenance – admin only; more-specific paths registered before /{id} sub-routes
+    $router->addProtectedRoute('GET',  '/maintenance',                              [$maintenanceCtrl, 'index'],           'admin');
+    $router->addProtectedRoute('POST', '/maintenance/resync',                       [$maintenanceCtrl, 'resyncCrontab'],   'admin');
+    $router->addProtectedRoute('POST', '/maintenance/executions/bulk',              [$maintenanceCtrl, 'bulkAction'],      'admin');
+    $router->addProtectedRoute('POST', '/maintenance/executions/{id}/finish',       [$maintenanceCtrl, 'resolveExecution'],'admin');
+    $router->addProtectedRoute('POST', '/maintenance/executions/{id}/delete',       [$maintenanceCtrl, 'deleteExecution'], 'admin');
+    $router->addProtectedRoute('POST', '/maintenance/history/cleanup',              [$maintenanceCtrl, 'cleanHistory'],    'admin');
+    $router->addProtectedRoute('POST', '/maintenance/once/cleanup',                 [$maintenanceCtrl, 'onceCleanup'],     'admin');
 
     // -------------------------------------------------------------------------
     // Dispatch

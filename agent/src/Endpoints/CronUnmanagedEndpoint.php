@@ -13,7 +13,9 @@ declare(strict_types=1);
  * entries into Cronmanager-managed jobs.
  *
  * Query parameters:
- *   user (string, required) – Linux user name whose crontab to inspect.
+ *   user   (string, required) – Linux user name whose crontab to inspect.
+ *   target (string, optional) – SSH host alias. When present and not "local",
+ *                               the crontab is read from the remote host.
  *
  * Response on success (HTTP 200):
  * ```json
@@ -98,15 +100,23 @@ final class CronUnmanagedEndpoint
             return;
         }
 
+        // Resolve optional target; treat absent / "local" as local execution
+        $target = (isset($_GET['target']) && $_GET['target'] !== '' && $_GET['target'] !== 'local')
+            ? (string) $_GET['target']
+            : null;
+
         $this->logger->debug('CronUnmanagedEndpoint: handling GET /crons/unmanaged', [
-            'user' => $user,
+            'user'   => $user,
+            'target' => $target ?? 'local',
         ]);
 
         // ------------------------------------------------------------------
-        // Delegate to CrontabManager
+        // Delegate to CrontabManager (local or remote)
         // ------------------------------------------------------------------
         try {
-            $entries = $this->crontabManager->getUnmanagedEntries($user);
+            $entries = ($target !== null)
+                ? $this->crontabManager->getRemoteUnmanagedEntries($target, $user)
+                : $this->crontabManager->getUnmanagedEntries($user);
         } catch (InvalidArgumentException $e) {
             $this->logger->warning('CronUnmanagedEndpoint: invalid user name', [
                 'user'    => $user,

@@ -1,6 +1,19 @@
 ---
 # Cronmanager – docker-compose.yml
-# Brings up the PHP-FPM/Nginx web container and the MariaDB database container.
+# Deployment mode: host-agent
+#
+# Brings up the web UI and MariaDB containers.
+# The host agent runs as a systemd service on the Docker host and is reached
+# by the web container via host.docker.internal.
+#
+# Adjust volume paths to match your installation before deploying.
+# Default install paths are shown below.
+#
+# Required environment variables (define in .env next to this file):
+#   DB_NAME           – MariaDB database name
+#   DB_USER           – MariaDB application user
+#   DB_PASSWORD       – MariaDB application password
+#   DB_ROOT_PASSWORD  – MariaDB root password
 #
 # @author  Christian Schulz <technik@meinetechnikwelt.rocks>
 # @license GNU General Public License version 3 or later
@@ -15,16 +28,16 @@ services:
     container_name: cronmanager-web
     restart: unless-stopped
     extra_hosts:
-      # Allows the web container to reach the Host Agent on the Docker host
+      # Allows the web container to reach the host agent on the Docker host
       - "host.docker.internal:host-gateway"
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - /opt/websites/cronmanager/conf:/var/www/conf
-      - /opt/websites/cronmanager/www:/var/www/html
-      - /opt/websites/cronmanager/log:/var/www/log
+      - /opt/cronmanager/www/conf:/var/www/conf
+      - /opt/cronmanager/www/html:/var/www/html
+      - /opt/cronmanager/www/log:/var/www/log
       - /opt/phplib/vendor:/var/www/libs/vendor
     ports:
-      - "8880:80"
+      - "8880:8080"
     networks:
       - cronmanager-internal
     depends_on:

@@ -29,15 +29,16 @@ history, email failure alerts, multi-host support, and SSO integration.
    - [Step 7 – First login and initial setup](#step-7--first-login-and-initial-setup)
 7. [OIDC / SSO Setup with Authentik](#oidc--sso-setup-with-authentik)
 8. [Configuration Reference](#configuration-reference)
-   - [Web application](#web-application-optwebsitescronmanagerconfconfigjson)
-   - [Host agent](#host-agent-optphpscriptscronmanageragentconfigconfigjson)
+   - [Web application config](#web-application-config)
+   - [Agent config](#agent-config)
 9. [Email Failure Alerts](#email-failure-alerts)
 10. [Multi-Host Execution](#multi-host-execution)
 11. [Crontab Import](#crontab-import)
-12. [Export](#export)
-13. [User Management](#user-management)
-14. [Updating](#updating)
-15. [Troubleshooting](#troubleshooting)
+12. [Maintenance](#maintenance)
+13. [Export](#export)
+14. [User Management](#user-management)
+15. [Updating](#updating)
+16. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -66,35 +67,61 @@ history, email failure alerts, multi-host support, and SSO integration.
 
 ## Architecture Overview
 
+Cronmanager supports two deployment modes.
+
+### Host-agent mode
+
 ```
 Browser
   │
   ▼
 ┌──────────────────────────┐
 │  Web UI (Docker)         │  PHP-FPM + Nginx  ·  Port 8880
-│  /opt/websites/cronmanager/www                │
+│  /opt/cronmanager/www    │
 └────────────┬─────────────┘
-             │ HMAC-signed HTTP
+             │ HMAC-signed HTTP (host.docker.internal:8865)
              ▼
 ┌──────────────────────────┐
 │  Host Agent              │  PHP CLI server  ·  Port 8865
-│  /opt/phpscripts/cronmanager/agent            │
-│  Runs as systemd service │
+│  /opt/cronmanager/agent  │  systemd service on the Docker host
 └────────────┬─────────────┘
              │ reads/writes crontab files
-             │ reports execution results
+             │ reports execution results via PDO
              ▼
-     Linux cron daemon
-
-         ┌─────────────────┐
-         │  MariaDB        │  Port 3306 (localhost only)
-         │  (Docker)       │
-         └─────────────────┘
+     Linux cron daemon          MariaDB container (cronmanager-db)
 ```
 
+The agent runs directly on the Docker host. The web container reaches it via
+`host.docker.internal:8865` (provided by Docker's `extra_hosts: host-gateway` mechanism).
+
+### Docker mode
+
+```
+Browser
+  │
+  ▼
+┌──────────────────────────┐
+│  Web UI (Docker)         │  PHP-FPM + Nginx  ·  Port 8880
+│  /opt/cronmanager/www    │
+└────────────┬─────────────┘
+             │ HMAC-signed HTTP (cronmanager-agent:8865)
+             ▼
+┌──────────────────────────┐
+│  Agent container         │  PHP CLI server  ·  Port 8865
+│  cs1711/cs_cronmanageragent  (internal Docker network)
+└────────────┬─────────────┘
+             │ manages container's crontab (root)
+             │ reports execution results via PDO
+             ▼
+     Container cron daemon     MariaDB container (cronmanager-db)
+```
+
+In docker mode the agent runs in its own container alongside the web UI.
+All three services share a private `cronmanager-internal` Docker network.
+No PHP installation is required on the host.
+
 The web container never touches crontab files directly.
-All privileged operations are delegated to the host agent via HMAC-secured HTTP calls.
-The agent runs directly on the Docker host as a systemd service.
+All privileged operations are delegated to the agent via HMAC-secured HTTP calls.
 
 A MariaDB container (`cronmanager-db`) stores users, job metadata, tags, and execution logs.
 
@@ -105,7 +132,7 @@ A MariaDB container (`cronmanager-db`) stores users, job metadata, tags, and exe
 | Component | Requirement |
 |---|---|
 | Docker + Docker Compose | v2.0 or later |
-| PHP on the **host** | 8.4 with extensions: `cli`, `json`, `pdo_mysql`, `openssl`, `mbstring` |
+| PHP on the **host** | 8.4 with extensions: `cli`, `json`, `pdo_mysql`, `openssl`, `mbstring` — **host-agent mode only**; not required for docker mode |
 | Composer | 2.x (to install shared PHP libraries) |
 | curl | For the cron wrapper script |
 | openssl | For HMAC-SHA256 signing in the wrapper |
@@ -185,7 +212,11 @@ cp deploy.env.example deploy.env          # edit SSH host and target paths
 cp db.credentials.example db.credentials # set database passwords
 
 # 3. Full deployment to the target host
-./deploy.sh full
+# Use --host-agent if the agent runs as a systemd service on the host,
+# or --docker if the agent runs as a Docker container.
+./deploy.sh --host-agent full    # host-agent mode
+# or:
+./deploy.sh --docker full        # docker mode
 
 # 4. Open the web UI
 http://<your-host>:8880/
@@ -247,12 +278,11 @@ Edit `deploy.env`:
 ```bash
 DEPLOY_TYPE=SSH                           # SSH (remote host) or LOCAL (same machine)
 DEPLOY_SSH=myserver                       # Host alias from ~/.ssh/config
-DEPLOY_DB=/opt/cronmanager/db/
-DEPLOY_WEB=/opt/websites/cronmanager/
-DEPLOY_AGENT=/opt/phpscripts/cronmanager/agent/
 DEPLOY_COMPOSER=/opt/phplib/
 DEPLOY_COMPOSER_VENDOR=/opt/phplib/vendor/
 ```
+
+> Deployment paths are fixed: agent → `/opt/cronmanager/agent`, web → `/opt/cronmanager/www`, DB → `/opt/cronmanager/db`. These are not configurable in `deploy.env`.
 
 **Configure database credentials:**
 
@@ -275,14 +305,17 @@ DB_ROOT_PASSWORD=<strong-root-password>
 **Run the deployment:**
 
 ```bash
-./deploy.sh full
+./deploy.sh --host-agent full   # host-agent mode
+# or:
+./deploy.sh --docker full       # docker mode
 ```
 
 The script will:
+- In `--host-agent` mode: installs and enables the systemd service for the host agent
+- In `--docker` mode: skips systemd; use docker-compose to start the agent container
 - Create all required directories on the target
 - Sync all application files via rsync
 - Deploy the example configuration files (only if no config exists yet)
-- Install and enable the systemd service for the host agent
 - Generate the MariaDB init script from your credentials
 - Attempt to apply the database schema (once the container is running)
 
@@ -290,7 +323,7 @@ The script will:
 
 ### Step 3 – Configure the host agent
 
-The agent configuration is at `/opt/phpscripts/cronmanager/agent/config/config.json`.
+The agent configuration is at `/opt/cronmanager/agent/config/config.json`.
 On the first deployment, the example configuration is placed there automatically.
 
 **Minimum required changes:**
@@ -346,7 +379,7 @@ curl http://127.0.0.1:8865/health
 
 ### Step 5 – Configure the web application
 
-The web configuration is at `/opt/websites/cronmanager/conf/config.json`.
+The web configuration is at `/opt/cronmanager/www/conf/config.json`.
 On the first deployment, the example configuration is placed there automatically.
 
 **Minimum required changes:**
@@ -368,8 +401,10 @@ On the first deployment, the example configuration is placed there automatically
 }
 ```
 
+> **Docker mode:** set `agent.url` to `http://cronmanager-agent:8865` instead. `deploy.sh --docker full` patches this automatically on the first deployment.
+
 `host.docker.internal` resolves to the Docker host from within the container and is
-configured automatically via the `extra_hosts` entry in `docker-compose.yml`.
+configured automatically via the `extra_hosts` entry in `docker/docker-compose.yml` (host-agent mode). In docker mode, use `cronmanager-agent` as the hostname instead — this is the Docker service name on the shared internal network.
 
 ---
 
@@ -378,7 +413,11 @@ configured automatically via the `extra_hosts` entry in `docker-compose.yml`.
 **Option A – docker compose directly on the host:**
 
 ```bash
-cd /opt/websites/cronmanager   # directory containing docker-compose.yml
+# Host-agent mode: web + MariaDB only
+cd /opt/cronmanager/www   # place docker-compose.yml here, or use the file from docker/docker-compose.yml
+
+# Docker mode: agent + web + MariaDB
+cd /opt/cronmanager/www   # use docker/docker-compose-agent.yml
 
 export DB_NAME=cronmanager
 export DB_USER=cronmanager
@@ -404,7 +443,7 @@ docker compose up -d
 ```bash
 ssh myserver 'docker exec -i cronmanager-db mariadb \
     -u cronmanager -p<password> cronmanager \
-    < /opt/phpscripts/cronmanager/agent/sql/schema.sql'
+    < /opt/cronmanager/agent/sql/schema.sql'
 ```
 
 ---
@@ -463,7 +502,7 @@ https://auth.example.com/application/o/cronmanager/
 
 ### 4. Configure Cronmanager
 
-Edit `/opt/websites/cronmanager/conf/config.json`:
+Edit `/opt/cronmanager/www/conf/config.json`:
 
 ```json
 {
@@ -493,8 +532,8 @@ If your Authentik instance uses a certificate issued by an internal CA:
 
 ```bash
 # Copy the CA certificate (PEM format) to the config directory
-cp root_ca.crt /opt/websites/cronmanager/conf/root_ca.crt
-chmod 644 /opt/websites/cronmanager/conf/root_ca.crt
+cp root_ca.crt /opt/cronmanager/www/conf/root_ca.crt
+chmod 644 /opt/cronmanager/www/conf/root_ca.crt
 ```
 
 Then set in `config.json`:
@@ -522,7 +561,7 @@ provider — the account will be re-created on the next login.
 
 ## Configuration Reference
 
-### Web application (`/opt/websites/cronmanager/conf/config.json`)
+### Web application config
 
 | Key | Default | Description |
 |---|---|---|
@@ -531,7 +570,7 @@ provider — the account will be re-created on the next login.
 | `database.name` | `cronmanager` | Database name |
 | `database.user` | `cronmanager` | Database user |
 | `database.password` | | Database password |
-| `agent.url` | `http://host.docker.internal:8865` | Host agent base URL |
+| `agent.url` | `http://host.docker.internal:8865` (host-agent) / `http://cronmanager-agent:8865` (docker) | Host agent base URL |
 | `agent.hmac_secret` | | Shared HMAC secret (must match agent) |
 | `agent.timeout` | `10` | HTTP timeout in seconds |
 | `logging.path` | `/var/www/log/cronmanager-web.log` | Log file path |
@@ -548,7 +587,7 @@ provider — the account will be re-created on the next login.
 | `auth.oidc_ssl_verify` | `true` | `true` = system CA, `false` = disable, or path to CA bundle |
 | `auth.oidc_ssl_ca_bundle` | `""` | Path to custom PEM CA bundle (empty = system CA) |
 
-### Host agent (`/opt/phpscripts/cronmanager/agent/config/config.json`)
+### Agent config
 
 | Key | Default | Description |
 |---|---|---|
@@ -560,7 +599,7 @@ provider — the account will be re-created on the next login.
 | `database.name` | `cronmanager` | Database name |
 | `database.user` | `cronmanager` | Database user |
 | `database.password` | | Database password |
-| `logging.path` | `/opt/phpscripts/log/cronmanager-agent.log` | Log file path |
+| `logging.path` | `/opt/cronmanager/agent/log/cronmanager-agent.log` | Log file path |
 | `logging.level` | `info` | Log level |
 | `logging.max_days` | `30` | Log file retention in days |
 | `mail.enabled` | `false` | Enable email failure alerts |
@@ -573,7 +612,7 @@ provider — the account will be re-created on the next login.
 | `mail.to` | | Recipient address for alerts |
 | `mail.encryption` | `tls` | `tls` (STARTTLS, port 587) or `ssl` (SMTPS, port 465) |
 | `mail.smtp_timeout` | `15` | SMTP connection timeout in seconds |
-| `cron.wrapper_script` | `/opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh` | Wrapper script path |
+| `cron.wrapper_script` | `/opt/cronmanager/agent/bin/cron-wrapper.sh` | Wrapper script path |
 
 ---
 
@@ -631,6 +670,70 @@ and replaced with managed wrapper-script entries.
 
 ---
 
+## Reading the Crontab
+
+### Host-agent mode
+
+The agent manages crontab files directly on the host for each configured Linux user:
+
+```bash
+# View the crontab for a specific user
+crontab -u <linux-user> -l
+
+# View the raw crontab file
+cat /var/spool/cron/crontabs/<linux-user>
+```
+
+Managed entries are prefixed with a `# Cronmanager:` comment line and call the wrapper script:
+```
+# Cronmanager: My job  id:42
+*/5 * * * *  /opt/cronmanager/agent/bin/cron-wrapper.sh  42  local
+```
+
+### Docker mode
+
+In docker mode the agent runs inside the `cronmanager-agent` container and cron jobs run as `root` inside that container. The crontab is the container root user's crontab.
+
+```bash
+# View the crontab inside the agent container
+docker exec cronmanager-agent crontab -l
+
+# View the raw crontab file inside the container
+docker exec cronmanager-agent cat /var/spool/cron/crontabs/root
+```
+
+> **Note:** After migrating from host-agent to docker mode, use **Maintenance → Crontab Sync** in the web UI to write all active jobs into the container's crontab. Without this step the container crontab will be empty and no jobs will execute.
+
+> **Linux user requirement:** In docker mode all jobs run as `root` inside the container. Ensure every job's **Linux user** is set to `root` before running Crontab Sync.
+
+---
+
+## Maintenance
+
+The **Maintenance** page (`/maintenance`, admin only) provides three operational tools for keeping the system healthy.
+
+### Crontab Sync
+
+Re-writes all crontab entries from the database in one click. Active jobs have their entries added or updated; inactive jobs have any lingering entries removed. Use this after migrating from host-agent to docker mode, or whenever crontab entries get out of sync with the database.
+
+### Stuck Executions
+
+Lists executions that have been in the "running" state longer than a configurable threshold (default: 2 hours). This happens when the agent restarted mid-execution, leaving records without a finish timestamp.
+
+**Per-row actions:**
+- **Mark Finished** – sets `exit_code = -1`, records `finished_at = NOW()`, appends a note to the output
+- **Delete** – permanently removes the execution record
+
+**Bulk actions:** rows can be selected individually or all at once with the "Select All" checkbox. The bulk toolbar appears when at least one row is selected and provides the same two actions for all selected rows at once.
+
+The lookback threshold is adjustable with an inline hour selector without leaving the page.
+
+### History Cleanup
+
+Bulk-deletes finished execution records older than a configurable number of days (default: 90). Only records with a non-NULL `finished_at` are eligible; running executions are never deleted. Use this to reclaim database space on long-running installations.
+
+---
+
 ## Export
 
 Managed cron jobs can be exported from the **Export** page:
@@ -666,7 +769,9 @@ Admins can manage accounts via **Users** in the navigation bar.
 Deploy only changed files (configuration files are never overwritten):
 
 ```bash
-./deploy.sh update
+./deploy.sh --host-agent update   # host-agent mode
+# or:
+./deploy.sh --docker update       # docker mode
 ```
 
 Restart the host agent to load code changes:
@@ -675,12 +780,17 @@ Restart the host agent to load code changes:
 sudo systemctl restart cronmanager-agent
 ```
 
+In docker mode, restart the agent container instead:
+```bash
+docker restart cronmanager-agent
+```
+
 Apply database migrations when indicated in the release notes:
 
 ```bash
 ssh myserver 'docker exec -i cronmanager-db mariadb \
     -u cronmanager -p<password> cronmanager \
-    < /opt/phpscripts/cronmanager/agent/sql/migrations/<migration-file>.sql'
+    < /opt/cronmanager/agent/sql/migrations/<migration-file>.sql'
 ```
 
 ---
@@ -689,6 +799,7 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
 
 ### "Agent unavailable" error in the web UI
 
+**Host-agent mode:**
 1. Check the agent is running:
    ```bash
    sudo systemctl status cronmanager-agent
@@ -700,14 +811,28 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
    ```bash
    sudo journalctl -u cronmanager-agent -n 100
    # or
-   tail -f /opt/phpscripts/log/cronmanager-agent.log
+   tail -f /opt/cronmanager/agent/log/cronmanager-agent.log
+   ```
+
+**Docker mode:**
+1. Check the agent container is running and healthy:
+   ```bash
+   docker ps | grep cronmanager-agent
+   docker exec cronmanager-agent curl -s http://localhost:8865/health
+   ```
+2. Verify `agent.url` in the web config points to `http://cronmanager-agent:8865`
+3. Verify the HMAC secret matches in both config files
+4. Inspect agent container logs:
+   ```bash
+   docker logs cronmanager-agent
    ```
 
 ### Jobs are not executing
 
+**Host-agent mode:**
 1. Verify the wrapper script is executable:
    ```bash
-   chmod +x /opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh
+   chmod +x /opt/cronmanager/agent/bin/cron-wrapper.sh
    ```
 2. Check the crontab for the affected user:
    ```bash
@@ -719,7 +844,24 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
    ```
 4. Test the wrapper manually:
    ```bash
-   /opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh <job-id> local
+   /opt/cronmanager/agent/bin/cron-wrapper.sh <job-id> local
+   ```
+
+**Docker mode:**
+1. Verify the container crontab has entries (use Maintenance → Crontab Sync if empty):
+   ```bash
+   docker exec cronmanager-agent crontab -l
+   ```
+2. Verify jobs have `linux_user = root` (required in docker mode)
+3. Check the cron log inside the container:
+   ```bash
+   docker exec cronmanager-agent grep CRON /var/log/syslog 2>/dev/null | tail -50
+   # or check the agent log for execution events:
+   docker logs cronmanager-agent | tail -50
+   ```
+4. Test the wrapper manually inside the container:
+   ```bash
+   docker exec cronmanager-agent /opt/cronmanager/agent/bin/cron-wrapper.sh <job-id> local
    ```
 
 ### OIDC login fails with SSL error
@@ -727,11 +869,11 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
 | Error | Cause | Fix |
 |---|---|---|
 | `cURL error 60` | Server certificate not trusted | Set `oidc_ssl_ca_bundle` to your CA cert path |
-| `cURL error 77` | CA cert file not readable | `chmod 644 /opt/websites/cronmanager/conf/root_ca.crt` |
+| `cURL error 77` | CA cert file not readable | `chmod 644 /opt/cronmanager/www/conf/root_ca.crt` |
 
 Check the web log for details:
 ```bash
-tail -f /opt/websites/cronmanager/log/cronmanager-web.log
+tail -f /opt/cronmanager/www/log/cronmanager-web.log
 ```
 
 ### Database connection fails

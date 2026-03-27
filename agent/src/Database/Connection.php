@@ -54,7 +54,7 @@ final class Connection
     private Config $config;
 
     /** Path to the production config file */
-    private const CONFIG_PATH = '/opt/phpscripts/cronmanager/agent/config/config.json';
+    private const CONFIG_PATH = '/opt/cronmanager/agent/config/config.json';
 
     // -------------------------------------------------------------------------
     // Constructor (private – use getInstance())

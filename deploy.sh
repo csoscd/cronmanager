@@ -555,34 +555,39 @@ done
     # -- Patch agent config.json ---------------------------------------------
     # Actual config keys: database.host, cron.wrapper_script, logging.path
 
+    # Helper: write a local temp Python script, scp it to the target, run it, clean up.
+    # This avoids the SSH+heredoc stdin-consumption problem entirely.
+    _run_remote_python() {
+        local _script_body="$1"
+        local _target_arg="$2"
+        local _tmp
+        _tmp="$(mktemp /tmp/cm_migrate_XXXXXX.py)"
+        printf '%s\n' "${_script_body}" > "${_tmp}"
+        copy_to_target "${_tmp}" "/tmp/cm_migrate_patch.py"
+        rm -f "${_tmp}"
+        run_on_target "python3 /tmp/cm_migrate_patch.py '${_target_arg}'; rm -f /tmp/cm_migrate_patch.py"
+    }
+
     if run_on_target "test -f '${AGENT_CONFIG_FILE}'" 2>/dev/null; then
         log "Patching agent config.json (database.host, cron paths, logging.path)..."
-        run_on_target "python3 - '${AGENT_CONFIG_FILE}'" <<'PYEOF'
-import json, sys
-
+        _run_remote_python \
+'import json, sys
 path = sys.argv[1]
-with open(path, 'r') as fh:
+with open(path, "r") as fh:
     cfg = json.load(fh)
-
-# database.host: 127.0.0.1 → docker service name
-if isinstance(cfg.get('database'), dict):
-    cfg['database']['host'] = 'cronmanager-db'
-
-# cron.wrapper_script: host path → container path
-if isinstance(cfg.get('cron'), dict):
-    cfg['cron']['wrapper_script'] = '/opt/cronmanager/agent/bin/cron-wrapper.sh'
-
-# logging.path: host path → container path (keep filename)
-if isinstance(cfg.get('logging'), dict):
-    old_path = cfg['logging'].get('path', '')
-    filename = old_path.split('/')[-1] if '/' in old_path else 'cronmanager-agent.log'
-    cfg['logging']['path'] = '/opt/cronmanager/agent/log/' + filename
-
-with open(path, 'w') as fh:
+if isinstance(cfg.get("database"), dict):
+    cfg["database"]["host"] = "cronmanager-db"
+if isinstance(cfg.get("cron"), dict):
+    cfg["cron"]["wrapper_script"] = "/opt/cronmanager/agent/bin/cron-wrapper.sh"
+if isinstance(cfg.get("logging"), dict):
+    old = cfg["logging"].get("path", "")
+    fname = old.split("/")[-1] if "/" in old else "cronmanager-agent.log"
+    cfg["logging"]["path"] = "/opt/cronmanager/agent/log/" + fname
+with open(path, "w") as fh:
     json.dump(cfg, fh, indent=4, ensure_ascii=False)
-
-print('[deploy] Agent config patched successfully.')
-PYEOF
+print("[deploy] Agent config patched successfully.")' \
+            "${AGENT_CONFIG_FILE}"
+        log "Agent config patched."
     else
         log "WARNING: Agent config not found at ${AGENT_CONFIG_FILE} – patch manually:"
         log "         database.host        → cronmanager-db"
@@ -595,24 +600,21 @@ PYEOF
 
     if run_on_target "test -f '${WEB_CONFIG_FILE}'" 2>/dev/null; then
         log "Patching web config.json (agent.url → docker service name)..."
-        run_on_target "python3 - '${WEB_CONFIG_FILE}'" <<'PYEOF'
-import json, re, sys
-
+        _run_remote_python \
+'import json, re, sys
 path = sys.argv[1]
-with open(path, 'r') as fh:
+with open(path, "r") as fh:
     cfg = json.load(fh)
-
-if isinstance(cfg.get('agent'), dict) and 'url' in cfg['agent']:
-    url = cfg['agent']['url']
-    m = re.search(r':(\d+)', url)
-    port = m.group(1) if m else '8865'
-    cfg['agent']['url'] = 'http://cronmanager-agent:' + port
-
-with open(path, 'w') as fh:
+if isinstance(cfg.get("agent"), dict) and "url" in cfg["agent"]:
+    url = cfg["agent"]["url"]
+    m = re.search(r":(\d+)", url)
+    port = m.group(1) if m else "8865"
+    cfg["agent"]["url"] = "http://cronmanager-agent:" + port
+with open(path, "w") as fh:
     json.dump(cfg, fh, indent=4, ensure_ascii=False)
-
-print('[deploy] Web config patched successfully.')
-PYEOF
+print("[deploy] Web config patched successfully.")' \
+            "${WEB_CONFIG_FILE}"
+        log "Web config patched."
     else
         log "WARNING: Web config not found at ${WEB_CONFIG_FILE} – patch agent.url manually:"
         log "         agent.url → http://cronmanager-agent:<port>"

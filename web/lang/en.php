@@ -354,4 +354,11 @@ return [
     'maintenance_cleanup_btn'            => 'Clean Up',
     'maintenance_cleanup_confirm'        => 'Delete all finished execution history older than {days} days? This cannot be undone.',
     'maintenance_cleanup_success'        => 'History cleanup complete: {count} record(s) deleted.',
+
+    'maintenance_once_title'             => 'Run Now Cleanup',
+    'maintenance_once_desc'              => 'Remove stale once-only crontab entries left behind by Run Now jobs. These entries are normally self-removing after execution, but can remain if the agent was unreachable at cleanup time.',
+    'maintenance_once_btn'               => 'Remove Stale Entries',
+    'maintenance_once_confirm'           => 'Remove all stale Run Now crontab entries? This only removes temporary schedule lines — no jobs or history records are affected.',
+    'maintenance_once_success'           => 'Run Now cleanup complete: {count} stale entry(s) removed.',
+    'maintenance_once_none'              => 'No stale Run Now entries found.',
 ];

@@ -14,6 +14,7 @@ declare(strict_types=1);
  *   bool               $flashResolved    Execution was marked finished
  *   bool               $flashExecDel     Execution record was deleted
  *   int|null           $flashCleaned     History records deleted (flash)
+ *   int|null           $flashOnceRemoved Stale once-entries removed (flash)
  *   string             $csrf_token       CSRF token
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
@@ -79,6 +80,18 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
         <div class="rounded-lg px-4 py-3 text-sm font-medium"
              style="background:rgba(34,197,94,.12);color:#16a34a;border:1px solid rgba(34,197,94,.25)">
             <?= htmlspecialchars($t('maintenance_cleanup_success', ['count' => $flashCleaned]), ENT_QUOTES, 'UTF-8') ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($flashOnceRemoved !== null): ?>
+        <div class="rounded-lg px-4 py-3 text-sm font-medium"
+             style="background:rgba(34,197,94,.12);color:#16a34a;border:1px solid rgba(34,197,94,.25)">
+            <?= htmlspecialchars(
+                $flashOnceRemoved > 0
+                    ? $t('maintenance_once_success', ['count' => $flashOnceRemoved])
+                    : $t('maintenance_once_none'),
+                ENT_QUOTES, 'UTF-8'
+            ) ?>
         </div>
     <?php endif; ?>
 
@@ -304,6 +317,33 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
     </section>
 
+    <!-- ══════════════════════════════════════════════════════════════════════
+         4. RUN NOW CLEANUP
+         ══════════════════════════════════════════════════════════════════════ -->
+    <section class="cm-card rounded-xl p-6 space-y-4">
+
+        <div>
+            <h2 class="text-lg font-semibold" style="color:var(--cm-text)">
+                <?= htmlspecialchars($t('maintenance_once_title'), ENT_QUOTES, 'UTF-8') ?>
+            </h2>
+            <p class="mt-1 text-sm" style="color:var(--cm-text-muted)">
+                <?= htmlspecialchars($t('maintenance_once_desc'), ENT_QUOTES, 'UTF-8') ?>
+            </p>
+        </div>
+
+        <form method="post" action="/maintenance/once/cleanup"
+              id="once-cleanup-form"
+              onsubmit="return confirmOnceCleanup()">
+            <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
+            <button type="submit"
+                    class="px-4 py-2 rounded-lg text-sm font-semibold transition"
+                    style="background:rgba(239,68,68,.08);color:#dc2626;border:1px solid rgba(239,68,68,.2)">
+                <?= htmlspecialchars($t('maintenance_once_btn'), ENT_QUOTES, 'UTF-8') ?>
+            </button>
+        </form>
+
+    </section>
+
 </div>
 
 <script>
@@ -382,5 +422,11 @@ function confirmCleanup(form) {
     const msg  = <?= json_encode($t('maintenance_cleanup_confirm')) ?>
         .replace('{days}', days);
     return confirm(msg);
+}
+
+// ── Run Now cleanup confirmation ───────────────────────────────────────────────
+
+function confirmOnceCleanup() {
+    return confirm(<?= json_encode($t('maintenance_once_confirm')) ?>);
 }
 </script>

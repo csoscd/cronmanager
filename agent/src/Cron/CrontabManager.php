@@ -714,6 +714,60 @@ final class CrontabManager
         ]);
     }
 
+    /**
+     * Remove ALL once-only crontab entries for a given user.
+     *
+     * Scans the user's crontab for every line starting with ONCE_MARKER_PREFIX
+     * and strips both the marker comment line and the schedule line that follows it.
+     *
+     * @param string $user Linux user name.
+     *
+     * @return int Number of once-entries removed.
+     *
+     * @throws InvalidArgumentException When $user contains disallowed characters.
+     * @throws RuntimeException         When writing the updated crontab fails.
+     */
+    public function removeAllOnceEntriesForUser(string $user): int
+    {
+        $this->validateUser($user);
+
+        $raw = $this->readCrontab($user);
+
+        if (!str_contains($raw, self::ONCE_MARKER_PREFIX)) {
+            return 0;
+        }
+
+        $lines    = explode("\n", $raw);
+        $filtered = [];
+        $removed  = 0;
+        $skipNext = false;
+
+        foreach ($lines as $line) {
+            if ($skipNext) {
+                $skipNext = false;
+                continue;
+            }
+
+            if (str_starts_with(trim($line), self::ONCE_MARKER_PREFIX)) {
+                $skipNext = true;
+                $removed++;
+                continue;
+            }
+
+            $filtered[] = $line;
+        }
+
+        if ($removed > 0) {
+            $this->writeCrontab($user, implode("\n", $filtered));
+            $this->logger->info('CrontabManager: all once-entries removed for user', [
+                'user'    => $user,
+                'removed' => $removed,
+            ]);
+        }
+
+        return $removed;
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------

@@ -354,4 +354,11 @@ return [
     'maintenance_cleanup_btn'            => 'Bereinigen',
     'maintenance_cleanup_confirm'        => 'Alle abgeschlossenen Ausführungsprotokoll-Einträge älter als {days} Tage löschen? Dies kann nicht rückgängig gemacht werden.',
     'maintenance_cleanup_success'        => 'Historien-Bereinigung abgeschlossen: {count} Eintrag/Einträge gelöscht.',
+
+    'maintenance_once_title'             => 'Run-Now-Bereinigung',
+    'maintenance_once_desc'              => 'Entfernt veraltete Einmal-Crontab-Einträge, die von Run-Now-Jobs hinterlassen wurden. Diese Einträge entfernen sich normalerweise nach der Ausführung selbst, können aber verbleiben, wenn der Agent beim Bereinigungsaufruf nicht erreichbar war.',
+    'maintenance_once_btn'               => 'Veraltete Einträge entfernen',
+    'maintenance_once_confirm'           => 'Alle veralteten Run-Now-Crontab-Einträge entfernen? Es werden nur temporäre Zeitplanzeilen entfernt – keine Jobs oder Historiendaten werden verändert.',
+    'maintenance_once_success'           => 'Run-Now-Bereinigung abgeschlossen: {count} veralteter Eintrag/Einträge entfernt.',
+    'maintenance_once_none'              => 'Keine veralteten Run-Now-Einträge gefunden.',
 ];

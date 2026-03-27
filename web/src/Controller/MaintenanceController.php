@@ -14,6 +14,7 @@ declare(strict_types=1);
  *   POST /maintenance/executions/{id}/finish   – mark stuck execution as finished
  *   POST /maintenance/executions/{id}/delete   – delete execution record
  *   POST /maintenance/history/cleanup          – delete old history records
+ *   POST /maintenance/once/cleanup             – remove stale Run Now crontab entries
  *
  * All mutating actions redirect back to GET /maintenance with a result
  * indicator in the query string so the page can show a one-shot banner
@@ -70,13 +71,14 @@ final class MaintenanceController extends BaseController
         }
 
         // ── Flash messages from previous actions ───────────────────────────
-        $flashSyncOk       = isset($_GET['sync_ok'])       ? (int) $_GET['sync_ok']       : null;
-        $flashSyncErr      = isset($_GET['sync_err']);
-        $flashResolved     = isset($_GET['resolved']);
-        $flashExecDel      = isset($_GET['exec_del']);
-        $flashCleaned      = isset($_GET['cleaned'])       ? (int) $_GET['cleaned']       : null;
-        $flashBulkResolved = isset($_GET['bulk_resolved']) ? (int) $_GET['bulk_resolved'] : null;
-        $flashBulkDeleted  = isset($_GET['bulk_deleted'])  ? (int) $_GET['bulk_deleted']  : null;
+        $flashSyncOk        = isset($_GET['sync_ok'])        ? (int) $_GET['sync_ok']        : null;
+        $flashSyncErr       = isset($_GET['sync_err']);
+        $flashResolved      = isset($_GET['resolved']);
+        $flashExecDel       = isset($_GET['exec_del']);
+        $flashCleaned       = isset($_GET['cleaned'])        ? (int) $_GET['cleaned']        : null;
+        $flashBulkResolved  = isset($_GET['bulk_resolved'])  ? (int) $_GET['bulk_resolved']  : null;
+        $flashBulkDeleted   = isset($_GET['bulk_deleted'])   ? (int) $_GET['bulk_deleted']   : null;
+        $flashOnceRemoved   = isset($_GET['once_removed'])   ? (int) $_GET['once_removed']   : null;
 
         $this->render('maintenance/index.php', $this->translator()->t('maintenance_title'), [
             'hours'             => $hours,
@@ -89,6 +91,7 @@ final class MaintenanceController extends BaseController
             'flashCleaned'      => $flashCleaned,
             'flashBulkResolved' => $flashBulkResolved,
             'flashBulkDeleted'  => $flashBulkDeleted,
+            'flashOnceRemoved'  => $flashOnceRemoved,
         ], '/maintenance');
     }
 
@@ -211,6 +214,32 @@ final class MaintenanceController extends BaseController
 
         $param = $action === 'finish' ? 'bulk_resolved' : 'bulk_deleted';
         (new Response())->redirect("/maintenance?{$param}={$count}&hours={$hours}");
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /maintenance/once/cleanup
+    // -------------------------------------------------------------------------
+
+    /**
+     * Remove all stale Run Now (once-only) crontab entries.
+     *
+     * These entries are normally self-removed by cron-wrapper.sh after execution,
+     * but can remain if the agent was unreachable during the cleanup call.
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     */
+    public function onceCleanup(array $params = []): void
+    {
+        try {
+            $result  = $this->agentClient()->post('/maintenance/once/cleanup');
+            $removed = (int) ($result['removed'] ?? 0);
+            (new Response())->redirect('/maintenance?once_removed=' . $removed);
+        } catch (\RuntimeException $e) {
+            $this->logger->error('MaintenanceController: onceCleanup failed', [
+                'error' => $e->getMessage(),
+            ]);
+            (new Response())->redirect('/maintenance');
+        }
     }
 
     // -------------------------------------------------------------------------

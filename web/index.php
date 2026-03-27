@@ -209,6 +209,7 @@ try {
     $router->addProtectedRoute('POST', '/maintenance/executions/{id}/finish',       [$maintenanceCtrl, 'resolveExecution'],'admin');
     $router->addProtectedRoute('POST', '/maintenance/executions/{id}/delete',       [$maintenanceCtrl, 'deleteExecution'], 'admin');
     $router->addProtectedRoute('POST', '/maintenance/history/cleanup',              [$maintenanceCtrl, 'cleanHistory'],    'admin');
+    $router->addProtectedRoute('POST', '/maintenance/once/cleanup',                 [$maintenanceCtrl, 'onceCleanup'],     'admin');
 
     // -------------------------------------------------------------------------
     // Dispatch

@@ -238,15 +238,17 @@ try {
     // must be registered before /maintenance/executions/{id} so the router
     // tries the longer patterns first.
 
-    $maintenanceResync    = new \Cronmanager\Agent\Endpoints\MaintenanceCrontabResyncEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
-    $maintenanceStuck     = new \Cronmanager\Agent\Endpoints\MaintenanceStuckEndpoint($pdo, $logger);
-    $maintenanceResolve   = new \Cronmanager\Agent\Endpoints\MaintenanceResolveEndpoint($pdo, $logger);
-    $maintenanceExecDel   = new \Cronmanager\Agent\Endpoints\MaintenanceDeleteExecutionEndpoint($pdo, $logger);
+    $maintenanceResync      = new \Cronmanager\Agent\Endpoints\MaintenanceCrontabResyncEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
+    $maintenanceStuck       = new \Cronmanager\Agent\Endpoints\MaintenanceStuckEndpoint($pdo, $logger);
+    $maintenanceResolve     = new \Cronmanager\Agent\Endpoints\MaintenanceResolveEndpoint($pdo, $logger);
+    $maintenanceExecDel     = new \Cronmanager\Agent\Endpoints\MaintenanceDeleteExecutionEndpoint($pdo, $logger);
+    $maintenanceOnceCleanup = new \Cronmanager\Agent\Endpoints\MaintenanceOnceCleanupEndpoint($logger, $crontabManager);
 
-    $router->addRoute('POST',   '/maintenance/crontab/resync',          [$maintenanceResync,  'handle']);
-    $router->addRoute('GET',    '/maintenance/executions/stuck',        [$maintenanceStuck,   'handle']);
-    $router->addRoute('POST',   '/maintenance/executions/{id}/finish',  [$maintenanceResolve, 'handle']);
-    $router->addRoute('DELETE', '/maintenance/executions/{id}',         [$maintenanceExecDel, 'handle']);
+    $router->addRoute('POST',   '/maintenance/crontab/resync',          [$maintenanceResync,      'handle']);
+    $router->addRoute('POST',   '/maintenance/once/cleanup',            [$maintenanceOnceCleanup, 'handle']);
+    $router->addRoute('GET',    '/maintenance/executions/stuck',        [$maintenanceStuck,       'handle']);
+    $router->addRoute('POST',   '/maintenance/executions/{id}/finish',  [$maintenanceResolve,     'handle']);
+    $router->addRoute('DELETE', '/maintenance/executions/{id}',         [$maintenanceExecDel,     'handle']);
 
     // -------------------------------------------------------------------------
     // Dispatch

@@ -251,6 +251,7 @@ return [
     // Import from Crontab
     // -------------------------------------------------------------------------
     'import_title'           => 'Import from Crontab',
+    'import_select_target'   => 'Target',
     'import_select_user'     => 'Select Linux User',
     'import_load'            => 'Load Crontab',
     'import_none_found'      => 'No unmanaged crontab entries found for this user.',

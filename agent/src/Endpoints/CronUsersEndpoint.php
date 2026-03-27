@@ -57,7 +57,10 @@ final class CronUsersEndpoint
     /**
      * Handle an incoming GET /crons/users request.
      *
-     * Scans all candidate Linux users and returns those with any crontab content.
+     * Optional query parameter:
+     *   target (string) – SSH host alias. When present and not "local", users
+     *                     are fetched from the remote host via SSH rather than
+     *                     from the local crontab spool.
      *
      * @param array<string, string> $params Path parameters (unused).
      *
@@ -65,17 +68,39 @@ final class CronUsersEndpoint
      */
     public function handle(array $params): void
     {
-        $this->logger->debug('CronUsersEndpoint: handling GET /crons/users');
+        // Resolve optional target; treat absent / "local" as local execution
+        $target = (isset($_GET['target']) && $_GET['target'] !== '' && $_GET['target'] !== 'local')
+            ? (string) $_GET['target']
+            : null;
+
+        $this->logger->debug('CronUsersEndpoint: handling GET /crons/users', [
+            'target' => $target ?? 'local',
+        ]);
 
         try {
-            $users = $this->crontabManager->getUsersWithCrontab();
+            if ($target !== null) {
+                $users = $this->crontabManager->getRemoteUsersWithCrontab($target);
+            } else {
+                $users = $this->crontabManager->getUsersWithCrontab();
+            }
 
             jsonResponse(200, [
                 'data'  => $users,
                 'count' => count($users),
             ]);
+        } catch (\InvalidArgumentException $e) {
+            $this->logger->warning('CronUsersEndpoint: invalid target', [
+                'target'  => $target,
+                'message' => $e->getMessage(),
+            ]);
+            jsonResponse(422, [
+                'error'   => 'Unprocessable Entity',
+                'message' => $e->getMessage(),
+                'code'    => 422,
+            ]);
         } catch (\Throwable $e) {
             $this->logger->error('CronUsersEndpoint: error scanning users', [
+                'target'  => $target ?? 'local',
                 'message' => $e->getMessage(),
             ]);
 

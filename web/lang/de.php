@@ -251,6 +251,7 @@ return [
     // Crontab-Import
     // -------------------------------------------------------------------------
     'import_title'           => 'Aus Crontab importieren',
+    'import_select_target'   => 'Ziel',
     'import_select_user'     => 'Linux-Benutzer auswählen',
     'import_load'            => 'Crontab laden',
     'import_none_found'      => 'Keine nicht verwalteten Crontab-Einträge für diesen Benutzer gefunden.',

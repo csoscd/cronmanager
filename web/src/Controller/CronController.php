@@ -521,19 +521,37 @@ class CronController extends BaseController
      */
     public function importList(array $params): void
     {
-        $agent        = $this->agentClient();
-        $selectedUser = trim((string) ($_GET['user'] ?? ''));
+        $agent          = $this->agentClient();
+        $selectedUser   = trim((string) ($_GET['user']   ?? ''));
+        $selectedTarget = trim((string) ($_GET['target'] ?? 'local'));
+
         if ($selectedUser === '') {
             $selectedUser = null;
         }
+        if ($selectedTarget === '') {
+            $selectedTarget = 'local';
+        }
 
-        // Fetch all Linux users that have any crontab entries (managed or not)
+        // Fetch available SSH targets for the target selector
+        $sshTargets = [];
+        try {
+            $sshTargets = $agent->get('/import/ssh-targets')['data'] ?? [];
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::importList: failed to fetch SSH targets', [
+                'message' => $e->getMessage(),
+            ]);
+            // Non-fatal: target selector will only show "local"
+        }
+
+        // Fetch all Linux users that have any crontab entries on the selected target
         $users = [];
         try {
-            $response = $agent->get('/crons/users');
-            $users    = $response['data'] ?? [];
+            $usersParams = $selectedTarget !== 'local' ? ['target' => $selectedTarget] : [];
+            $response    = $agent->get('/crons/users', $usersParams);
+            $users       = $response['data'] ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('CronController::importList: failed to fetch crontab users', [
+                'target'  => $selectedTarget,
                 'message' => $e->getMessage(),
             ]);
             // Non-fatal: continue with an empty users list
@@ -553,11 +571,16 @@ class CronController extends BaseController
         $unmanagedEntries = [];
         if ($selectedUser !== null) {
             try {
-                $response         = $agent->get('/crons/unmanaged', ['user' => $selectedUser]);
+                $unmanagedParams = ['user' => $selectedUser];
+                if ($selectedTarget !== 'local') {
+                    $unmanagedParams['target'] = $selectedTarget;
+                }
+                $response         = $agent->get('/crons/unmanaged', $unmanagedParams);
                 $unmanagedEntries = $response['data'] ?? [];
             } catch (\RuntimeException $e) {
                 $this->logger->error('CronController::importList: failed to fetch unmanaged entries', [
                     'user'    => $selectedUser,
+                    'target'  => $selectedTarget,
                     'message' => $e->getMessage(),
                 ]);
                 $this->renderError(503, 'error_agent_unavailable', '/crons');
@@ -568,6 +591,8 @@ class CronController extends BaseController
         $this->render('cron/import.php', $this->translator()->t('import_title'), [
             'users'            => $users,
             'selectedUser'     => $selectedUser,
+            'selectedTarget'   => $selectedTarget,
+            'sshTargets'       => $sshTargets,
             'unmanagedEntries' => $unmanagedEntries,
             'tags'             => $tags,
             'isAdmin'          => SessionManager::hasRole('admin'),
@@ -593,8 +618,14 @@ class CronController extends BaseController
      */
     public function importStore(array $params): void
     {
-        $user     = trim((string) ($_POST['user'] ?? ''));
+        $user     = trim((string) ($_POST['user']   ?? ''));
+        $target   = trim((string) ($_POST['target'] ?? 'local'));
         $selected = (array) ($_POST['selected'] ?? []);
+
+        // Sanitise target: only allow 'local' or safe SSH alias characters
+        if ($target === '' || !preg_match('/^[a-zA-Z0-9._-]+$/', $target)) {
+            $target = 'local';
+        }
 
         if ($user === '' || empty($selected)) {
             (new Response())->redirect('/crons/import');
@@ -640,7 +671,7 @@ class CronController extends BaseController
                 'tags'              => $tags,
                 'active'            => true,
                 'notify_on_failure' => false,
-                'targets'           => ['local'],
+                'targets'           => [$target],
                 // Tell the agent to comment out the original unmanaged crontab line
                 'original_schedule' => $originalSchedule,
                 'original_command'  => $originalCommand,
@@ -672,9 +703,13 @@ class CronController extends BaseController
             $this->translator()->t('import_success')
         ));
 
-        // Redirect back to the import page for the same user so the success
+        // Redirect back to the import page for the same user/target so the success
         // message is visible immediately and additional entries can be imported.
-        (new Response())->redirect('/crons/import?user=' . rawurlencode($user));
+        $redirect = '/crons/import?user=' . rawurlencode($user);
+        if ($target !== 'local') {
+            $redirect .= '&target=' . rawurlencode($target);
+        }
+        (new Response())->redirect($redirect);
     }
 
     /**

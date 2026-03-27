@@ -205,6 +205,7 @@ try {
     // Maintenance – admin only; more-specific paths registered before /{id} sub-routes
     $router->addProtectedRoute('GET',  '/maintenance',                              [$maintenanceCtrl, 'index'],           'admin');
     $router->addProtectedRoute('POST', '/maintenance/resync',                       [$maintenanceCtrl, 'resyncCrontab'],   'admin');
+    $router->addProtectedRoute('POST', '/maintenance/executions/bulk',              [$maintenanceCtrl, 'bulkAction'],      'admin');
     $router->addProtectedRoute('POST', '/maintenance/executions/{id}/finish',       [$maintenanceCtrl, 'resolveExecution'],'admin');
     $router->addProtectedRoute('POST', '/maintenance/executions/{id}/delete',       [$maintenanceCtrl, 'deleteExecution'], 'admin');
     $router->addProtectedRoute('POST', '/maintenance/history/cleanup',              [$maintenanceCtrl, 'cleanHistory'],    'admin');

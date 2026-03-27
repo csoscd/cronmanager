@@ -306,6 +306,7 @@ return [
     'started_at'              => 'Started',
     'finished_at'             => 'Finished',
     'actions'                 => 'Actions',
+    'select_all'              => 'Select all',
     'save'                    => 'Save',
     'cancel'                  => 'Cancel',
     'back'                    => 'Back',
@@ -337,6 +338,13 @@ return [
     'maintenance_stuck_delete_confirm'   => 'Permanently delete this execution record? This cannot be undone.',
     'maintenance_stuck_resolved'         => 'Execution marked as finished.',
     'maintenance_stuck_deleted'          => 'Execution record deleted.',
+    'maintenance_stuck_bulk_resolve'         => 'Mark Finished',
+    'maintenance_stuck_bulk_delete'          => 'Delete Selected',
+    'maintenance_stuck_selected'             => '{count} selected',
+    'maintenance_stuck_bulk_resolve_confirm' => 'Mark {count} execution(s) as finished (exit code −1)?',
+    'maintenance_stuck_bulk_delete_confirm'  => 'Permanently delete {count} execution record(s)? This cannot be undone.',
+    'maintenance_stuck_bulk_resolved'        => '{count} execution(s) marked as finished.',
+    'maintenance_stuck_bulk_deleted'         => '{count} execution record(s) deleted.',
 
     // History cleanup
     'maintenance_cleanup_title'          => 'History Cleanup',

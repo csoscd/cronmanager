@@ -69,22 +69,26 @@ final class MaintenanceController extends BaseController
             ]);
         }
 
-        // ── Flash message from previous action ────────────────────────────
-        $flashSyncOk  = isset($_GET['sync_ok'])  ? (int) $_GET['sync_ok']  : null;
-        $flashSyncErr = isset($_GET['sync_err']);
-        $flashResolved = isset($_GET['resolved']);
-        $flashExecDel  = isset($_GET['exec_del']);
-        $flashCleaned  = isset($_GET['cleaned'])  ? (int) $_GET['cleaned'] : null;
+        // ── Flash messages from previous actions ───────────────────────────
+        $flashSyncOk       = isset($_GET['sync_ok'])       ? (int) $_GET['sync_ok']       : null;
+        $flashSyncErr      = isset($_GET['sync_err']);
+        $flashResolved     = isset($_GET['resolved']);
+        $flashExecDel      = isset($_GET['exec_del']);
+        $flashCleaned      = isset($_GET['cleaned'])       ? (int) $_GET['cleaned']       : null;
+        $flashBulkResolved = isset($_GET['bulk_resolved']) ? (int) $_GET['bulk_resolved'] : null;
+        $flashBulkDeleted  = isset($_GET['bulk_deleted'])  ? (int) $_GET['bulk_deleted']  : null;
 
         $this->render('maintenance/index.php', $this->translator()->t('maintenance_title'), [
-            'hours'           => $hours,
-            'stuckExecutions' => $stuckExecutions,
-            'stuckError'      => $stuckError,
-            'flashSyncOk'     => $flashSyncOk,
-            'flashSyncErr'    => $flashSyncErr,
-            'flashResolved'   => $flashResolved,
-            'flashExecDel'    => $flashExecDel,
-            'flashCleaned'    => $flashCleaned,
+            'hours'             => $hours,
+            'stuckExecutions'   => $stuckExecutions,
+            'stuckError'        => $stuckError,
+            'flashSyncOk'       => $flashSyncOk,
+            'flashSyncErr'      => $flashSyncErr,
+            'flashResolved'     => $flashResolved,
+            'flashExecDel'      => $flashExecDel,
+            'flashCleaned'      => $flashCleaned,
+            'flashBulkResolved' => $flashBulkResolved,
+            'flashBulkDeleted'  => $flashBulkDeleted,
         ], '/maintenance');
     }
 
@@ -159,6 +163,54 @@ final class MaintenanceController extends BaseController
         }
 
         (new Response())->redirect("/maintenance?exec_del=1&hours={$hours}");
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /maintenance/executions/bulk
+    // -------------------------------------------------------------------------
+
+    /**
+     * Apply a bulk action (finish or delete) to multiple execution records.
+     *
+     * Expected POST fields:
+     *   _action  (string)  'finish' or 'delete'
+     *   ids[]    (int[])   Execution IDs to act on
+     *   hours    (int)     Current hours filter (preserved in redirect)
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     */
+    public function bulkAction(array $params = []): void
+    {
+        $action = $_POST['_action'] ?? '';
+        $ids    = array_values(array_filter(array_map('intval', (array) ($_POST['ids'] ?? []))));
+        $hours  = max(1, (int) ($_POST['hours'] ?? 2));
+
+        if (empty($ids) || !in_array($action, ['finish', 'delete'], true)) {
+            (new Response())->redirect("/maintenance?hours={$hours}");
+            return;
+        }
+
+        $count = 0;
+
+        foreach ($ids as $id) {
+            try {
+                if ($action === 'finish') {
+                    $this->agentClient()->post("/maintenance/executions/{$id}/finish");
+                } else {
+                    $this->agentClient()->delete("/maintenance/executions/{$id}");
+                }
+                $count++;
+            } catch (\RuntimeException $e) {
+                $this->logger->error('MaintenanceController: bulkAction failed for execution', [
+                    'id'     => $id,
+                    'action' => $action,
+                    'error'  => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $param = $action === 'finish' ? 'bulk_resolved' : 'bulk_deleted';
+        (new Response())->redirect("/maintenance?{$param}={$count}&hours={$hours}");
     }
 
     // -------------------------------------------------------------------------

@@ -306,6 +306,7 @@ return [
     'started_at'              => 'Gestartet',
     'finished_at'             => 'Beendet',
     'actions'                 => 'Aktionen',
+    'select_all'              => 'Alle auswählen',
     'save'                    => 'Speichern',
     'cancel'                  => 'Abbrechen',
     'back'                    => 'Zurück',
@@ -337,6 +338,13 @@ return [
     'maintenance_stuck_delete_confirm'   => 'Diesen Ausführungseintrag dauerhaft löschen? Dies kann nicht rückgängig gemacht werden.',
     'maintenance_stuck_resolved'         => 'Ausführung als beendet markiert.',
     'maintenance_stuck_deleted'          => 'Ausführungseintrag gelöscht.',
+    'maintenance_stuck_bulk_resolve'         => 'Als beendet markieren',
+    'maintenance_stuck_bulk_delete'          => 'Auswahl löschen',
+    'maintenance_stuck_selected'             => '{count} ausgewählt',
+    'maintenance_stuck_bulk_resolve_confirm' => '{count} Ausführung(en) als beendet markieren (Exit-Code −1)?',
+    'maintenance_stuck_bulk_delete_confirm'  => '{count} Ausführungseintrag/-einträge dauerhaft löschen? Dies kann nicht rückgängig gemacht werden.',
+    'maintenance_stuck_bulk_resolved'        => '{count} Ausführung(en) als beendet markiert.',
+    'maintenance_stuck_bulk_deleted'         => '{count} Ausführungseintrag/-einträge gelöscht.',
 
     // Historien-Bereinigung
     'maintenance_cleanup_title'          => 'Historien-Bereinigung',

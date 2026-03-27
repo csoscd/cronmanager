@@ -104,6 +104,7 @@ done
 # ---------------------------------------------------------------------------
 
 AGENT_SRC="${SCRIPT_DIR}/agent"
+DOCKER_SRC="${SCRIPT_DIR}/docker"
 WEB_SRC="${SCRIPT_DIR}/web"
 COMPOSER_SRC="${SCRIPT_DIR}/composer.json"
 CREDENTIALS_FILE="${SCRIPT_DIR}/db.credentials"
@@ -314,6 +315,8 @@ if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
     mkdir_on_target "${AGENT_TARGET}/src/Notification"
     mkdir_on_target "${AGENT_TARGET}/sql"
     mkdir_on_target "${AGENT_TARGET}/systemd"
+    mkdir_on_target "${AGENT_TARGET}/docker"
+    mkdir_on_target "${AGENT_TARGET}/docker/agent"
 
     mkdir_on_target "${DB_DIR}/data"
     mkdir_on_target "${DB_DIR}/conf"
@@ -367,6 +370,15 @@ if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
         else
             log "Agent config already exists – skipping (update manually if needed)."
         fi
+    fi
+
+    # Deploy docker helper files (entrypoint.sh etc.) alongside the agent
+    if [[ -d "${DOCKER_SRC}" ]]; then
+        # shellcheck disable=SC2086
+        ${RSYNC_UPDATE} ${RSYNC_TRANSPORT} \
+            "${DOCKER_SRC}/" "${TARGET_PREFIX}${AGENT_TARGET}/docker/"
+        run_on_target "find '${AGENT_TARGET}/docker' -name '*.sh' -exec chmod +x {} \;" 2>/dev/null || true
+        log "Docker helper files deployed to ${AGENT_TARGET}/docker/."
     fi
 
     # Ensure scripts are executable

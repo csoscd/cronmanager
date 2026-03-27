@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `agentless` (continued)
+## [2.0.0] – branch: `agentless`
 
 ### Added
 
@@ -14,29 +14,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Run Now Cleanup** (`POST /maintenance/once/cleanup`, admin only) – New maintenance section that removes stale "Run Now" (once-only) crontab entries across all cron users. These `# cronmanager-once:…` marker lines are normally self-cleaned by `cron-wrapper.sh` after execution, but can linger if the agent was unreachable during the cleanup call. The agent iterates all users with a crontab, strips every `# cronmanager-once:` marker and its command line, and returns the count of removed entries. The web UI shows a "Run Now Cleanup" card with a confirmation dialog and a success/none flash banner after the action.
 - **Bulk selection for stuck executions** – Each stuck execution row now has a checkbox. A "Select All" header checkbox selects/deselects all visible rows. A bulk toolbar (hidden until at least one row is selected) shows the selection count and two actions: "Mark Finished" and "Delete Selected". Both actions trigger a confirmation dialog before submitting. Flash banners confirm how many records were affected.
 - **`POST /maintenance/executions/bulk` endpoint** – New protected admin route that dispatches to `MaintenanceController::bulkAction()`. Accepts `ids[]` and `_action` (finish or delete) form fields; calls the corresponding per-record agent endpoint for each ID.
-
-### Changed
-
-- **`deploy.sh --docker` patches configs on first deploy** – When deploying example config files for the first time with `--docker`: agent `database.host` is set to `cronmanager-db` and web `agent.url` is set to `http://cronmanager-agent:8865`, both using Docker service names instead of the `host.docker.internal` / `127.0.0.1` defaults.
-- **`deploy.sh` requires `--host-agent` or `--docker`** – The deployment target mode is now a mandatory argument. Without it the script exits with a usage message. `--host-agent` installs/restarts the systemd service after deploying; `--docker` skips all systemd steps (use docker-compose to manage the stack).
-- **`deploy.sh --host-agent undeploy`** – New mode that stops and disables the systemd service and removes the unit file, then exits. PHP files and config are kept on the target system.
-- **Standardised deployment paths** – All deployment target paths are now fixed constants (no longer configurable in `deploy.env`): agent at `/opt/cronmanager/agent`, web at `/opt/cronmanager/www` (sub-dirs: `html/`, `conf/`, `log/`), database at `/opt/cronmanager/db`. `DEPLOY_DB`, `DEPLOY_WEB`, and `DEPLOY_AGENT` variables removed from `deploy.env.example`.
-- **`docker/docker-compose.yml`** – Web volume mounts updated to the fixed paths (`/opt/cronmanager/www/conf`, `/opt/cronmanager/www/html`, `/opt/cronmanager/www/log`).
-- **`docker/docker-compose-agent.yml`** – Agent volume mounts updated from `/opt/phpscripts/cronmanager/agent` to `/opt/cronmanager/agent`. Web volume mounts updated to match standardised paths.
-- **`deploy.sh` migrate mode** – Crontab cleanup now matches any `cron-wrapper.sh` path (not just the old `/opt/phpscripts/…` path), and migration manual-steps note simplified since paths are already standardised.
-
-### Fixed
-
-- **Stuck executions 500 error** – SQL query used non-existent column `el.job_id`; corrected to `el.cronjob_id` with matching JOIN on `cronjobs.id`.
-- **`$t` undefined in maintenance template** – Added the `$t` lambda at the top of `web/templates/maintenance/index.php`, consistent with all other templates.
-- **`templates/maintenance/` directory missing on deploy** – Added `mkdir_on_target` call in `deploy.sh` for the maintenance template directory.
-
----
-
-## [Unreleased] – branch: `agentless`
-
-### Added
-
 - **Maintenance page** (`/maintenance`, admin only) – New "Maintenance" nav entry with three operational tools:
   - **Crontab Sync** – Re-writes all crontab entries from the database in one click. Active jobs are synced (entries added/updated); inactive jobs have lingering entries removed. Solves the post-migration crontab re-population that previously required re-saving every job manually.
   - **Stuck Executions** – Lists executions that have been in the "running" state longer than a configurable threshold (default 2 hours). Per-row actions: "Mark Finished" (sets `exit_code=-1`, `finished_at=NOW()`, appends a note to output) and "Delete" (permanently removes the record). The threshold is adjustable via an inline form without leaving the page.
@@ -47,19 +24,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `POST /maintenance/executions/{id}/finish`
   - `DELETE /maintenance/executions/{id}`
   - `POST /maintenance/history/cleanup`
-
----
-
-## [Unreleased] – branch: `agentless`
-
-### Added
-
 - **Docker-only deployment mode** – New deployment option where the Cronmanager agent runs in a Docker container (`cs1711/cs_cronmanageragent:latest`) alongside the web app and MariaDB, instead of being installed directly on the host as a systemd service. No PHP installation on the host is required in this mode.
 - **`docker/agent/entrypoint.sh`** – Container entrypoint script that fixes SSH key permissions, starts the cron daemon in the background, reads bind address and port from `config.json`, and starts the PHP built-in server as the foreground process.
 - **`simple_debian_setup.sh`: deployment type selection** – New interactive step (Step 1b) asks whether to install in `host-agent` mode (classic, PHP CLI + systemd) or `docker-only` mode. All subsequent steps adapt accordingly.
 
 ### Changed
 
+- **`deploy.sh --docker` patches configs on first deploy** – When deploying example config files for the first time with `--docker`: agent `database.host` is set to `cronmanager-db` and web `agent.url` is set to `http://cronmanager-agent:8865`, both using Docker service names instead of the `host.docker.internal` / `127.0.0.1` defaults.
+- **`deploy.sh` requires `--host-agent` or `--docker`** – The deployment target mode is now a mandatory argument. Without it the script exits with a usage message. `--host-agent` installs/restarts the systemd service after deploying; `--docker` skips all systemd steps (use docker-compose to manage the stack).
+- **`deploy.sh --host-agent undeploy`** – New mode that stops and disables the systemd service and removes the unit file, then exits. PHP files and config are kept on the target system.
+- **Standardised deployment paths** – All deployment target paths are now fixed constants (no longer configurable in `deploy.env`): agent at `/opt/cronmanager/agent`, web at `/opt/cronmanager/www` (sub-dirs: `html/`, `conf/`, `log/`), database at `/opt/cronmanager/db`. `DEPLOY_DB`, `DEPLOY_WEB`, and `DEPLOY_AGENT` variables removed from `deploy.env.example`.
+- **`docker/docker-compose.yml`** – Web volume mounts updated to the fixed paths (`/opt/cronmanager/www/conf`, `/opt/cronmanager/www/html`, `/opt/cronmanager/www/log`).
+- **`docker/docker-compose-agent.yml`** – Agent volume mounts updated from `/opt/phpscripts/cronmanager/agent` to `/opt/cronmanager/agent`. Web volume mounts updated to match standardised paths.
+- **`deploy.sh` migrate mode** – Crontab cleanup now matches any `cron-wrapper.sh` path (not just the old `/opt/phpscripts/…` path), and migration manual-steps note simplified since paths are already standardised.
 - **`simple_debian_setup.sh`: conditional prerequisites** – In docker-only mode, PHP 8.4 CLI and PHP extension checks on the host are skipped (PHP runs inside the container). Composer installation on the host is also skipped.
 - **`simple_debian_setup.sh`: agent path patching** – In docker-only mode, hardcoded paths in agent files are patched to the fixed container path `/opt/cronmanager/agent` instead of the host `AGENT_DIR`, since the agent always runs from that path inside the container.
 - **`simple_debian_setup.sh`: agent `config.json`** – In docker-only mode the database host is set to `cronmanager-db` (Docker service name) and log/wrapper paths use the container path. In host-agent mode the database host remains `127.0.0.1`.
@@ -67,6 +44,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`simple_debian_setup.sh`: docker-compose.yml** – In docker-only mode a `cronmanager-agent` service is added to the compose file. The agent source directory, config, log, SSH keys, and entrypoint are mounted as volumes. The web container no longer needs `extra_hosts` in docker-only mode. In host-agent mode the compose file is unchanged.
 - **`simple_debian_setup.sh`: systemd step** – Skipped in docker-only mode; informational message shown instead.
 - **`simple_debian_setup.sh`: start agent step** – In docker-only mode the agent health check uses `docker exec` instead of a host curl call. systemctl commands are not shown in the final summary.
+
+### Fixed
+
+- **Stuck executions 500 error** – SQL query used non-existent column `el.job_id`; corrected to `el.cronjob_id` with matching JOIN on `cronjobs.id`.
+- **`$t` undefined in maintenance template** – Added the `$t` lambda at the top of `web/templates/maintenance/index.php`, consistent with all other templates.
+- **`templates/maintenance/` directory missing on deploy** – Added `mkdir_on_target` call in `deploy.sh` for the maintenance template directory.
 
 ---
 

@@ -181,9 +181,7 @@ stores both verifier and `state` in the PHP session. Both are verified before th
 **Status / recommendation**:
 - Browser → Web UI: HTTPS should be configured at the reverse-proxy / Docker ingress level.
   The application itself does not handle TLS termination.
-- Web container → Host agent: Uses HTTP over `host.docker.internal`. This is on the Docker bridge
-  network (loopback-equivalent), not routable from outside. The HMAC signature ensures integrity
-  and authenticity even without TLS on this hop.
+- Web container → Host agent: Uses HTTP. In host-agent mode the web container reaches the agent via `host.docker.internal` (Docker bridge to host loopback, not externally routable). In docker mode traffic stays on the private `cronmanager-internal` Docker network and never leaves the host. In both cases the HMAC signature ensures integrity and authenticity even without TLS on this hop.
 - **Recommendation**: Add TLS to the host agent listener for defence-in-depth if the Docker network
   is shared with untrusted containers.
 
@@ -379,7 +377,7 @@ after successful authentication, invalidating the old session and preventing fix
 | Weak/default HMAC secret | `CRITICAL` / `WARNING` | at startup |
 
 **Log configuration**: `RotatingFileHandler` with a configurable path (default
-`/opt/phpscripts/log/app.log`) and 30-day retention. Log level is configurable (default `DEBUG`
+`/opt/cronmanager/agent/log/cronmanager-agent.log` (agent) and `/var/www/log/cronmanager-web.log` (web)) and 30-day retention. Log level is configurable (default `DEBUG`
 in development, should be `WARNING` or higher in production).
 
 ---

@@ -50,8 +50,8 @@ Cronmanager consists of three runtime components:
 
 | Component | Runtime | Location on host |
 |---|---|---|
-| **Web UI** | PHP-FPM 8.4 + Nginx, Docker container | `/opt/websites/cronmanager/www` |
-| **Host Agent** | PHP 8.4 CLI built-in server, systemd service | `/opt/phpscripts/cronmanager/agent` |
+| **Web UI** | PHP-FPM 8.4 + Nginx, Docker container | `/opt/cronmanager/www/html` |
+| **Host Agent** | PHP 8.4 CLI built-in server — systemd service (host-agent mode) or Docker container (docker mode) | `/opt/cronmanager/agent` |
 | **Database** | MariaDB LTS, Docker container | `/opt/cronmanager/db` |
 
 A fourth logical component is the **cron wrapper script** (`cron-wrapper.sh`), which
@@ -69,8 +69,7 @@ Browser ──HTTPS──► Web UI container ──HTTP+HMAC──► Host Agen
                         └── PDO ──► MariaDB container
 ```
 
-The web container reaches the host agent via `host.docker.internal:8865`, which is
-provided by Docker's `extra_hosts: host-gateway` mechanism.
+In host-agent mode the web container reaches the agent via `host.docker.internal:8865` (Docker `extra_hosts: host-gateway`). In docker mode the agent runs in a separate container on the same `cronmanager-internal` network, reachable as `cronmanager-agent:8865`.
 
 ---
 
@@ -82,7 +81,11 @@ provided by Docker's `extra_hosts: host-gateway` mechanism.
 ├── deploy.sh                  ← deployment script
 ├── deploy.env[.example]       ← deployment configuration
 ├── db.credentials[.example]   ← database passwords (not in VCS)
-├── docker-compose.yml
+├── docker/
+│   ├── docker-compose.yml          ← host-agent mode (web + MariaDB)
+│   ├── docker-compose-agent.yml    ← docker mode (agent + web + MariaDB)
+│   └── agent/
+│       └── entrypoint.sh           ← agent container entrypoint
 ├── README.md
 ├── TECHNICAL.md
 │
@@ -123,7 +126,12 @@ provided by Docker's `extra_hosts: host-gateway` mechanism.
 │           ├── SshHostsEndpoint.php
 │           ├── HistoryEndpoint.php
 │           ├── ExportEndpoint.php
-│           └── MonitorEndpoint.php
+│           ├── MonitorEndpoint.php
+│           ├── MaintenanceCrontabResyncEndpoint.php
+│           ├── MaintenanceStuckEndpoint.php
+│           ├── MaintenanceResolveEndpoint.php
+│           ├── MaintenanceDeleteExecutionEndpoint.php
+│           └── MaintenanceHistoryCleanupEndpoint.php
 │
 └── web/                       ← web application source
     ├── index.php              ← front controller
@@ -146,7 +154,9 @@ provided by Docker's `extra_hosts: host-gateway` mechanism.
     │   │   ├── form.php
     │   │   ├── import.php
     │   │   └── monitor.php
-    │   └── users/list.php
+    │   ├── users/list.php
+│   └── maintenance/
+│       └── index.php
     └── src/
         ├── Bootstrap.php
         ├── Database/Connection.php
@@ -170,7 +180,8 @@ provided by Docker's `extra_hosts: host-gateway` mechanism.
             ├── TimelineController.php
             ├── SwimlaneController.php
             ├── ExportController.php
-            └── UserController.php
+            ├── UserController.php
+            └── MaintenanceController.php
 ```
 
 ---
@@ -700,7 +711,7 @@ Export managed jobs in crontab or JSON format.
 # Job: Data sync  [id:42]
 # User: deploy  Tags: sync
 # target: local
-*/5 * * * *  /opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh  42  local
+*/5 * * * *  /opt/cronmanager/agent/bin/cron-wrapper.sh  42  local
 ```
 
 For remote targets the crontab line wraps the command in an SSH call:
@@ -739,7 +750,7 @@ All HTTP requests are routed through a single front controller.
 
 `src/Bootstrap.php` is a singleton providing a shared `Noodlehaus\Config` (loaded from
 `/var/www/conf/config.json` inside the container, i.e. the host's
-`/opt/websites/cronmanager/conf/config.json`) and a `Monolog\Logger`.
+`/opt/cronmanager/www/conf/config.json`) and a `Monolog\Logger`.
 
 ### Router
 
@@ -785,6 +796,7 @@ for security-sensitive checks such as navigation visibility.
 | `SwimlaneController` | `GET /swimlane`, `GET /swimlane?debug=1` | view |
 | `ExportController` | `GET /export`, `GET /export/download` | view |
 | `UserController` | `GET /users`, `POST /users/{id}/role`, `POST /users/{id}/delete` | admin |
+| `MaintenanceController` | `GET /maintenance`, `POST /maintenance/crontab/resync`, `POST /maintenance/executions/{id}/finish`, `DELETE /maintenance/executions/{id}`, `POST /maintenance/executions/bulk`, `POST /maintenance/history/cleanup` | admin |
 
 ### HostAgentClient
 
@@ -1203,8 +1215,17 @@ $config->get('logging.max_days', 30);   // with default
 
 ## Deployment Script
 
-`deploy.sh` reads `deploy.env` and `db.credentials` and supports two transport modes
-and two deployment modes.
+`deploy.sh` reads `deploy.env` and `db.credentials` and supports two transport modes,
+two target modes, and four deployment modes.
+
+### Required argument: target mode
+
+One of these flags is **required** on every invocation:
+
+| Flag | Behaviour |
+|---|---|
+| `--host-agent` | Agent runs as a systemd service on the host; `deploy.sh` installs/restarts the service |
+| `--docker` | Agent runs as a Docker container; systemd steps are skipped; on first deploy, configs are automatically patched with Docker service names |
 
 ### Transport modes (set in `deploy.env`)
 
@@ -1217,16 +1238,39 @@ and two deployment modes.
 
 | Argument | Behaviour |
 |---|---|
-| `full` | Creates directories + full rsync mirror (`--delete`); deploys example configs if absent |
+| `full` | Creates directories + full rsync mirror (`--delete`); deploys example configs if absent; patches config values based on target mode |
 | `update` | rsync with `--checksum` (only changed files); config files are never overwritten |
+| `migrate` | Migrates a running host-agent installation to docker mode: deploys changed files, stops and disables the systemd service, removes managed crontab entries from all host users, patches `database.host` and `agent.url` in both config files |
+| `undeploy` | `--host-agent` only: stops and removes the systemd service; PHP files and config are kept on the target |
+
+### Fixed deployment paths
+
+All paths are hardcoded — not configurable in `deploy.env`:
+
+| Component | Path |
+|---|---|
+| Agent | `/opt/cronmanager/agent` |
+| Web (html) | `/opt/cronmanager/www/html` |
+| Web (conf) | `/opt/cronmanager/www/conf` |
+| Web (log) | `/opt/cronmanager/www/log` |
+| Database | `/opt/cronmanager/db` |
 
 ### Selective deployment
 
 ```bash
-./deploy.sh update --agent   # deploy only the host agent
-./deploy.sh update --web     # deploy only the web application
-./deploy.sh full             # deploy both (default)
+./deploy.sh --host-agent update --agent   # deploy only the host agent
+./deploy.sh --docker update --web         # deploy only the web application
+./deploy.sh --host-agent full             # deploy both (default)
 ```
+
+### Config auto-patching on first deploy
+
+When `deploy.sh` deploys the example config files for the first time (i.e., no config exists on the target yet), it automatically patches mode-specific values:
+
+| Config file | Key | `--host-agent` | `--docker` |
+|---|---|---|---|
+| Agent `config.json` | `database.host` | `127.0.0.1` | `cronmanager-db` |
+| Web `config.json` | `agent.url` | `http://host.docker.internal:8865` | `http://cronmanager-agent:8865` |
 
 ### Composer handling
 
@@ -1241,22 +1285,21 @@ exists on the target:
 ### Static asset downloads
 
 During deployment `deploy.sh` automatically downloads static assets that are not
-checked into the repository (to keep the repo lean and avoid CDN dependencies at runtime):
+checked into the repository:
 
 | Asset | Target path | Condition |
 |---|---|---|
-| Tailwind CSS | `assets/css/tailwind.min.css` | Downloaded if absent |
+| Tailwind CSS | `assets/js/tailwind.min.js` | Downloaded if absent |
 | Chart.js 4 UMD | `assets/js/chart.min.js` | Downloaded if absent |
 
 Both files are excluded from `rsync --delete` so re-deployments never remove them.
-They must be present for the swimlane and monitor pages to render correctly.
 
 ### SSH host override
 
 If `DEPLOY_TYPE=SSH`, the SSH host from `deploy.env` can be overridden on the command line:
 
 ```bash
-./deploy.sh update staging   # deploy to the "staging" SSH host alias
+./deploy.sh --host-agent update staging   # deploy to the "staging" SSH host alias
 ```
 
 ---
@@ -1274,7 +1317,7 @@ The configured level is the minimum that gets written. Set `"level": "debug"` to
 all requests and SQL queries during development.
 
 **Web log path (inside container):** `/var/www/log/cronmanager-web.log`
-**Agent log path (on host):** `/opt/phpscripts/log/cronmanager-agent.log`
+**Agent log path (on host / in container):** `/opt/cronmanager/agent/log/cronmanager-agent.log`
 
 Both paths are configurable in the respective `config.json` files.
 
@@ -1364,7 +1407,7 @@ They use `IF NOT EXISTS` / `IF EXISTS` guards so they are safe to re-run.
 ```bash
 ssh myserver 'docker exec -i cronmanager-db mariadb \
     -u cronmanager -p<password> cronmanager \
-    < /opt/phpscripts/cronmanager/agent/sql/migrations/NNN_description.sql'
+    < /opt/cronmanager/agent/sql/migrations/NNN_description.sql'
 ```
 
 **Existing migrations:**

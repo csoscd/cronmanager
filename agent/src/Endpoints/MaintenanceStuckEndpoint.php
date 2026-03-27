@@ -83,7 +83,7 @@ final class MaintenanceStuckEndpoint
         try {
             $stmt = $this->pdo->prepare(
                 'SELECT el.id,
-                        el.job_id,
+                        el.cronjob_id AS job_id,
                         el.target,
                         el.started_at,
                         TIMESTAMPDIFF(MINUTE, el.started_at, NOW()) AS duration_minutes,
@@ -91,7 +91,7 @@ final class MaintenanceStuckEndpoint
                         c.command,
                         c.linux_user
                    FROM execution_log el
-                   JOIN cronjobs c ON c.id = el.job_id
+                   JOIN cronjobs c ON c.id = el.cronjob_id
                   WHERE el.finished_at IS NULL
                     AND el.started_at < DATE_SUB(NOW(), INTERVAL :hours HOUR)
                   ORDER BY el.started_at ASC'

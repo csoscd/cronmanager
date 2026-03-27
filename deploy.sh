@@ -331,6 +331,7 @@ if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
     mkdir_on_target "${WEB_WWW_TARGET}/src/Database"
     mkdir_on_target "${WEB_WWW_TARGET}/src/Repository"
     mkdir_on_target "${WEB_WWW_TARGET}/templates/cron"
+    mkdir_on_target "${WEB_WWW_TARGET}/templates/maintenance"
     mkdir_on_target "${WEB_WWW_TARGET}/lang"
     mkdir_on_target "${WEB_WWW_TARGET}/assets/css"
     mkdir_on_target "${WEB_WWW_TARGET}/assets/js"

@@ -525,10 +525,10 @@ if [[ "$DEPLOY_MODE" == "docker" ]]; then
 else
     ask AGENT_DIR "Host agent directory" "/opt/cronmanager/agent"
 fi
-ask WEB_DIR   "Web application base directory" "/opt/cronmanager/web"
+ask WEB_DIR   "Web application base directory" "/opt/cronmanager/www"
 ask DB_DIR    "MariaDB data directory"         "/opt/cronmanager/db"
 
-WEB_WWW="${WEB_DIR}/www"
+WEB_WWW="${WEB_DIR}/html"
 WEB_CONF="${WEB_DIR}/conf"
 WEB_LOG="${WEB_DIR}/log"
 DB_DATA="${DB_DIR}/data"
@@ -1006,10 +1006,6 @@ _deploy_mode_label="${DEPLOY_MODE^^}"  # HOST or DOCKER
 cat << DEPLOYEOF | target_write "${COMPOSE_DIR}/deploy.env" \
     || warn_continue "Failed to write deploy.env."
 DEPLOY_TYPE=${_deploy_type_label}
-DEPLOY_MODE=${_deploy_mode_label}
-DEPLOY_DB=${DB_DIR}/
-DEPLOY_WEB=${WEB_DIR}/
-DEPLOY_AGENT=${AGENT_DIR}/
 DEPLOY_COMPOSER=${PHPLIB_DIR}/
 DEPLOY_COMPOSER_VENDOR=${PHPLIB_DIR}/vendor/
 DEPLOYEOF

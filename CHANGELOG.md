@@ -10,6 +10,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Bulk selection for stuck executions** – Each stuck execution row now has a checkbox. A "Select All" header checkbox selects/deselects all visible rows. A bulk toolbar (hidden until at least one row is selected) shows the selection count and two actions: "Mark Finished" and "Delete Selected". Both actions trigger a confirmation dialog before submitting. Flash banners confirm how many records were affected.
+- **`POST /maintenance/executions/bulk` endpoint** – New protected admin route that dispatches to `MaintenanceController::bulkAction()`. Accepts `ids[]` and `_action` (finish or delete) form fields; calls the corresponding per-record agent endpoint for each ID.
+
+### Changed
+
+- **`deploy.sh --docker` patches configs on first deploy** – When deploying example config files for the first time with `--docker`: agent `database.host` is set to `cronmanager-db` and web `agent.url` is set to `http://cronmanager-agent:8865`, both using Docker service names instead of the `host.docker.internal` / `127.0.0.1` defaults.
+- **`deploy.sh` requires `--host-agent` or `--docker`** – The deployment target mode is now a mandatory argument. Without it the script exits with a usage message. `--host-agent` installs/restarts the systemd service after deploying; `--docker` skips all systemd steps (use docker-compose to manage the stack).
+- **`deploy.sh --host-agent undeploy`** – New mode that stops and disables the systemd service and removes the unit file, then exits. PHP files and config are kept on the target system.
+- **Standardised deployment paths** – All deployment target paths are now fixed constants (no longer configurable in `deploy.env`): agent at `/opt/cronmanager/agent`, web at `/opt/cronmanager/www` (sub-dirs: `html/`, `conf/`, `log/`), database at `/opt/cronmanager/db`. `DEPLOY_DB`, `DEPLOY_WEB`, and `DEPLOY_AGENT` variables removed from `deploy.env.example`.
+- **`docker/docker-compose.yml`** – Web volume mounts updated to the fixed paths (`/opt/cronmanager/www/conf`, `/opt/cronmanager/www/html`, `/opt/cronmanager/www/log`).
+- **`docker/docker-compose-agent.yml`** – Agent volume mounts updated from `/opt/phpscripts/cronmanager/agent` to `/opt/cronmanager/agent`. Web volume mounts updated to match standardised paths.
+- **`deploy.sh` migrate mode** – Crontab cleanup now matches any `cron-wrapper.sh` path (not just the old `/opt/phpscripts/…` path), and migration manual-steps note simplified since paths are already standardised.
+
+### Fixed
+
+- **Stuck executions 500 error** – SQL query used non-existent column `el.job_id`; corrected to `el.cronjob_id` with matching JOIN on `cronjobs.id`.
+- **`$t` undefined in maintenance template** – Added the `$t` lambda at the top of `web/templates/maintenance/index.php`, consistent with all other templates.
+- **`templates/maintenance/` directory missing on deploy** – Added `mkdir_on_target` call in `deploy.sh` for the maintenance template directory.
+
+---
+
+## [Unreleased] – branch: `agentless`
+
+### Added
+
 - **Maintenance page** (`/maintenance`, admin only) – New "Maintenance" nav entry with three operational tools:
   - **Crontab Sync** – Re-writes all crontab entries from the database in one click. Active jobs are synced (entries added/updated); inactive jobs have lingering entries removed. Solves the post-migration crontab re-population that previously required re-saving every job manually.
   - **Stuck Executions** – Lists executions that have been in the "running" state longer than a configurable threshold (default 2 hours). Per-row actions: "Mark Finished" (sets `exit_code=-1`, `finished_at=NOW()`, appends a note to output) and "Delete" (permanently removes the record). The threshold is adjustable via an inline form without leaving the page.

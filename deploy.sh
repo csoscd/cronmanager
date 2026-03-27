@@ -6,25 +6,32 @@
 # Database credentials are read from db.credentials in the same directory.
 #
 # Usage:
-#   ./deploy.sh [full|update|migrate] [ssh-host] [--agent|--web]
+#   ./deploy.sh <--host-agent|--docker> [full|update|migrate] [ssh-host] [--agent|--web]
 #
-#   full    – Create folder structure + deploy all files (default)
-#   update  – Deploy only changed files (rsync checksum comparison)
-#   migrate – Migrate host-agent installation → docker-agent:
-#             deploys changed files, stops+disables systemd service,
-#             patches agent and web config.json for docker-mode values.
-#   --agent – Deploy agent only  (skip web app)
-#   --web   – Deploy web app only (skip agent)
+#   --host-agent  – Target is a host-agent installation (installs/restarts systemd service)
+#   --docker      – Target is a docker-agent installation (skips systemd; use docker-compose)
+#
+#   full     – Create folder structure + deploy all files (default)
+#   update   – Deploy only changed files (rsync checksum comparison)
+#   migrate  – Migrate host-agent installation → docker-agent:
+#              deploys changed files, stops+disables systemd service,
+#              patches agent and web config.json for docker-mode values.
+#   undeploy – Remove systemd service only (--host-agent only);
+#              PHP files and config are kept on the target system.
+#   --agent  – Deploy agent only  (skip web app)
+#   --web    – Deploy web app only (skip agent)
 #   ssh-host – Override DEPLOY_SSH from deploy.env (SSH transport only)
 #
 # deploy.env variables:
 #   DEPLOY_TYPE          – Transport: SSH or LOCAL
 #   DEPLOY_SSH           – SSH host alias from ~/.ssh/config (SSH only)
-#   DEPLOY_DB            – Target path for MariaDB data directory
-#   DEPLOY_WEB           – Target base path for the web application
-#   DEPLOY_AGENT         – Target path for the host agent
 #   DEPLOY_COMPOSER      – Target path for the shared composer.json
 #   DEPLOY_COMPOSER_VENDOR – Target path for the shared vendor directory
+#
+# Fixed deployment paths (not configurable):
+#   Agent : /opt/cronmanager/agent
+#   Web   : /opt/cronmanager/www
+#   DB    : /opt/cronmanager/db
 #
 # @author  Christian Schulz <technik@meinetechnikwelt.rocks>
 # @license GNU General Public License version 3 or later
@@ -49,7 +56,7 @@ fi
 source "${DEPLOY_ENV_FILE}"
 
 # Validate required deploy.env variables
-for var in DEPLOY_TYPE DEPLOY_DB DEPLOY_WEB DEPLOY_AGENT DEPLOY_COMPOSER DEPLOY_COMPOSER_VENDOR; do
+for var in DEPLOY_TYPE DEPLOY_COMPOSER DEPLOY_COMPOSER_VENDOR; do
     if [[ -z "${!var:-}" ]]; then
         echo "[deploy] ERROR: '${var}' is not set in ${DEPLOY_ENV_FILE}" >&2
         exit 1
@@ -71,13 +78,20 @@ fi
 # ---------------------------------------------------------------------------
 
 DEPLOY_MODE="full"           # full = mirror; update = changed files only
+DEPLOY_TARGET=""             # host-agent or docker (required)
 DEPLOY_AGENT_PART=true       # deploy the host agent?
 DEPLOY_WEB_PART=true         # deploy the web application?
 SSH_HOST="${DEPLOY_SSH:-}"   # may be overridden by positional CLI arg
 
 for arg in "$@"; do
     case "${arg}" in
-        full|update|migrate)
+        --host-agent)
+            DEPLOY_TARGET="host-agent"
+            ;;
+        --docker)
+            DEPLOY_TARGET="docker"
+            ;;
+        full|update|migrate|undeploy)
             DEPLOY_MODE="${arg}"
             ;;
         --agent)
@@ -89,7 +103,8 @@ for arg in "$@"; do
             DEPLOY_WEB_PART=true
             ;;
         -*)
-            echo "[deploy] ERROR: Unknown option '${arg}'. Use --agent or --web." >&2
+            echo "[deploy] ERROR: Unknown option '${arg}'." >&2
+            echo "[deploy]        Usage: ./deploy.sh <--host-agent|--docker> [full|update|migrate] [ssh-host] [--agent|--web]" >&2
             exit 1
             ;;
         *)
@@ -98,6 +113,12 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+if [[ -z "${DEPLOY_TARGET}" ]]; then
+    echo "[deploy] ERROR: --host-agent or --docker is required." >&2
+    echo "[deploy]        Usage: ./deploy.sh <--host-agent|--docker> [full|update|migrate] [ssh-host] [--agent|--web]" >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Resolve source and target paths
@@ -109,13 +130,13 @@ WEB_SRC="${SCRIPT_DIR}/web"
 COMPOSER_SRC="${SCRIPT_DIR}/composer.json"
 CREDENTIALS_FILE="${SCRIPT_DIR}/db.credentials"
 
-# Strip trailing slashes from deploy.env paths, then build sub-paths
-AGENT_TARGET="${DEPLOY_AGENT%/}"
-WEB_TARGET="${DEPLOY_WEB%/}"
-WEB_WWW_TARGET="${WEB_TARGET}/www"
+# Fixed deployment paths
+AGENT_TARGET="/opt/cronmanager/agent"
+WEB_TARGET="/opt/cronmanager/www"
+WEB_WWW_TARGET="${WEB_TARGET}/html"
 WEB_CONF_TARGET="${WEB_TARGET}/conf"
 WEB_LOG_TARGET="${WEB_TARGET}/log"
-DB_DIR="${DEPLOY_DB%/}"
+DB_DIR="/opt/cronmanager/db"
 COMPOSER_DIR="${DEPLOY_COMPOSER%/}"
 COMPOSER_VENDOR_DIR="${DEPLOY_COMPOSER_VENDOR%/}"
 
@@ -154,6 +175,20 @@ copy_to_target() {
     else
         cp "$1" "$2"
     fi
+}
+
+# Write a local temp Python script, scp it to the target, run it, clean up.
+# Avoids the SSH+heredoc stdin-consumption problem entirely.
+# Usage: _run_remote_python <script_body> <target_arg>
+_run_remote_python() {
+    local _script_body="$1"
+    local _target_arg="$2"
+    local _tmp
+    _tmp="$(mktemp /tmp/cm_deploy_XXXXXX.py)"
+    printf '%s\n' "${_script_body}" > "${_tmp}"
+    copy_to_target "${_tmp}" "/tmp/cm_deploy_patch.py"
+    rm -f "${_tmp}"
+    run_on_target "python3 /tmp/cm_deploy_patch.py '${_target_arg}'; rm -f /tmp/cm_deploy_patch.py"
 }
 
 # Rsync options
@@ -203,12 +238,17 @@ log "Credentials loaded from ${CREDENTIALS_FILE}"
 # Validate and log configuration
 # ---------------------------------------------------------------------------
 
-if [[ "${DEPLOY_MODE}" != "full" && "${DEPLOY_MODE}" != "update" && "${DEPLOY_MODE}" != "migrate" ]]; then
-    die "Unknown deploy mode '${DEPLOY_MODE}'. Use 'full', 'update', or 'migrate'."
+if [[ "${DEPLOY_MODE}" != "full" && "${DEPLOY_MODE}" != "update" && "${DEPLOY_MODE}" != "migrate" && "${DEPLOY_MODE}" != "undeploy" ]]; then
+    die "Unknown deploy mode '${DEPLOY_MODE}'. Use 'full', 'update', 'migrate', or 'undeploy'."
+fi
+
+if [[ "${DEPLOY_MODE}" == "undeploy" && "${DEPLOY_TARGET}" != "host-agent" ]]; then
+    die "'undeploy' mode is only valid with --host-agent."
 fi
 
 log "============================================================"
 log "  Deploy mode  : ${DEPLOY_MODE}"
+log "  Deploy target: ${DEPLOY_TARGET}"
 log "  Transport    : ${DEPLOY_TYPE}"
 if [[ "${DEPLOY_TYPE}" == "SSH" ]]; then
 log "  SSH host     : ${SSH_HOST}"
@@ -299,6 +339,27 @@ PYEOF
 fi
 
 # ---------------------------------------------------------------------------
+# Undeploy: remove systemd service, keep files
+# ---------------------------------------------------------------------------
+
+if [[ "${DEPLOY_MODE}" == "undeploy" ]]; then
+    log "============================================================"
+    log "Undeploy: removing cronmanager-agent systemd service"
+    log "============================================================"
+    log "Stopping and disabling cronmanager-agent..."
+    run_on_target "systemctl stop    cronmanager-agent 2>/dev/null || true"
+    run_on_target "systemctl disable cronmanager-agent 2>/dev/null || true"
+    run_on_target "rm -f /etc/systemd/system/cronmanager-agent.service"
+    run_on_target "systemctl daemon-reload"
+    log "Systemd service removed."
+    log "PHP files and config kept at ${AGENT_TARGET}."
+    log "============================================================"
+    log "Undeploy complete."
+    log "============================================================"
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------
 # Create target folder structure (always, even on update)
 # ---------------------------------------------------------------------------
 
@@ -367,6 +428,21 @@ if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
         if ! file_exists_on_target "${AGENT_TARGET}/config/config.json" 2>/dev/null; then
             log "No existing agent config – deploying example config..."
             copy_to_target "${AGENT_SRC}/config/config.json" "${AGENT_TARGET}/config/config.json"
+            # Patch database.host for docker mode (container reaches DB via service name)
+            if [[ "${DEPLOY_TARGET}" == "docker" ]]; then
+                log "Docker mode: patching agent config database.host → cronmanager-db..."
+                _run_remote_python \
+'import json, sys
+path = sys.argv[1]
+with open(path, "r") as fh:
+    cfg = json.load(fh)
+if isinstance(cfg.get("database"), dict):
+    cfg["database"]["host"] = "cronmanager-db"
+with open(path, "w") as fh:
+    json.dump(cfg, fh, indent=4, ensure_ascii=False)
+print("[deploy] Agent config database.host patched.")' \
+                    "${AGENT_TARGET}/config/config.json"
+            fi
         else
             log "Agent config already exists – skipping (update manually if needed)."
         fi
@@ -393,7 +469,7 @@ if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
     # Install / reload systemd service  (skipped in migrate mode)
     # -------------------------------------------------------------------------
 
-    if [[ "${DEPLOY_MODE}" != "migrate" ]]; then
+    if [[ "${DEPLOY_TARGET}" == "host-agent" && "${DEPLOY_MODE}" != "migrate" ]]; then
         log "Installing systemd service..."
         run_on_target "cp '${AGENT_TARGET}/systemd/cronmanager-agent.service' /etc/systemd/system/cronmanager-agent.service"
         run_on_target "systemctl daemon-reload"
@@ -403,8 +479,10 @@ if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
         run_on_target "systemctl is-active --quiet cronmanager-agent \
             && echo '[deploy] Service is running.' \
             || echo '[deploy] WARNING: Service is NOT running – check: journalctl -u cronmanager-agent'"
-    else
+    elif [[ "${DEPLOY_MODE}" == "migrate" ]]; then
         log "Migrate mode: skipping systemd service install (will be stopped in migration step)."
+    else
+        log "Docker mode: skipping systemd service install."
     fi
 
     # -------------------------------------------------------------------------
@@ -471,6 +549,24 @@ if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
         if ! file_exists_on_target "${WEB_CONF_TARGET}/config.json" 2>/dev/null; then
             log "No existing web config – deploying example config..."
             copy_to_target "${WEB_SRC}/config/config.json" "${WEB_CONF_TARGET}/config.json"
+            # Patch agent.url for docker mode (web → agent via Docker service name)
+            if [[ "${DEPLOY_TARGET}" == "docker" ]]; then
+                log "Docker mode: patching web config agent.url → http://cronmanager-agent:8865..."
+                _run_remote_python \
+'import json, re, sys
+path = sys.argv[1]
+with open(path, "r") as fh:
+    cfg = json.load(fh)
+if isinstance(cfg.get("agent"), dict) and "url" in cfg["agent"]:
+    url = cfg["agent"]["url"]
+    m = re.search(r":(\d+)", url)
+    port = m.group(1) if m else "8865"
+    cfg["agent"]["url"] = "http://cronmanager-agent:" + port
+with open(path, "w") as fh:
+    json.dump(cfg, fh, indent=4, ensure_ascii=False)
+print("[deploy] Web config agent.url patched.")' \
+                    "${WEB_CONF_TARGET}/config.json"
+            fi
         else
             log "Web config already exists – skipping."
         fi
@@ -540,9 +636,9 @@ if [[ "${DEPLOY_MODE}" == "migrate" ]]; then
     run_on_target "
 _removed=0
 for _user in \$(cut -d: -f1 /etc/passwd); do
-    if crontab -u \"\$_user\" -l 2>/dev/null | grep -qF '${AGENT_TARGET}/bin/cron-wrapper.sh'; then
+    if crontab -u \"\$_user\" -l 2>/dev/null | grep -qF 'cron-wrapper.sh'; then
         ( crontab -u \"\$_user\" -l 2>/dev/null \
-            | grep -vF '${AGENT_TARGET}/bin/cron-wrapper.sh' ) \
+            | grep -vF 'cron-wrapper.sh' ) \
             | crontab -u \"\$_user\" -
         echo \"[deploy] Cleared crontab entries for user: \$_user\"
         _removed=1
@@ -554,19 +650,6 @@ done
 
     # -- Patch agent config.json ---------------------------------------------
     # Actual config keys: database.host, cron.wrapper_script, logging.path
-
-    # Helper: write a local temp Python script, scp it to the target, run it, clean up.
-    # This avoids the SSH+heredoc stdin-consumption problem entirely.
-    _run_remote_python() {
-        local _script_body="$1"
-        local _target_arg="$2"
-        local _tmp
-        _tmp="$(mktemp /tmp/cm_migrate_XXXXXX.py)"
-        printf '%s\n' "${_script_body}" > "${_tmp}"
-        copy_to_target "${_tmp}" "/tmp/cm_migrate_patch.py"
-        rm -f "${_tmp}"
-        run_on_target "python3 /tmp/cm_migrate_patch.py '${_target_arg}'; rm -f /tmp/cm_migrate_patch.py"
-    }
 
     if run_on_target "test -f '${AGENT_CONFIG_FILE}'" 2>/dev/null; then
         log "Patching agent config.json (database.host, cron paths, logging.path)..."
@@ -623,7 +706,7 @@ print("[deploy] Web config patched successfully.")' \
     log "============================================================"
     log "Migration steps complete. Manual steps remaining:"
     log "  1. Replace your docker-compose.yml with docker/docker-compose-agent.yml"
-    log "     from the source repository (adjusting paths if needed)."
+    log "     from the source repository (paths are already standardised)."
     log "  2. Restart the agent container to pick up the new config:"
     log "       docker restart cronmanager-agent"
     log "  3. Verify agent health:"

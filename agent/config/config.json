@@ -12,7 +12,7 @@
         "password": "cronmanagerpassword"
     },
     "logging": {
-        "path": "/opt/phpscripts/log/cronmanager-agent.log",
+        "path": "/opt/cronmanager/agent/log/cronmanager-agent.log",
         "level": "info",
         "max_days": 30
     },
@@ -28,6 +28,6 @@
         "encryption": "tls"
     },
     "cron": {
-        "wrapper_script": "/opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh"
+        "wrapper_script": "/opt/cronmanager/agent/bin/cron-wrapper.sh"
     }
 }

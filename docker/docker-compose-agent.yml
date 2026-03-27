@@ -39,15 +39,15 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       # Agent source – mounted read-only; config overlay makes config writable
-      - /opt/phpscripts/cronmanager/agent:/opt/cronmanager/agent:ro
-      - /opt/phpscripts/cronmanager/agent/config:/opt/cronmanager/agent/config
-      - /opt/phpscripts/cronmanager/agent/log:/opt/cronmanager/agent/log
+      - /opt/cronmanager/agent:/opt/cronmanager/agent:ro
+      - /opt/cronmanager/agent/config:/opt/cronmanager/agent/config
+      - /opt/cronmanager/agent/log:/opt/cronmanager/agent/log
       # SSH keys for remote job execution
       - /root/.ssh:/root/.ssh:ro
       # Shared PHP libraries
       - /opt/phplib/vendor:/opt/phplib/vendor:ro
       # Container entrypoint script
-      - /opt/phpscripts/cronmanager/agent/docker/agent/entrypoint.sh:/entrypoint.sh:ro
+      - /opt/cronmanager/agent/docker/agent/entrypoint.sh:/entrypoint.sh:ro
     networks:
       - cronmanager-internal
     depends_on:
@@ -66,9 +66,9 @@ services:
     # No extra_hosts needed – agent is reachable via Docker service name
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - /opt/websites/cronmanager/conf:/var/www/conf
-      - /opt/websites/cronmanager/www:/var/www/html
-      - /opt/websites/cronmanager/log:/var/www/log
+      - /opt/cronmanager/www/conf:/var/www/conf
+      - /opt/cronmanager/www/html:/var/www/html
+      - /opt/cronmanager/www/log:/var/www/log
       - /opt/phplib/vendor:/var/www/libs/vendor
     ports:
       - "8880:8080"

@@ -32,9 +32,9 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - /opt/websites/cronmanager/conf:/var/www/conf
-      - /opt/websites/cronmanager/www:/var/www/html
-      - /opt/websites/cronmanager/log:/var/www/log
+      - /opt/cronmanager/www/conf:/var/www/conf
+      - /opt/cronmanager/www/html:/var/www/html
+      - /opt/cronmanager/www/log:/var/www/log
       - /opt/phplib/vendor:/var/www/libs/vendor
     ports:
       - "8880:8080"

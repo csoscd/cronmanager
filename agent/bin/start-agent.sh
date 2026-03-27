@@ -14,8 +14,8 @@
 set -euo pipefail
 
 # Path to the production configuration file
-CONFIG="/opt/phpscripts/cronmanager/agent/config/config.json"
-AGENT_PHP="/opt/phpscripts/cronmanager/agent/agent.php"
+CONFIG="/opt/cronmanager/agent/config/config.json"
+AGENT_PHP="/opt/cronmanager/agent/agent.php"
 AUTOLOAD="/opt/phplib/vendor/autoload.php"
 
 # ---------------------------------------------------------------------------

@@ -575,6 +575,14 @@ print("[deploy] Web config agent.url patched.")' \
     log "Web application deployed."
 
     # -------------------------------------------------------------------------
+    # Set ownership on web log and conf directories (PHP-FPM runs as nobody)
+    # -------------------------------------------------------------------------
+
+    run_on_target "chown nobody:nogroup '${WEB_LOG_TARGET}' '${WEB_CONF_TARGET}'" 2>/dev/null \
+        || log "WARNING: Could not set nobody:nogroup on web log/conf dirs – check manually."
+    log "Ownership set: ${WEB_LOG_TARGET}, ${WEB_CONF_TARGET} → nobody:nogroup"
+
+    # -------------------------------------------------------------------------
     # Download Tailwind CSS (skip if already present)
     # -------------------------------------------------------------------------
 

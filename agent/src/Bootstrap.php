@@ -47,7 +47,7 @@ final class Bootstrap
      *
      * @var string
      */
-    private const CONFIG_PATH_PRODUCTION = '/opt/phpscripts/cronmanager/agent/config/config.json';
+    private const CONFIG_PATH_PRODUCTION = '/opt/cronmanager/agent/config/config.json';
 
     // -------------------------------------------------------------------------
     // Singleton

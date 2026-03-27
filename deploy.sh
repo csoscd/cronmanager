@@ -531,13 +531,32 @@ if [[ "${DEPLOY_MODE}" == "migrate" ]]; then
     run_on_target "systemctl disable cronmanager-agent 2>/dev/null || true"
     log "Systemd service stopped and disabled."
 
+    # -- Remove managed crontab entries from all host users ------------------
+    # The host agent wrote wrapper-script entries into per-user crontabs.
+    # Strip every line referencing the cron-wrapper.sh so orphaned host jobs
+    # no longer execute after the agent moves into the container.
+
+    log "Removing managed crontab entries from host user crontabs..."
+    run_on_target "
+_removed=0
+for _user in \$(cut -d: -f1 /etc/passwd); do
+    if crontab -u \"\$_user\" -l 2>/dev/null | grep -qF '${AGENT_TARGET}/bin/cron-wrapper.sh'; then
+        ( crontab -u \"\$_user\" -l 2>/dev/null \
+            | grep -vF '${AGENT_TARGET}/bin/cron-wrapper.sh' ) \
+            | crontab -u \"\$_user\" -
+        echo \"[deploy] Cleared crontab entries for user: \$_user\"
+        _removed=1
+    fi
+done
+[ \"\$_removed\" -eq 0 ] && echo '[deploy] No managed crontab entries found on host.'
+"
+    log "Host crontab cleanup complete."
+
     # -- Patch agent config.json ---------------------------------------------
-    # Changes: db.host 127.0.0.1 → cronmanager-db
-    #          cron.wrapper_script → /opt/cronmanager/agent/bin/cron-wrapper.sh
-    #          log.file            → /opt/cronmanager/agent/log/cronmanager-agent.log
+    # Actual config keys: database.host, cron.wrapper_script, logging.path
 
     if run_on_target "test -f '${AGENT_CONFIG_FILE}'" 2>/dev/null; then
-        log "Patching agent config.json (db.host, cron paths, log path)..."
+        log "Patching agent config.json (database.host, cron paths, logging.path)..."
         run_on_target "python3 - '${AGENT_CONFIG_FILE}'" <<'PYEOF'
 import json, sys
 
@@ -545,20 +564,19 @@ path = sys.argv[1]
 with open(path, 'r') as fh:
     cfg = json.load(fh)
 
-# Database host: 127.0.0.1 → docker service name
-if isinstance(cfg.get('db'), dict):
-    cfg['db']['host'] = 'cronmanager-db'
+# database.host: 127.0.0.1 → docker service name
+if isinstance(cfg.get('database'), dict):
+    cfg['database']['host'] = 'cronmanager-db'
 
-# Cron wrapper: host path → container path
+# cron.wrapper_script: host path → container path
 if isinstance(cfg.get('cron'), dict):
     cfg['cron']['wrapper_script'] = '/opt/cronmanager/agent/bin/cron-wrapper.sh'
 
-# Log file: host path → container path
-if isinstance(cfg.get('log'), dict):
-    log_file = cfg['log'].get('file', '')
-    # Keep the filename, replace the directory prefix
-    filename = log_file.split('/')[-1] if '/' in log_file else 'cronmanager-agent.log'
-    cfg['log']['file'] = '/opt/cronmanager/agent/log/' + filename
+# logging.path: host path → container path (keep filename)
+if isinstance(cfg.get('logging'), dict):
+    old_path = cfg['logging'].get('path', '')
+    filename = old_path.split('/')[-1] if '/' in old_path else 'cronmanager-agent.log'
+    cfg['logging']['path'] = '/opt/cronmanager/agent/log/' + filename
 
 with open(path, 'w') as fh:
     json.dump(cfg, fh, indent=4, ensure_ascii=False)
@@ -567,9 +585,9 @@ print('[deploy] Agent config patched successfully.')
 PYEOF
     else
         log "WARNING: Agent config not found at ${AGENT_CONFIG_FILE} – patch manually:"
-        log "         db.host           → cronmanager-db"
-        log "         cron.wrapper_script → /opt/cronmanager/agent/bin/cron-wrapper.sh"
-        log "         log.file          → /opt/cronmanager/agent/log/cronmanager-agent.log"
+        log "         database.host        → cronmanager-db"
+        log "         cron.wrapper_script  → /opt/cronmanager/agent/bin/cron-wrapper.sh"
+        log "         logging.path         → /opt/cronmanager/agent/log/cronmanager-agent.log"
     fi
 
     # -- Patch web config.json -----------------------------------------------
@@ -604,11 +622,12 @@ PYEOF
     log "Migration steps complete. Manual steps remaining:"
     log "  1. Replace your docker-compose.yml with docker/docker-compose-agent.yml"
     log "     from the source repository (adjusting paths if needed)."
-    log "  2. Restart the Docker stack so the agent container starts."
-    log "  3. Verify agent health:  docker exec cronmanager-agent curl -s http://localhost:8865/health"
-    log "  4. Open the web UI → Maintenance → Crontab Sync to re-write all"
-    log "     active jobs into the agent container's crontab."
-    log "     (This replaces the old host crontab entries that are now orphaned.)"
+    log "  2. Restart the agent container to pick up the new config:"
+    log "       docker restart cronmanager-agent"
+    log "  3. Verify agent health:"
+    log "       docker exec cronmanager-agent curl -s http://localhost:8865/health"
+    log "  4. Open the web UI → Maintenance → Crontab Sync to write all active"
+    log "     jobs into the agent container's crontab."
     log "  NOTE: cron jobs run as root inside the container. Ensure linux_user"
     log "        is set to 'root' for all jobs, or update them before the sync."
     log "============================================================"

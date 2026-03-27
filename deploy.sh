@@ -6,10 +6,13 @@
 # Database credentials are read from db.credentials in the same directory.
 #
 # Usage:
-#   ./deploy.sh [full|update] [ssh-host] [--agent|--web]
+#   ./deploy.sh [full|update|migrate] [ssh-host] [--agent|--web]
 #
 #   full    – Create folder structure + deploy all files (default)
 #   update  – Deploy only changed files (rsync checksum comparison)
+#   migrate – Migrate host-agent installation → docker-agent:
+#             deploys changed files, stops+disables systemd service,
+#             patches agent and web config.json for docker-mode values.
 #   --agent – Deploy agent only  (skip web app)
 #   --web   – Deploy web app only (skip agent)
 #   ssh-host – Override DEPLOY_SSH from deploy.env (SSH transport only)
@@ -74,7 +77,7 @@ SSH_HOST="${DEPLOY_SSH:-}"   # may be overridden by positional CLI arg
 
 for arg in "$@"; do
     case "${arg}" in
-        full|update)
+        full|update|migrate)
             DEPLOY_MODE="${arg}"
             ;;
         --agent)
@@ -199,8 +202,8 @@ log "Credentials loaded from ${CREDENTIALS_FILE}"
 # Validate and log configuration
 # ---------------------------------------------------------------------------
 
-if [[ "${DEPLOY_MODE}" != "full" && "${DEPLOY_MODE}" != "update" ]]; then
-    die "Unknown deploy mode '${DEPLOY_MODE}'. Use 'full' or 'update'."
+if [[ "${DEPLOY_MODE}" != "full" && "${DEPLOY_MODE}" != "update" && "${DEPLOY_MODE}" != "migrate" ]]; then
+    die "Unknown deploy mode '${DEPLOY_MODE}'. Use 'full', 'update', or 'migrate'."
 fi
 
 log "============================================================"
@@ -375,18 +378,22 @@ if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
     log "Agent files deployed."
 
     # -------------------------------------------------------------------------
-    # Install / reload systemd service
+    # Install / reload systemd service  (skipped in migrate mode)
     # -------------------------------------------------------------------------
 
-    log "Installing systemd service..."
-    run_on_target "cp '${AGENT_TARGET}/systemd/cronmanager-agent.service' /etc/systemd/system/cronmanager-agent.service"
-    run_on_target "systemctl daemon-reload"
-    run_on_target "systemctl enable cronmanager-agent"
-    run_on_target "systemctl restart cronmanager-agent"
+    if [[ "${DEPLOY_MODE}" != "migrate" ]]; then
+        log "Installing systemd service..."
+        run_on_target "cp '${AGENT_TARGET}/systemd/cronmanager-agent.service' /etc/systemd/system/cronmanager-agent.service"
+        run_on_target "systemctl daemon-reload"
+        run_on_target "systemctl enable cronmanager-agent"
+        run_on_target "systemctl restart cronmanager-agent"
 
-    run_on_target "systemctl is-active --quiet cronmanager-agent \
-        && echo '[deploy] Service is running.' \
-        || echo '[deploy] WARNING: Service is NOT running – check: journalctl -u cronmanager-agent'"
+        run_on_target "systemctl is-active --quiet cronmanager-agent \
+            && echo '[deploy] Service is running.' \
+            || echo '[deploy] WARNING: Service is NOT running – check: journalctl -u cronmanager-agent'"
+    else
+        log "Migrate mode: skipping systemd service install (will be stopped in migration step)."
+    fi
 
     # -------------------------------------------------------------------------
     # MariaDB init script (generated from credentials)
@@ -490,6 +497,109 @@ if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
     else
         log "Chart.js already present – skipping."
     fi
+fi
+
+# ---------------------------------------------------------------------------
+# Migration: host-agent → docker-agent
+# ---------------------------------------------------------------------------
+
+if [[ "${DEPLOY_MODE}" == "migrate" ]]; then
+
+    AGENT_CONFIG_FILE="${AGENT_TARGET}/config/config.json"
+    WEB_CONFIG_FILE="${WEB_CONF_TARGET}/config.json"
+
+    log "============================================================"
+    log "Migration: host-agent → docker-agent"
+    log "============================================================"
+
+    # -- Stop and disable the systemd service --------------------------------
+
+    log "Stopping and disabling cronmanager-agent systemd service..."
+    run_on_target "systemctl stop    cronmanager-agent 2>/dev/null || true"
+    run_on_target "systemctl disable cronmanager-agent 2>/dev/null || true"
+    log "Systemd service stopped and disabled."
+
+    # -- Patch agent config.json ---------------------------------------------
+    # Changes: db.host 127.0.0.1 → cronmanager-db
+    #          cron.wrapper_script → /opt/cronmanager/agent/bin/cron-wrapper.sh
+    #          log.file            → /opt/cronmanager/agent/log/cronmanager-agent.log
+
+    if run_on_target "test -f '${AGENT_CONFIG_FILE}'" 2>/dev/null; then
+        log "Patching agent config.json (db.host, cron paths, log path)..."
+        run_on_target "python3 - '${AGENT_CONFIG_FILE}'" <<'PYEOF'
+import json, sys
+
+path = sys.argv[1]
+with open(path, 'r') as fh:
+    cfg = json.load(fh)
+
+# Database host: 127.0.0.1 → docker service name
+if isinstance(cfg.get('db'), dict):
+    cfg['db']['host'] = 'cronmanager-db'
+
+# Cron wrapper: host path → container path
+if isinstance(cfg.get('cron'), dict):
+    cfg['cron']['wrapper_script'] = '/opt/cronmanager/agent/bin/cron-wrapper.sh'
+
+# Log file: host path → container path
+if isinstance(cfg.get('log'), dict):
+    log_file = cfg['log'].get('file', '')
+    # Keep the filename, replace the directory prefix
+    filename = log_file.split('/')[-1] if '/' in log_file else 'cronmanager-agent.log'
+    cfg['log']['file'] = '/opt/cronmanager/agent/log/' + filename
+
+with open(path, 'w') as fh:
+    json.dump(cfg, fh, indent=4, ensure_ascii=False)
+
+print('[deploy] Agent config patched successfully.')
+PYEOF
+    else
+        log "WARNING: Agent config not found at ${AGENT_CONFIG_FILE} – patch manually:"
+        log "         db.host           → cronmanager-db"
+        log "         cron.wrapper_script → /opt/cronmanager/agent/bin/cron-wrapper.sh"
+        log "         log.file          → /opt/cronmanager/agent/log/cronmanager-agent.log"
+    fi
+
+    # -- Patch web config.json -----------------------------------------------
+    # Changes: agent.url host.docker.internal:PORT → cronmanager-agent:PORT
+
+    if run_on_target "test -f '${WEB_CONFIG_FILE}'" 2>/dev/null; then
+        log "Patching web config.json (agent.url → docker service name)..."
+        run_on_target "python3 - '${WEB_CONFIG_FILE}'" <<'PYEOF'
+import json, re, sys
+
+path = sys.argv[1]
+with open(path, 'r') as fh:
+    cfg = json.load(fh)
+
+if isinstance(cfg.get('agent'), dict) and 'url' in cfg['agent']:
+    url = cfg['agent']['url']
+    m = re.search(r':(\d+)', url)
+    port = m.group(1) if m else '8865'
+    cfg['agent']['url'] = 'http://cronmanager-agent:' + port
+
+with open(path, 'w') as fh:
+    json.dump(cfg, fh, indent=4, ensure_ascii=False)
+
+print('[deploy] Web config patched successfully.')
+PYEOF
+    else
+        log "WARNING: Web config not found at ${WEB_CONFIG_FILE} – patch agent.url manually:"
+        log "         agent.url → http://cronmanager-agent:<port>"
+    fi
+
+    log "============================================================"
+    log "Migration steps complete. Manual steps remaining:"
+    log "  1. Add the cronmanager-agent service to your Docker Compose stack"
+    log "     (see docker/agent/ for the image and volume definitions)."
+    log "  2. Restart the Docker stack so the agent container starts."
+    log "  3. Verify agent health:  docker exec cronmanager-agent curl -s http://localhost:8865/health"
+    log "  4. Open the web UI → Maintenance → Crontab Sync to re-write all"
+    log "     active jobs into the agent container's crontab."
+    log "     (This replaces the old host crontab entries that are now orphaned.)"
+    log "  NOTE: cron jobs run as root inside the container. Ensure linux_user"
+    log "        is set to 'root' for all jobs, or update them before the sync."
+    log "============================================================"
 fi
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `agentless` (continued)
+
+### Added
+
+- **Maintenance page** (`/maintenance`, admin only) – New "Maintenance" nav entry with three operational tools:
+  - **Crontab Sync** – Re-writes all crontab entries from the database in one click. Active jobs are synced (entries added/updated); inactive jobs have lingering entries removed. Solves the post-migration crontab re-population that previously required re-saving every job manually.
+  - **Stuck Executions** – Lists executions that have been in the "running" state longer than a configurable threshold (default 2 hours). Per-row actions: "Mark Finished" (sets `exit_code=-1`, `finished_at=NOW()`, appends a note to output) and "Delete" (permanently removes the record). The threshold is adjustable via an inline form without leaving the page.
+  - **History Cleanup** – Bulk-deletes finished execution records older than a configurable number of days (default 90). Only records with a non-NULL `finished_at` are eligible; running executions are never deleted.
+- **5 new agent endpoints** supporting the maintenance page:
+  - `POST /maintenance/crontab/resync`
+  - `GET  /maintenance/executions/stuck?hours=N`
+  - `POST /maintenance/executions/{id}/finish`
+  - `DELETE /maintenance/executions/{id}`
+  - `POST /maintenance/history/cleanup`
+
+---
+
 ## [Unreleased] – branch: `agentless`
 
 ### Added

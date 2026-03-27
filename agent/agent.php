@@ -225,10 +225,28 @@ try {
     $history = new \Cronmanager\Agent\Endpoints\HistoryEndpoint($pdo, $logger);
     $router->addRoute('GET', '/history', [$history, 'handle']);
 
+    $maintenanceCleanup = new \Cronmanager\Agent\Endpoints\MaintenanceHistoryCleanupEndpoint($pdo, $logger);
+    $router->addRoute('POST', '/maintenance/history/cleanup', [$maintenanceCleanup, 'handle']);
+
     // -- Export ---------------------------------------------------------------
 
     $export = new \Cronmanager\Agent\Endpoints\ExportEndpoint($pdo, $logger);
     $router->addRoute('GET', '/export', [$export, 'handle']);
+
+    // -- Maintenance ----------------------------------------------------------
+    // More-specific paths (/maintenance/crontab/resync, /maintenance/executions/…)
+    // must be registered before /maintenance/executions/{id} so the router
+    // tries the longer patterns first.
+
+    $maintenanceResync    = new \Cronmanager\Agent\Endpoints\MaintenanceCrontabResyncEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
+    $maintenanceStuck     = new \Cronmanager\Agent\Endpoints\MaintenanceStuckEndpoint($pdo, $logger);
+    $maintenanceResolve   = new \Cronmanager\Agent\Endpoints\MaintenanceResolveEndpoint($pdo, $logger);
+    $maintenanceExecDel   = new \Cronmanager\Agent\Endpoints\MaintenanceDeleteExecutionEndpoint($pdo, $logger);
+
+    $router->addRoute('POST',   '/maintenance/crontab/resync',          [$maintenanceResync,  'handle']);
+    $router->addRoute('GET',    '/maintenance/executions/stuck',        [$maintenanceStuck,   'handle']);
+    $router->addRoute('POST',   '/maintenance/executions/{id}/finish',  [$maintenanceResolve, 'handle']);
+    $router->addRoute('DELETE', '/maintenance/executions/{id}',         [$maintenanceExecDel, 'handle']);
 
     // -------------------------------------------------------------------------
     // Dispatch

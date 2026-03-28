@@ -36,7 +36,8 @@ see [README.md](README.md).
 9. [Performance](#performance)
 10. [Configuration Reference](#configuration-reference)
 11. [Deployment Script](#deployment-script)
-12. [Logging](#logging)
+12. [Docker Hub Images](#docker-hub-images)
+13. [Logging](#logging)
 13. [Internationalisation](#internationalisation)
 14. [Adding a New Language](#adding-a-new-language)
 15. [Adding a New Agent Endpoint](#adding-a-new-agent-endpoint)
@@ -81,11 +82,19 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 ├── deploy.sh                  ← deployment script
 ├── deploy.env[.example]       ← deployment configuration
 ├── db.credentials[.example]   ← database passwords (not in VCS)
+├── .github/
+│   └── workflows/
+│       └── docker-release.yml      ← builds & pushes Docker Hub images on GitHub release
 ├── docker/
 │   ├── docker-compose.yml          ← host-agent mode (web + MariaDB)
-│   ├── docker-compose-agent.yml    ← docker mode (agent + web + MariaDB)
-│   └── agent/
-│       └── entrypoint.sh           ← agent container entrypoint
+│   ├── docker-compose-agent.yml    ← docker mode (agent + web + MariaDB, file-mounted source)
+│   ├── docker-compose-full.yml     ← Docker Hub mode (self-contained images, named volumes)
+│   ├── agent/
+│   │   ├── Dockerfile              ← self-contained agent image
+│   │   └── entrypoint.sh           ← agent container entrypoint (generates config from env)
+│   └── web/
+│       ├── Dockerfile              ← self-contained web image
+│       └── entrypoint.sh          ← web container entrypoint (generates config from env)
 ├── README.md
 ├── TECHNICAL.md
 │
@@ -1301,6 +1310,86 @@ If `DEPLOY_TYPE=SSH`, the SSH host from `deploy.env` can be overridden on the co
 ```bash
 ./deploy.sh --host-agent update staging   # deploy to the "staging" SSH host alias
 ```
+
+---
+
+## Docker Hub Images
+
+The `dockerfull` deployment mode publishes two self-contained images to Docker Hub on
+every GitHub release.  Unlike the `docker` mode (which mounts source code from the host),
+these images have all PHP source and Composer dependencies baked in.
+
+### Image summary
+
+| Image | Base | Entrypoint behaviour |
+|---|---|---|
+| `cs1711/cronmanager-agent` | `cs1711/cs_cronmanageragent:latest` (Debian Trixie, PHP 8.4 CLI, cron, openssh-client) | Generates `config.json`, waits for MariaDB, applies schema, starts cron daemon, then `exec php -S` |
+| `cs1711/cronmanager-web` | `cs1711/cs_php-nginx-fpm:latest-alpine` (Alpine, PHP 8.4 FPM, Nginx, supervisord) | Generates `config.json`, fixes volume ownership, then `su-exec nobody supervisord` |
+
+### Build pipeline
+
+`docker/agent/Dockerfile` and `docker/web/Dockerfile` both use a two-stage build:
+
+1. **`composer:2` stage** – installs all PHP dependencies from `composer.json`.
+2. **Runtime stage** – copies the vendor tree and the application source; no Composer or PHP dev tools remain in the final image.
+
+The images are built and pushed by `.github/workflows/docker-release.yml` on every published
+GitHub release.  The workflow uses `docker/metadata-action` to produce the following tags
+automatically from the release version (e.g. `v2.1.0`):
+
+| Tag | Example |
+|---|---|
+| Full semver | `2.1.0` |
+| Major.minor | `2.1` |
+| Major | `2` |
+| Latest | `latest` |
+
+Multi-platform builds target `linux/amd64` and `linux/arm64`.
+
+### Config-from-environment pattern
+
+Both containers generate their `config.json` at every start — no config volume is required.
+
+**Agent (`docker/agent/entrypoint.sh`):**
+
+```
+1. php -r "echo json_encode([...])"  →  /opt/cronmanager/agent/config/config.json
+2. Wait for MariaDB (30 × 2 s retries)
+3. Apply schema.sql if 'cronjobs' table missing
+4. Fix /root/.ssh permissions if present
+5. Start cron daemon (background)
+6. exec php -S <bind>:<port> agent.php
+```
+
+**Web (`docker/web/entrypoint.sh`):**
+
+```
+1. php84 -r "echo json_encode([...])"  →  /var/www/conf/config.json
+2. chown -R nobody:nobody /var/www/conf /var/www/log
+3. exec su-exec nobody supervisord
+```
+
+### Vendor path inside containers
+
+| Container | Autoloader path |
+|---|---|
+| Agent | `/opt/phplib/vendor/autoload.php` |
+| Web | `/var/www/libs/vendor/autoload.php` |
+
+These paths match the paths used by the non-docker deployment modes, so the PHP source
+files (`Bootstrap.php`, etc.) require no code changes between modes.
+
+### Volumes
+
+All persistent state uses **Docker-managed named volumes** by default.
+Host-path mount alternatives are available as commented-out lines in
+`docker/docker-compose-full.yml`.
+
+| Volume | Container path | Contains |
+|---|---|---|
+| `db-data` | `/var/lib/mysql` (MariaDB) | All database files |
+| `agent-log` | `/opt/cronmanager/agent/log` | Agent log files |
+| `web-log` | `/var/www/log` | Web application log files |
 
 ---
 

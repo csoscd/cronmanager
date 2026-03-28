@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.1.0] – branch: `dockerfull`
+
+### Added
+
+- **Self-contained Docker Hub images** – Two ready-to-use images published on Docker Hub:
+  - `cs1711/cronmanager-agent` – contains the PHP agent source, all Composer dependencies, the database schema, and the container entrypoint.  No host PHP installation or Composer run required.
+  - `cs1711/cronmanager-web` – contains the web application source and all Composer dependencies baked in.  Includes `su-exec` for privilege dropping.
+- **Environment-variable configuration** – Both containers generate their `config.json` at each startup from environment variables.  The minimum required variables are `AGENT_HMAC_SECRET` and `DB_PASSWORD`; all other settings have sensible defaults.
+- **Automatic database schema initialisation** – The agent container waits for MariaDB to become ready (up to 30 retries, 2 s apart) and applies `schema.sql` automatically on the first start if the `cronjobs` table does not yet exist.
+- **`docker/agent/Dockerfile`** – Multi-stage Dockerfile: stage 1 installs Composer dependencies; stage 2 builds the final runtime image from `cs1711/cs_cronmanageragent:latest`.  Vendor tree is baked in at `/opt/phplib/vendor`.
+- **`docker/web/Dockerfile`** – Multi-stage Dockerfile: stage 1 installs Composer dependencies; stage 2 builds the final runtime image from `cs1711/cs_php-nginx-fpm:latest-alpine`.  Vendor tree is baked in at `/var/www/libs/vendor`.
+- **`docker/web/entrypoint.sh`** – Web container entrypoint: generates `config.json`, fixes volume ownership, then drops to `nobody` via `su-exec` before starting supervisord (nginx + PHP-FPM).
+- **`docker/docker-compose-full.yml`** – Minimal Docker Compose file for the Docker Hub deployment.  Uses Docker-managed named volumes (`db-data`, `agent-log`, `web-log`) by default — no host path mounts required.  Host path mount alternatives are provided as commented-out lines.  Only mandatory host mount is `/etc/localtime`.
+- **`.github/workflows/docker-release.yml`** – GitHub Actions workflow that builds and pushes both Docker images on every published GitHub release.  Uses `docker/metadata-action` to generate `v2.1.0`, `2.1`, `2`, and `latest` tags.  Supports `linux/amd64` and `linux/arm64` (multi-platform).
+
+### Changed
+
+- **`docker/agent/entrypoint.sh`** – Extended to generate `config.json` from environment variables before starting, and to wait for MariaDB and apply the schema on first run.
+
+---
+
 ## [2.0.0] – branch: `agentless`
 
 ### Added

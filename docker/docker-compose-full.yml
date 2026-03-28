@@ -24,7 +24,7 @@ services:
 
   # ── MariaDB ─────────────────────────────────────────────────────────────────
   cronmanager-db:
-    image: mariadb:latest
+    image: mariadb:lts
     container_name: cronmanager-db
     restart: unless-stopped
     environment:

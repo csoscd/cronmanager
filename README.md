@@ -16,10 +16,12 @@ history, email failure alerts, multi-host support, and SSO integration.
 
 1. [Features](#features)
 2. [Architecture Overview](#architecture-overview)
-3. [Prerequisites](#prerequisites)
-4. [Guided Setup (Recommended)](#guided-setup-recommended)
-5. [Quick Start](#quick-start)
-6. [Detailed Installation](#detailed-installation)
+3. [Docker Hub – Recommended Installation](#docker-hub--recommended-installation)
+   - [Environment variables reference](#environment-variables-reference)
+4. [Prerequisites](#prerequisites)
+5. [Guided Setup (Alternative)](#guided-setup-alternative)
+6. [Quick Start](#quick-start)
+7. [Detailed Installation](#detailed-installation)
    - [Step 1 – Install PHP and shared libraries on the host](#step-1--install-php-and-shared-libraries-on-the-host)
    - [Step 2 – Deploy the files](#step-2--deploy-the-files)
    - [Step 3 – Configure the host agent](#step-3--configure-the-host-agent)
@@ -27,18 +29,18 @@ history, email failure alerts, multi-host support, and SSO integration.
    - [Step 5 – Configure the web application](#step-5--configure-the-web-application)
    - [Step 6 – Start the Docker stack](#step-6--start-the-docker-stack)
    - [Step 7 – First login and initial setup](#step-7--first-login-and-initial-setup)
-7. [OIDC / SSO Setup with Authentik](#oidc--sso-setup-with-authentik)
-8. [Configuration Reference](#configuration-reference)
+8. [OIDC / SSO Setup with Authentik](#oidc--sso-setup-with-authentik)
+9. [Configuration Reference](#configuration-reference)
    - [Web application config](#web-application-config)
    - [Agent config](#agent-config)
-9. [Email Failure Alerts](#email-failure-alerts)
-10. [Multi-Host Execution](#multi-host-execution)
-11. [Crontab Import](#crontab-import)
-12. [Maintenance](#maintenance)
-13. [Export](#export)
-14. [User Management](#user-management)
-15. [Updating](#updating)
-16. [Troubleshooting](#troubleshooting)
+10. [Email Failure Alerts](#email-failure-alerts)
+11. [Multi-Host Execution](#multi-host-execution)
+12. [Crontab Import](#crontab-import)
+13. [Maintenance](#maintenance)
+14. [Export](#export)
+15. [User Management](#user-management)
+16. [Updating](#updating)
+17. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -127,6 +129,136 @@ A MariaDB container (`cronmanager-db`) stores users, job metadata, tags, and exe
 
 ---
 
+## Docker Hub – Recommended Installation
+
+The simplest way to run Cronmanager is to pull the pre-built images directly from Docker Hub.
+No cloning, no Composer, no PHP on the host — just Docker.
+
+### What you need
+
+| Requirement | Notes |
+|---|---|
+| Docker + Docker Compose v2 | Any recent Linux host |
+| 5 environment variables | See table below |
+
+### Three-step setup
+
+**Step 1 – Create a working directory and a `.env` file**
+
+```bash
+mkdir cronmanager && cd cronmanager
+cat > .env <<'EOF'
+DB_NAME=cronmanager
+DB_USER=cronmanager
+DB_PASSWORD=change-me
+DB_ROOT_PASSWORD=change-me-root
+AGENT_HMAC_SECRET=$(openssl rand -hex 32)
+EOF
+```
+
+> Tip: run `openssl rand -hex 32` separately and paste the output into `AGENT_HMAC_SECRET`.
+
+**Step 2 – Download the Compose file**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/csoscd/cronmanager/main/docker/docker-compose-full.yml \
+    -o docker-compose-full.yml
+```
+
+**Step 3 – Start the stack**
+
+```bash
+docker compose -f docker-compose-full.yml up -d
+```
+
+Open `http://<your-host>:8880/` — the setup wizard appears on first visit and
+lets you create the initial admin account.
+
+### What the stack creates
+
+| Container | Image | Purpose |
+|---|---|---|
+| `cronmanager-db` | `mariadb:latest` | Stores users, jobs, and execution history |
+| `cronmanager-agent` | `cs1711/cronmanager-agent:latest` | Manages crontabs, runs jobs, exposes HMAC API |
+| `cronmanager-web` | `cs1711/cronmanager-web:latest` | PHP-FPM + Nginx web UI |
+
+All persistent data lives in **Docker-managed named volumes** (`db-data`, `agent-log`, `web-log`).
+No host directory mounts are needed.  Optional host-path alternatives are available as
+commented-out lines in `docker-compose-full.yml`.
+
+### Environment variables reference
+
+#### Required (both containers share `AGENT_HMAC_SECRET` and `DB_PASSWORD`)
+
+| Variable | Description |
+|---|---|
+| `AGENT_HMAC_SECRET` | Shared HMAC-SHA256 signing secret (generate with `openssl rand -hex 32`) |
+| `DB_PASSWORD` | MariaDB application user password |
+| `DB_ROOT_PASSWORD` | MariaDB root password (MariaDB container only) |
+| `DB_NAME` | Database name (default: `cronmanager`) |
+| `DB_USER` | Database user (default: `cronmanager`) |
+
+#### Agent container optional variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `AGENT_BIND_ADDRESS` | `0.0.0.0` | Bind address for the PHP HTTP server |
+| `AGENT_PORT` | `8865` | Listening port |
+| `DB_HOST` | `cronmanager-db` | MariaDB hostname |
+| `LOG_PATH` | `/opt/cronmanager/agent/log/cronmanager-agent.log` | Log file path |
+| `LOG_LEVEL` | `info` | Monolog level (`debug`, `info`, `warning`, `error`) |
+| `LOG_MAX_DAYS` | `30` | Log retention in days |
+| `MAIL_ENABLED` | `false` | Enable email failure alerts |
+| `MAIL_HOST` | `smtp.example.com` | SMTP server hostname |
+| `MAIL_PORT` | `587` | SMTP port |
+| `MAIL_USERNAME` | _(empty)_ | SMTP username |
+| `MAIL_PASSWORD` | _(empty)_ | SMTP password |
+| `MAIL_FROM` | `alerts@example.com` | Sender address |
+| `MAIL_FROM_NAME` | `Cronmanager` | Sender display name |
+| `MAIL_TO` | `admin@example.com` | Alert recipient |
+| `MAIL_ENCRYPTION` | `tls` | `tls` or `ssl` |
+
+#### Web container optional variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `AGENT_URL` | `http://cronmanager-agent:8865` | Agent base URL |
+| `AGENT_TIMEOUT` | `10` | HTTP timeout in seconds |
+| `DB_HOST` | `cronmanager-db` | MariaDB hostname |
+| `LOG_PATH` | `/var/www/log/cronmanager-web.log` | Log file path |
+| `LOG_LEVEL` | `info` | Monolog level |
+| `LOG_MAX_DAYS` | `30` | Log retention in days |
+| `SESSION_LIFETIME` | `3600` | PHP session lifetime in seconds |
+| `SESSION_NAME` | `cronmanager_sess` | PHP session cookie name |
+| `I18N_LANGUAGE` | `en` | Default UI language (`en` or `de`) |
+| `OIDC_ENABLED` | `false` | Enable OIDC / SSO login |
+| `OIDC_PROVIDER_URL` | _(empty)_ | OIDC provider discovery URL |
+| `OIDC_CLIENT_ID` | _(empty)_ | OAuth 2.0 client ID |
+| `OIDC_CLIENT_SECRET` | _(empty)_ | OAuth 2.0 client secret |
+| `OIDC_REDIRECT_URI` | _(empty)_ | Callback URL registered at the provider |
+| `OIDC_SSL_VERIFY` | `true` | Verify TLS certificate of the OIDC provider |
+| `OIDC_SSL_CA_BUNDLE` | _(empty)_ | Path to custom CA bundle (inside container) |
+
+### Updating to a new release
+
+```bash
+docker compose -f docker-compose-full.yml pull
+docker compose -f docker-compose-full.yml up -d
+```
+
+The agent container automatically applies any new SQL migrations on startup.
+
+### Using SSH for remote job execution
+
+Mount your SSH keys and config into the agent container:
+
+```yaml
+# In docker-compose-full.yml, under cronmanager-agent volumes:
+- /root/.ssh:/root/.ssh:ro
+```
+
+---
+
 ## Prerequisites
 
 | Component | Requirement |
@@ -157,7 +289,7 @@ includes PHP-FPM 8.4 and Nginx.
 
 ---
 
-## Guided Setup (Recommended)
+## Guided Setup (Alternative)
 
 For a fresh installation on a Debian or Ubuntu host, the easiest path is the
 interactive setup script included in the repository.  It guides you through

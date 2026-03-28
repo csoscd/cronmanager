@@ -1,0 +1,156 @@
+################################################################################
+# Cronmanager – Full Docker Hub Deployment
+#
+# All three components run as Docker containers.  No local checkout or PHP
+# installation on the host is required.
+#
+# Quick start:
+#   1. Copy .env.example to .env and fill in the required values.
+#   2. docker compose -f docker-compose-full.yml up -d
+#   3. Open http://<host>:8880/ – the setup wizard creates the first admin.
+#
+# Required environment variables (set in .env or export them):
+#   DB_NAME              – database name (e.g. cronmanager)
+#   DB_USER              – database application user
+#   DB_PASSWORD          – database application user password
+#   DB_ROOT_PASSWORD     – MariaDB root password
+#   AGENT_HMAC_SECRET    – shared HMAC secret (generate: openssl rand -hex 32)
+#
+# @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+# @license GNU General Public License version 3 or later
+################################################################################
+
+services:
+
+  # ── MariaDB ─────────────────────────────────────────────────────────────────
+  cronmanager-db:
+    image: mariadb:latest
+    container_name: cronmanager-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: "${DB_ROOT_PASSWORD}"
+      MARIADB_DATABASE:      "${DB_NAME:-cronmanager}"
+      MARIADB_USER:          "${DB_USER:-cronmanager}"
+      MARIADB_PASSWORD:      "${DB_PASSWORD}"
+    networks:
+      - cronmanager-internal
+    volumes:
+      # Docker-managed named volume (default – no host path required)
+      - db-data:/var/lib/mysql
+      # Optional: host path mount instead of named volume
+      # - /opt/cronmanager/db:/var/lib/mysql
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Cronmanager Agent ───────────────────────────────────────────────────────
+  cronmanager-agent:
+    image: cs1711/cronmanager-agent:latest
+    container_name: cronmanager-agent
+    restart: unless-stopped
+    depends_on:
+      cronmanager-db:
+        condition: service_healthy
+    environment:
+      # Required
+      AGENT_HMAC_SECRET: "${AGENT_HMAC_SECRET}"
+      DB_PASSWORD:        "${DB_PASSWORD}"
+      # Database (defaults match service names above)
+      DB_HOST:  "cronmanager-db"
+      DB_PORT:  "3306"
+      DB_NAME:  "${DB_NAME:-cronmanager}"
+      DB_USER:  "${DB_USER:-cronmanager}"
+      # Agent HTTP server
+      AGENT_BIND_ADDRESS: "0.0.0.0"
+      AGENT_PORT:         "8865"
+      # Logging
+      LOG_PATH:     "/opt/cronmanager/agent/log/cronmanager-agent.log"
+      LOG_LEVEL:    "${LOG_LEVEL:-info}"
+      LOG_MAX_DAYS: "${LOG_MAX_DAYS:-30}"
+      # Optional: email failure alerts
+      # MAIL_ENABLED:   "true"
+      # MAIL_HOST:      "smtp.example.com"
+      # MAIL_PORT:      "587"
+      # MAIL_USERNAME:  "alerts@example.com"
+      # MAIL_PASSWORD:  "secret"
+      # MAIL_FROM:      "alerts@example.com"
+      # MAIL_FROM_NAME: "Cronmanager"
+      # MAIL_TO:        "admin@example.com"
+      # MAIL_ENCRYPTION: "tls"
+    networks:
+      - cronmanager-internal
+    volumes:
+      # Docker-managed named volume for agent logs (default)
+      - agent-log:/opt/cronmanager/agent/log
+      # Optional: persist logs on the host instead
+      # - /opt/cronmanager/agent/log:/opt/cronmanager/agent/log
+      - /etc/localtime:/etc/localtime:ro
+      # Optional: SSH keys for remote job execution
+      # - /root/.ssh:/root/.ssh:ro
+    expose:
+      - "8865"
+
+  # ── Cronmanager Web UI ──────────────────────────────────────────────────────
+  cronmanager-web:
+    image: cs1711/cronmanager-web:latest
+    container_name: cronmanager-web
+    restart: unless-stopped
+    depends_on:
+      cronmanager-db:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8880}:8080"
+    environment:
+      # Required
+      AGENT_HMAC_SECRET: "${AGENT_HMAC_SECRET}"
+      DB_PASSWORD:        "${DB_PASSWORD}"
+      # Agent connection (uses Docker service name)
+      AGENT_URL:     "http://cronmanager-agent:8865"
+      AGENT_TIMEOUT: "${AGENT_TIMEOUT:-10}"
+      # Database
+      DB_HOST: "cronmanager-db"
+      DB_PORT: "3306"
+      DB_NAME: "${DB_NAME:-cronmanager}"
+      DB_USER: "${DB_USER:-cronmanager}"
+      # Logging
+      LOG_PATH:     "/var/www/log/cronmanager-web.log"
+      LOG_LEVEL:    "${LOG_LEVEL:-info}"
+      LOG_MAX_DAYS: "${LOG_MAX_DAYS:-30}"
+      # Session
+      SESSION_LIFETIME: "${SESSION_LIFETIME:-3600}"
+      SESSION_NAME:     "cronmanager_sess"
+      # Internationalisation
+      I18N_LANGUAGE: "${I18N_LANGUAGE:-en}"
+      # Optional: OIDC / SSO
+      # OIDC_ENABLED:        "true"
+      # OIDC_PROVIDER_URL:   "https://auth.example.com/application/o/cronmanager/"
+      # OIDC_CLIENT_ID:      "your-client-id"
+      # OIDC_CLIENT_SECRET:  "your-client-secret"
+      # OIDC_REDIRECT_URI:   "https://cronmanager.example.com/auth/callback"
+      # OIDC_SSL_VERIFY:     "true"
+      # OIDC_SSL_CA_BUNDLE:  ""
+    networks:
+      - cronmanager-internal
+    volumes:
+      # Docker-managed named volume for web logs (default)
+      - web-log:/var/www/log
+      # Optional: persist logs on the host instead
+      # - /opt/cronmanager/www/log:/var/www/log
+      - /etc/localtime:/etc/localtime:ro
+
+
+# ── Named volumes (Docker-managed, no host paths required) ──────────────────
+volumes:
+  db-data:
+  agent-log:
+  web-log:
+
+
+# ── Private internal network ────────────────────────────────────────────────
+networks:
+  cronmanager-internal:
+    driver: bridge

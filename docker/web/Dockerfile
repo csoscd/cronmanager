@@ -42,7 +42,6 @@ LABEL org.opencontainers.image.title="Cronmanager Web" \
       org.opencontainers.image.licenses="GPL-3.0-or-later" \
       org.opencontainers.image.source="https://github.com/csoscd/cronmanager"
 
-# Switch to root to install su-exec and copy files
 USER root
 
 # Copy Composer-installed vendor tree
@@ -55,6 +54,21 @@ COPY --chown=nobody:nobody web/ /var/www/html/
 RUN mkdir -p /var/www/conf /var/www/log \
     && chown -R nobody:nobody /var/www/conf /var/www/log
 
+# Set php-fpm pool user/group.
+# The base image was designed to run with the master process already as nobody,
+# so the pool config has no user= line.  When supervisord runs as root it must
+# be told which user to drop to or php-fpm refuses to start.
+# We locate www.conf dynamically to stay compatible if the base image PHP
+# version changes, then append the directives (last value wins in php-fpm).
+RUN PHP_FPM_POOL=$(find /etc/php* -name "www.conf" 2>/dev/null | head -1) \
+    && if [ -n "$PHP_FPM_POOL" ]; then \
+         printf '\n; user/group added by cronmanager-web Dockerfile\nuser = nobody\ngroup = nobody\n' \
+             >> "$PHP_FPM_POOL"; \
+         echo "php-fpm pool user set to nobody in ${PHP_FPM_POOL}"; \
+       else \
+         echo "WARNING: php-fpm www.conf not found – pool user not set"; \
+       fi
+
 # Copy and configure entrypoint
 COPY docker/web/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
@@ -64,8 +78,6 @@ VOLUME ["/var/www/log"]
 
 EXPOSE 8080
 
-# Run as root so the entrypoint can write the config file;
-# the entrypoint then drops to nobody via su-exec before starting supervisord.
 USER root
 
 ENTRYPOINT ["/entrypoint.sh"]

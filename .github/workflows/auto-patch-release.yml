@@ -1,0 +1,109 @@
+################################################################################
+# Auto patch release – triggered after base image updates
+#
+# Reads the latest GitHub release tag, increments the patch version, and
+# creates a new release.  The new release triggers docker-release.yml which
+# rebuilds and pushes cs1711/cronmanager-agent and cs1711/cronmanager-web.
+#
+# Typical call from the base-image build machine (requires gh CLI):
+#
+#   gh workflow run auto-patch-release.yml \
+#       --repo csoscd/cronmanager \
+#       --field reason="base image update: cs1711/cs_cronmanageragent"
+#
+# Or via curl (PAT with contents:write + actions:write scope):
+#
+#   curl -X POST \
+#     -H "Authorization: Bearer <PAT>" \
+#     -H "Accept: application/vnd.github+json" \
+#     https://api.github.com/repos/csoscd/cronmanager/actions/workflows/auto-patch-release.yml/dispatches \
+#     -d '{"ref":"main","inputs":{"reason":"base image update"}}'
+#
+# Required repository secret (same as docker-release.yml):
+#   DOCKERHUB_USERNAME / DOCKERHUB_TOKEN  – not needed here, but the
+#   release it creates will trigger docker-release.yml which needs them.
+#
+# @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+# @license GNU General Public License version 3 or later
+################################################################################
+
+name: Auto patch release
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for the patch release (shown in release notes)"
+        required: false
+        default: "Rebuild for updated base images"
+  repository_dispatch:
+    types: [base-image-updated]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write   # required to create a release and tag
+
+jobs:
+  create-patch-release:
+    name: Increment patch version and create release
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout (needed for gh CLI context) ────────────────────────────────
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+
+      # ── Determine the next patch version ────────────────────────────────────
+      - name: Compute next patch tag
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the latest release tag (e.g. v2.1.0)
+          LATEST=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+
+          if [ -z "$LATEST" ]; then
+            echo "No existing release found – using v0.0.1 as first tag."
+            NEW_TAG="v0.0.1"
+          else
+            echo "Latest release tag: ${LATEST}"
+            # Strip leading 'v', split on '.', increment patch
+            MAJOR=$(echo "$LATEST" | sed 's/^v//' | cut -d. -f1)
+            MINOR=$(echo "$LATEST" | sed 's/^v//' | cut -d. -f2)
+            PATCH=$(echo "$LATEST" | sed 's/^v//' | cut -d. -f3)
+            NEW_PATCH=$((PATCH + 1))
+            NEW_TAG="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+          fi
+
+          echo "New tag: ${NEW_TAG}"
+          echo "tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
+          echo "previous=${LATEST}"  >> "$GITHUB_OUTPUT"
+
+      # ── Create the release ──────────────────────────────────────────────────
+      - name: Create GitHub release ${{ steps.version.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REASON: ${{ github.event.inputs.reason || github.event.client_payload.reason || 'Rebuild for updated base images' }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          PREV="${{ steps.version.outputs.previous }}"
+
+          NOTES="## ${TAG}
+
+          **${REASON}**
+
+          This patch release rebuilds \`cs1711/cronmanager-agent\` and \`cs1711/cronmanager-web\`
+          on top of the latest base images without any application code changes.
+
+          Previous release: ${PREV}"
+
+          gh release create "${TAG}" \
+            --title "${TAG}" \
+            --notes "${NOTES}" \
+            --target main
+
+          echo "Release ${TAG} created – docker-release.yml will now build the images."

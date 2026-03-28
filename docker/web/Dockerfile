@@ -50,6 +50,19 @@ COPY --from=composer-build --chown=nobody:nobody /build/vendor /var/www/libs/ven
 # Copy web application source
 COPY --chown=nobody:nobody web/ /var/www/html/
 
+# Download static assets that are not checked into the repository.
+# Tailwind CSS (Play CDN build) and Chart.js UMD are fetched at image build
+# time so the container has no external CDN dependency at runtime.
+RUN mkdir -p /var/www/html/assets/js \
+    && wget -qO /var/www/html/assets/js/tailwind.min.js \
+         "https://cdn.tailwindcss.com/3.4.17" \
+    && wget -qO /var/www/html/assets/js/chart.min.js \
+         "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" \
+    && chown nobody:nobody \
+         /var/www/html/assets/js/tailwind.min.js \
+         /var/www/html/assets/js/chart.min.js \
+    && echo "Static assets downloaded."
+
 # Pre-create directories that will be used at runtime
 RUN mkdir -p /var/www/conf /var/www/log \
     && chown -R nobody:nobody /var/www/conf /var/www/log

@@ -9,8 +9,8 @@
 #   docker build -f docker/web/Dockerfile -t cs1711/cronmanager-web:latest .
 #
 # Notes:
-#   * The base image runs as USER nobody; the entrypoint drops back to nobody
-#     after writing the config file (requires su-exec).
+#   * The entrypoint runs as root (required for supervisord to manage processes).
+#     nginx and php-fpm drop to unprivileged users via their own config files.
 #   * PHP binary on alpine is php84, not php.
 #
 # @author  Christian Schulz <technik@meinetechnikwelt.rocks>
@@ -44,9 +44,6 @@ LABEL org.opencontainers.image.title="Cronmanager Web" \
 
 # Switch to root to install su-exec and copy files
 USER root
-
-# su-exec is needed to drop from root to nobody after writing the config file
-RUN apk add --no-cache su-exec
 
 # Copy Composer-installed vendor tree
 COPY --from=composer-build --chown=nobody:nobody /build/vendor /var/www/libs/vendor

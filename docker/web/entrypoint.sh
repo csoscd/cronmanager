@@ -5,7 +5,7 @@
 # Steps executed on every container start:
 #   1. Generate /var/www/conf/config.json from environment variables.
 #   2. Fix ownership of /var/www/conf and /var/www/log for the nobody user.
-#   3. Drop privileges to nobody and exec supervisord (nginx + php-fpm).
+#   3. Exec supervisord (nginx + php-fpm) – runs as root; processes drop privileges internally.
 #
 # Required environment variables:
 #   AGENT_HMAC_SECRET   – shared secret for HMAC-SHA256 request signing
@@ -115,8 +115,11 @@ chown -R nobody:nobody /var/www/conf /var/www/log
 log_info "Ownership of /var/www/conf and /var/www/log set to nobody."
 
 # =============================================================================
-# 3. Drop privileges and start supervisord (nginx + php-fpm)
+# 3. Start supervisord (nginx + php-fpm)
+#    supervisord must run as root so it can create its Unix socket and manage
+#    child process file descriptors.  nginx and php-fpm drop to their own
+#    unprivileged users as configured inside the base image.
 # =============================================================================
 
-log_info "Starting supervisord as nobody..."
-exec su-exec nobody /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+log_info "Starting supervisord..."
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

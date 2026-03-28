@@ -62,9 +62,13 @@ RUN mkdir -p /var/www/conf /var/www/log \
 # version changes, then append the directives (last value wins in php-fpm).
 RUN PHP_FPM_POOL=$(find /etc/php* -name "www.conf" 2>/dev/null | head -1) \
     && if [ -n "$PHP_FPM_POOL" ]; then \
-         printf '\n; user/group added by cronmanager-web Dockerfile\nuser = nobody\ngroup = nobody\n' \
-             >> "$PHP_FPM_POOL"; \
-         echo "php-fpm pool user set to nobody in ${PHP_FPM_POOL}"; \
+         printf '\n; Added by cronmanager-web Dockerfile\n' >> "$PHP_FPM_POOL"; \
+         printf 'user = nobody\ngroup = nobody\n' >> "$PHP_FPM_POOL"; \
+         printf '; Socket ownership must match nginx worker user.\n' >> "$PHP_FPM_POOL"; \
+         printf '; php-fpm master runs as root (via supervisord) so the socket\n' >> "$PHP_FPM_POOL"; \
+         printf '; is created by root unless listen.owner/group are set explicitly.\n' >> "$PHP_FPM_POOL"; \
+         printf 'listen.owner = nobody\nlisten.group = nobody\nlisten.mode = 0660\n' >> "$PHP_FPM_POOL"; \
+         echo "php-fpm pool user/listen set to nobody in ${PHP_FPM_POOL}"; \
        else \
          echo "WARNING: php-fpm www.conf not found – pool user not set"; \
        fi

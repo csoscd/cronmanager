@@ -73,6 +73,23 @@ RUN PHP_FPM_POOL=$(find /etc/php* -name "www.conf" 2>/dev/null | head -1) \
          echo "WARNING: php-fpm www.conf not found – pool user not set"; \
        fi
 
+# Set nginx worker user to nobody.
+# When supervisord runs as root, nginx master runs as root and properly drops
+# workers to the user specified in nginx.conf (typically 'nginx' on Alpine).
+# That user cannot access the php-fpm socket (nobody:nobody 0660), causing
+# EACCES on every request.  Set the worker user to nobody to match the socket.
+RUN NGINX_CONF=$(find /etc/nginx -name "nginx.conf" 2>/dev/null | head -1) \
+    && if [ -n "$NGINX_CONF" ]; then \
+         if grep -qE '^user ' "$NGINX_CONF"; then \
+             sed -i 's/^user .*/user nobody;/' "$NGINX_CONF"; \
+         else \
+             sed -i '1s/^/user nobody;\n/' "$NGINX_CONF"; \
+         fi; \
+         echo "nginx worker user set to nobody in ${NGINX_CONF}"; \
+       else \
+         echo "WARNING: nginx.conf not found – worker user not patched"; \
+       fi
+
 # Copy and configure entrypoint
 COPY docker/web/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

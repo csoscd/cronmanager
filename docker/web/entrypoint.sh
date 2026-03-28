@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # =============================================================================
 # Cronmanager Web Container – entrypoint.sh
 #
@@ -36,7 +36,7 @@
 # @license GNU General Public License version 3 or later
 # =============================================================================
 
-set -uo pipefail
+set -eu
 
 CONFIG_FILE="/var/www/conf/config.json"
 
@@ -52,11 +52,11 @@ log_error() { echo "[entrypoint] [ERROR] $(date -Iseconds) $*" >&2; }
 log_info "Generating ${CONFIG_FILE} from environment variables..."
 
 # Validate required variables
-if [[ -z "${AGENT_HMAC_SECRET:-}" ]]; then
+if [ -z "${AGENT_HMAC_SECRET:-}" ]; then
     log_error "AGENT_HMAC_SECRET is required but not set."
     exit 1
 fi
-if [[ -z "${DB_PASSWORD:-}" ]]; then
+if [ -z "${DB_PASSWORD:-}" ]; then
     log_error "DB_PASSWORD is required but not set."
     exit 1
 fi

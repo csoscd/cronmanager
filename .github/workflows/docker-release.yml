@@ -28,6 +28,9 @@ on:
         required: false
         default: ""
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-and-push:
     name: Build ${{ matrix.image }} image
@@ -77,7 +80,7 @@ jobs:
 
       # ── Build and push ───────────────────────────────────────────────────
       - name: Build and push ${{ matrix.image }}
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context:    ${{ matrix.context }}
           file:       ${{ matrix.dockerfile }}

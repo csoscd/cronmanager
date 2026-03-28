@@ -248,14 +248,99 @@ docker compose -f docker-compose-full.yml up -d
 
 The agent container automatically applies any new SQL migrations on startup.
 
-### Using SSH for remote job execution
+### SSH keys for remote job execution and crontab import
 
-Mount your SSH keys and config into the agent container:
+The `docker-compose-full.yml` mounts `/root/.ssh` from the Docker host into the agent
+container by default:
 
 ```yaml
-# In docker-compose-full.yml, under cronmanager-agent volumes:
 - /root/.ssh:/root/.ssh:ro
 ```
+
+This gives the agent access to all SSH host aliases and key pairs configured for the
+host's root user, which is the simplest setup.
+
+> **Security note:** Mounting `/root/.ssh` exposes **every** SSH key and host alias
+> configured for root — including connections to systems unrelated to Cronmanager.
+> If the agent container were ever compromised, all those keys would be at risk.
+
+#### Alternative: agent-specific SSH directory
+
+Create a dedicated directory with only the keys and hosts Cronmanager needs:
+
+```bash
+mkdir -p /opt/cronmanager/.ssh
+chmod 700 /opt/cronmanager/.ssh
+
+# Generate a dedicated key pair (no passphrase for unattended use)
+ssh-keygen -t ed25519 -C "cronmanager-agent" -N "" \
+    -f /opt/cronmanager/.ssh/id_ed25519
+
+# Create a config file listing only the hosts Cronmanager manages
+cat > /opt/cronmanager/.ssh/config <<'EOF'
+Host myserver1
+    HostName 192.168.1.10
+    User root
+    IdentityFile ~/.ssh/id_ed25519
+    BatchMode yes
+    ConnectTimeout 10
+
+Host myserver2
+    HostName 192.168.1.11
+    User root
+    IdentityFile ~/.ssh/id_ed25519
+    BatchMode yes
+    ConnectTimeout 10
+EOF
+chmod 600 /opt/cronmanager/.ssh/config
+```
+
+Then in `docker-compose-full.yml`, replace the default mount with:
+
+```yaml
+- /opt/cronmanager/.ssh:/root/.ssh:ro
+```
+
+#### Reaching the Docker host itself
+
+If you want to import or run cron jobs on the **Docker host** itself (the machine running
+the containers), the agent container must be able to SSH back to it.
+
+1. **Add the host to the SSH config** (`/root/.ssh/config` or `/opt/cronmanager/.ssh/config`):
+
+   ```
+   Host dockerhost
+       HostName host.docker.internal
+       User root
+       IdentityFile ~/.ssh/id_ed25519
+       BatchMode yes
+       ConnectTimeout 10
+   ```
+
+   > `host.docker.internal` resolves to the Docker host's gateway IP inside the container.
+   > Add it to the agent service in `docker-compose-full.yml` if not already present:
+   > ```yaml
+   > extra_hosts:
+   >   - "host.docker.internal:host-gateway"
+   > ```
+
+2. **Authorise the agent's public key on the Docker host:**
+
+   ```bash
+   # Append the public key to root's authorized_keys on the Docker host
+   cat /opt/cronmanager/.ssh/id_ed25519.pub >> /root/.ssh/authorized_keys
+   chmod 600 /root/.ssh/authorized_keys
+
+   # Ensure the SSH daemon permits key-based root login
+   grep -i permitrootlogin /etc/ssh/sshd_config
+   # Should be: PermitRootLogin prohibit-password
+   ```
+
+3. **Test connectivity from inside the agent container:**
+
+   ```bash
+   docker exec cronmanager-agent ssh -o StrictHostKeyChecking=accept-new dockerhost echo ok
+   ```
 
 ---
 

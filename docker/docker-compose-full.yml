@@ -89,8 +89,16 @@ services:
       # Optional: persist logs on the host instead
       # - /opt/cronmanager/agent/log:/opt/cronmanager/agent/log
       - /etc/localtime:/etc/localtime:ro
-      # Optional: SSH keys for remote job execution
-      # - /root/.ssh:/root/.ssh:ro
+      # SSH keys for remote job execution and crontab import.
+      # The default mounts the host root user's full SSH config.
+      # See README.md – SSH Keys section for security considerations
+      # and the agent-specific key alternative.
+      - /root/.ssh:/root/.ssh:ro
+      # Alternative: use a dedicated directory with only the keys/config
+      # needed by Cronmanager (see README.md for setup instructions):
+      # - /opt/cronmanager/.ssh:/root/.ssh:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     expose:
       - "8865"
 

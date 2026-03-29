@@ -336,11 +336,48 @@ the containers), the agent container must be able to SSH back to it.
    # Should be: PermitRootLogin prohibit-password
    ```
 
-3. **Test connectivity from inside the agent container:**
+3. **Add `StrictHostKeyChecking accept-new` to the SSH config:**
+
+   Without this, SSH will silently refuse to connect when the host key is not
+   yet in `known_hosts` (because `BatchMode yes` suppresses all interactive prompts).
+   Add the line to the `dockerhost` block in `/root/.ssh/config`:
+
+   ```
+   Host dockerhost
+       HostName host.docker.internal
+       User root
+       IdentityFile ~/.ssh/id_ed25519
+       BatchMode yes
+       ConnectTimeout 10
+       StrictHostKeyChecking accept-new
+   ```
+
+4. **Add the host key to `known_hosts`:**
+
+   `host.docker.internal` only resolves **inside** Docker containers — not on the
+   Docker host itself — so `ssh-keyscan` cannot be run directly on the host.
+   Instead, run it from **inside** the agent container and redirect the output
+   to the host's `known_hosts` file (the `>>` executes in the host shell):
 
    ```bash
-   docker exec cronmanager-agent ssh -o StrictHostKeyChecking=accept-new dockerhost echo ok
+   docker exec cronmanager-agent ssh-keyscan -H host.docker.internal \
+       >> /root/.ssh/known_hosts
    ```
+
+   > **Why this works:** `ssh-keyscan` runs inside the container where
+   > `host.docker.internal` resolves correctly to the Docker gateway IP.
+   > The `>>` redirect runs in the host shell and writes directly to the
+   > host's `/root/.ssh/known_hosts`. The container sees the updated file
+   > immediately via the read-only mount — no container restart required.
+
+5. **Verify:**
+
+   ```bash
+   docker exec cronmanager-agent ssh dockerhost 'crontab -l -u root'
+   ```
+
+   You should see the root crontab output. If it works here, the Cronmanager
+   import page will list the Docker host as a target and show its crontab entries.
 
 ---
 

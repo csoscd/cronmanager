@@ -84,7 +84,8 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 ├── db.credentials[.example]   ← database passwords (not in VCS)
 ├── .github/
 │   └── workflows/
-│       └── docker-release.yml      ← builds & pushes Docker Hub images on GitHub release
+│       ├── docker-release.yml          ← builds & pushes Docker Hub images on GitHub release
+│       └── auto-patch-release.yml      ← increments patch version and creates a GitHub release (triggered on base image rebuild)
 ├── docker/
 │   ├── docker-compose.yml          ← host-agent mode (web + MariaDB)
 │   ├── docker-compose-agent.yml    ← docker mode (agent + web + MariaDB, file-mounted source)
@@ -1324,7 +1325,7 @@ these images have all PHP source and Composer dependencies baked in.
 | Image | Base | Entrypoint behaviour |
 |---|---|---|
 | `cs1711/cronmanager-agent` | `cs1711/cs_cronmanageragent:latest` (Debian Trixie, PHP 8.4 CLI, cron, openssh-client) | Generates `config.json`, waits for MariaDB, applies schema, starts cron daemon, then `exec php -S` |
-| `cs1711/cronmanager-web` | `cs1711/cs_php-nginx-fpm:latest-alpine` (Alpine, PHP 8.4 FPM, Nginx, supervisord) | Generates `config.json`, fixes volume ownership, then `su-exec nobody supervisord` |
+| `cs1711/cronmanager-web` | `cs1711/cs_php-nginx-fpm:latest-alpine` (Alpine, PHP 8.4 FPM, Nginx, supervisord) | Generates `config.json`, fixes volume ownership (`/var/www/conf`, `/var/www/log`), then `exec /usr/bin/supervisord` as root; nginx worker and PHP-FPM pool drop to `nobody` internally |
 
 ### Build pipeline
 
@@ -1346,6 +1347,28 @@ automatically from the release version (e.g. `v2.1.0`):
 
 Multi-platform builds target `linux/amd64` and `linux/arm64`.
 
+### Automatic patch releases for base image updates
+
+When the upstream base images (`cs1711/cs_cronmanageragent` or `cs1711/cs_php-nginx-fpm`) are
+rebuilt, the `.github/workflows/auto-patch-release.yml` workflow can be triggered either via
+`workflow_dispatch` (manually from the GitHub Actions UI) or via `repository_dispatch` (from a
+CI machine using `curl` or `gh workflow run`).
+
+The workflow reads the latest git tag, increments the patch digit (e.g. `2.1.0` → `2.1.1`),
+and creates a new GitHub release.  This in turn fires `docker-release.yml` via the
+`release: published` trigger, which rebuilds and pushes the Cronmanager images with the updated
+base image baked in.
+
+```
+base image rebuild
+       │
+       ▼ (workflow_dispatch / repository_dispatch)
+auto-patch-release.yml → gh release create v2.x.(n+1)
+       │
+       ▼ (release: published trigger)
+docker-release.yml → docker build + push to Docker Hub
+```
+
 ### Config-from-environment pattern
 
 Both containers generate their `config.json` at every start — no config volume is required.
@@ -1366,8 +1389,17 @@ Both containers generate their `config.json` at every start — no config volume
 ```
 1. php84 -r "echo json_encode([...])"  →  /var/www/conf/config.json
 2. chown -R nobody:nobody /var/www/conf /var/www/log
-3. exec su-exec nobody supervisord
+3. exec /usr/bin/supervisord            (runs as root)
+   ├── nginx:     worker user = nobody  (patched in Dockerfile)
+   └── php-fpm:   pool user = nobody, listen.owner = nobody,
+                  listen.group = nobody, listen.mode = 0660
+                  (patched in Dockerfile)
 ```
+
+> **Why root for supervisord?** Alpine's `cs_php-nginx-fpm` base image does not include
+> `su-exec`. Supervisord must start as root so it can bind ports and manage child process
+> lifecycle. nginx and PHP-FPM then drop to `nobody` via their own configuration, keeping
+> the effective attack surface identical to a `su-exec` approach.
 
 ### Vendor path inside containers
 

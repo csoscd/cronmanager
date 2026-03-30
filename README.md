@@ -178,7 +178,7 @@ lets you create the initial admin account.
 
 | Container | Image | Purpose |
 |---|---|---|
-| `cronmanager-db` | `mariadb:latest` | Stores users, jobs, and execution history |
+| `cronmanager-db` | `mariadb:lts` | Stores users, jobs, and execution history |
 | `cronmanager-agent` | `cs1711/cronmanager-agent:latest` | Manages crontabs, runs jobs, exposes HMAC API |
 | `cronmanager-web` | `cs1711/cronmanager-web:latest` | PHP-FPM + Nginx web UI |
 

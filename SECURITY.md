@@ -181,7 +181,11 @@ stores both verifier and `state` in the PHP session. Both are verified before th
 **Status / recommendation**:
 - Browser → Web UI: HTTPS should be configured at the reverse-proxy / Docker ingress level.
   The application itself does not handle TLS termination.
-- Web container → Host agent: Uses HTTP. In host-agent mode the web container reaches the agent via `host.docker.internal` (Docker bridge to host loopback, not externally routable). In docker mode traffic stays on the private `cronmanager-internal` Docker network and never leaves the host. In both cases the HMAC signature ensures integrity and authenticity even without TLS on this hop.
+- Web container → Host agent: Uses HTTP. The exposure depends on the deployment mode:
+  - **Host-agent mode**: The web container reaches the agent via `host.docker.internal` (Docker bridge to the host's loopback interface, not externally routable).
+  - **Docker mode** (file-mounted source): Traffic stays on the private `cronmanager-internal` Docker network and never leaves the host.
+  - **Docker Hub mode** (`docker-compose-full.yml`): All three services (web, agent, MariaDB) share a private named Docker network; web→agent traffic is container-to-container and never leaves the host.
+  - In all cases the HMAC signature ensures integrity and authenticity of requests even without TLS on this internal hop.
 - **Recommendation**: Add TLS to the host agent listener for defence-in-depth if the Docker network
   is shared with untrusted containers.
 
@@ -463,5 +467,5 @@ Use this checklist when deploying a new instance or reviewing after changes.
 
 ---
 
-*Analysis performed: 2026-03-18*
+*Analysis performed: 2026-03-18; last updated: 2026-03-30*
 *Analyst: Christian Schulz <technik@meinetechnikwelt.rocks>*

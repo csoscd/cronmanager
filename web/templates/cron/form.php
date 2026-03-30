@@ -181,6 +181,8 @@ foreach ($tags as $tag) {
                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
                     Minute Hour Day Month Weekday &ndash; e.g. <code>0 3 * * *</code> = daily at 03:00
                 </p>
+                <!-- Live human-readable preview – populated by JS below -->
+                <p id="schedule-preview" class="mt-1 text-xs text-blue-500 dark:text-blue-400 min-h-[1.25rem]"></p>
             </div>
 
             <!-- Command -->
@@ -371,5 +373,58 @@ function updateTargetCheckboxes(user) {
     linuxUserInput.addEventListener('blur', function() {
         updateTargetCheckboxes(this.value.trim());
     });
+})();
+
+/**
+ * Live human-readable preview for the schedule input.
+ *
+ * Fetches /crons/translate?expr=<expression> on every change (debounced 350 ms)
+ * and renders the result below the input field.  Shows nothing when the field
+ * is empty or the expression is invalid (the server falls back to the raw string
+ * in that case, which we suppress to avoid showing a pointless mirror).
+ */
+(function() {
+    const input   = document.getElementById('schedule');
+    const preview = document.getElementById('schedule-preview');
+    if (!input || !preview) return;
+
+    let debounceTimer = null;
+
+    /**
+     * Fetch the human-readable translation for expr and update the preview.
+     * @param {string} expr
+     */
+    function fetchTranslation(expr) {
+        expr = expr.trim();
+        if (expr === '') {
+            preview.textContent = '';
+            return;
+        }
+
+        fetch('/crons/translate?expr=' + encodeURIComponent(expr), {
+            credentials: 'same-origin'
+        })
+        .then(function(res) { return res.ok ? res.json() : null; })
+        .then(function(data) {
+            if (!data) { preview.textContent = ''; return; }
+            // Only show when the translation differs from the raw expression
+            // (CronTranslator returns the raw string for unsupported expressions)
+            preview.textContent = (data.human && data.human !== expr) ? data.human : '';
+        })
+        .catch(function() { preview.textContent = ''; });
+    }
+
+    // Debounce input events so we don't spam the server on every keystroke
+    input.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function() {
+            fetchTranslation(input.value);
+        }, 350);
+    });
+
+    // Fetch immediately on page load when editing an existing job
+    if (input.value.trim() !== '') {
+        fetchTranslation(input.value);
+    }
 })();
 </script>

@@ -329,8 +329,12 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
 
                             <!-- Schedule -->
-                            <td class="px-4 py-3 text-sm font-mono text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                <?= htmlspecialchars($schedule, ENT_QUOTES, 'UTF-8') ?>
+                            <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                <span class="font-mono"><?= htmlspecialchars($schedule, ENT_QUOTES, 'UTF-8') ?></span>
+                                <?php $schedHuman = (string) ($job['schedule_human'] ?? ''); ?>
+                                <?php if ($schedHuman !== '' && $schedHuman !== $schedule): ?>
+                                    <br><span class="text-xs text-gray-400 dark:text-gray-500"><?= htmlspecialchars($schedHuman, ENT_QUOTES, 'UTF-8') ?></span>
+                                <?php endif; ?>
                             </td>
 
                             <!-- Description / link to detail -->

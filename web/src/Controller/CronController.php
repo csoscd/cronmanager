@@ -31,6 +31,7 @@ use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Response;
 use Cronmanager\Web\Repository\UserPreferenceRepository;
 use Cronmanager\Web\Session\SessionManager;
+use Lorisleiva\CronTranslator\CronTranslator;
 
 /**
  * Class CronController
@@ -177,6 +178,12 @@ class CronController extends BaseController
             $pagedJobs   = $jobs;
             $currentPage = 1;
         }
+
+        // Annotate each visible job with its human-readable schedule translation
+        foreach ($pagedJobs as &$job) {
+            $job['schedule_human'] = $this->translateCron((string) ($job['schedule'] ?? ''));
+        }
+        unset($job);
 
         $this->render('cron/list.php', $this->translator()->t('crons_title'), [
             'jobs'          => $pagedJobs,
@@ -368,9 +375,10 @@ class CronController extends BaseController
         }
 
         $this->render('cron/detail.php', (string) ($job['description'] ?? "Job #{$id}"), [
-            'job'     => $job,
-            'history' => $history,
-            'isAdmin' => SessionManager::hasRole('admin'),
+            'job'           => $job,
+            'scheduleHuman' => $this->translateCron((string) ($job['schedule'] ?? '')),
+            'history'       => $history,
+            'isAdmin'       => SessionManager::hasRole('admin'),
         ], '/crons');
     }
 
@@ -892,6 +900,63 @@ class CronController extends BaseController
         }
 
         return $sshHostsByUser;
+    }
+
+    /**
+     * GET /crons/translate – return the human-readable description of a cron expression.
+     *
+     * Used by the form's live preview via fetch().
+     * Query parameters:
+     *   ?expr= – the cron expression to translate
+     *
+     * Response: application/json  {"human": "Every 5 minutes"}
+     *
+     * @param array<string,string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function translateExpr(array $params): void
+    {
+        $expr  = trim((string) ($_GET['expr'] ?? ''));
+        $human = $expr !== '' ? $this->translateCron($expr) : '';
+
+        header('Content-Type: application/json');
+        echo json_encode(['human' => $human], JSON_UNESCAPED_UNICODE);
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Translate a cron expression to a human-readable string in the current UI
+     * language.  Returns the raw expression unchanged if translation fails
+     * (e.g. for @reboot or other non-standard expressions).
+     *
+     * @param string $expr Cron expression (e.g. "0 3 * * *").
+     *
+     * @return string Human-readable string, or $expr on failure.
+     */
+    private function translateCron(string $expr): string
+    {
+        if ($expr === '') {
+            return '';
+        }
+
+        // Use the current session language; fall back to English if CronTranslator
+        // does not support it (it covers en, fr, de, pt, ru, ar, zh, ja, …).
+        $lang = (string) (SessionManager::get('lang') ?? 'en');
+
+        try {
+            return CronTranslator::translate($expr, $lang);
+        } catch (\Throwable) {
+            // Language not supported or invalid expression – retry in English
+            try {
+                return CronTranslator::translate($expr, 'en');
+            } catch (\Throwable) {
+                return $expr;
+            }
+        }
     }
 
     /**

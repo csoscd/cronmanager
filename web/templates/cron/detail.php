@@ -23,17 +23,18 @@ $job     = isset($job)     && is_array($job)     ? $job     : [];
 $history = isset($history) && is_array($history) ? $history : [];
 $isAdmin = isset($isAdmin) && (bool) $isAdmin;
 
-$jobId     = (string) ($job['id']             ?? '');
-$desc      = (string) ($job['description']    ?? "Job #{$jobId}");
-$user      = (string) ($job['linux_user']     ?? '');
-$sched     = (string) ($job['schedule']       ?? '');
-$command   = (string) ($job['command']        ?? '');
-$jobTags    = (array)  ($job['tags']           ?? []);
-$jobTargets = (array)  ($job['targets']        ?? ['local']);
-$active     = !empty($job['active']);
-$notify     = !empty($job['notify_on_failure']);
-$created    = (string) ($job['created_at']     ?? '');
-$lastRun    = (string) ($job['last_run']       ?? '');
+$jobId         = (string) ($job['id']             ?? '');
+$desc          = (string) ($job['description']    ?? "Job #{$jobId}");
+$user          = (string) ($job['linux_user']     ?? '');
+$sched         = (string) ($job['schedule']       ?? '');
+$scheduleHuman = isset($scheduleHuman) ? (string) $scheduleHuman : '';
+$command       = (string) ($job['command']        ?? '');
+$jobTags       = (array)  ($job['tags']            ?? []);
+$jobTargets    = (array)  ($job['targets']         ?? ['local']);
+$active        = !empty($job['active']);
+$notify        = !empty($job['notify_on_failure']);
+$created       = (string) ($job['created_at']      ?? '');
+$lastRun       = (string) ($job['last_run']        ?? '');
 ?>
 
 <!-- ======================================================================
@@ -180,6 +181,11 @@ $lastRun    = (string) ($job['last_run']       ?? '');
             <dd class="text-sm text-gray-900 dark:text-gray-100 font-mono">
                 <?= htmlspecialchars($sched, ENT_QUOTES, 'UTF-8') ?>
             </dd>
+            <?php if ($scheduleHuman !== '' && $scheduleHuman !== $sched): ?>
+            <dd class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                <?= htmlspecialchars($scheduleHuman, ENT_QUOTES, 'UTF-8') ?>
+            </dd>
+            <?php endif; ?>
         </div>
 
         <!-- Command -->

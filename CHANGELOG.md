@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.2.0] – branch: `dockerfull`
+
+### Fixed
+
+- **Web container: Alpine shell compatibility** – `docker/web/entrypoint.sh` used `#!/bin/bash` and bash-specific syntax (`[[ ]]`). The runtime base image (`cs_php-nginx-fpm:latest-alpine`) is Alpine Linux which has no bash. Changed shebang to `#!/bin/sh`, replaced all `[[ ]]` test constructs with POSIX `[ ]`, and removed bash-specific constructs throughout.
+- **Web container: supervisord permission errors (EACCES)** – The previous entrypoint used `su-exec nobody supervisord`, causing supervisord to start as `nobody`. supervisord requires root to create its dispatcher sockets and manage child processes; it emitted `EACCES` and failed to start nginx and PHP-FPM. Removed `su-exec`; supervisord now starts as root and nginx/PHP-FPM drop privileges internally via their own configuration (see below).
+- **Web container: PHP-FPM pool user not defined** – The base image expected the PHP-FPM master to already be running as `nobody`; without an explicit `user=` line in `www.conf` the pool failed with `[pool www] user has not been defined`. The `docker/web/Dockerfile` now appends `user=nobody`, `group=nobody`, `listen.owner=nobody`, `listen.group=nobody`, and `listen.mode=0660` to `www.conf` at build time.
+- **Web container: nginx socket permission denied** – When supervisord ran as root the PHP-FPM socket was owned by root; nginx workers ran as `nginx` (a different user) and received `Permission denied` on the socket. The `docker/web/Dockerfile` now patches `nginx.conf` to set `user nobody` so that nginx workers match the PHP-FPM socket owner.
+- **Web container: missing Tailwind CSS and Chart.js assets** – The web image had no `assets/js/` directory; Tailwind CSS and Chart.js were neither committed to the repository nor downloaded during the image build, causing broken page layout and missing charts. The `docker/web/Dockerfile` now downloads both assets via `wget` during the build stage so they are always present in the final image.
+- **`docker-compose-full.yml`: `mariadb:latest` replaced with `mariadb:lts`** – Using `:latest` on the MariaDB image risks unexpected major-version upgrades on `docker pull`. Changed to `:lts` to track the Long-Term Support release line.
+
+### Added
+
+- **`.github/workflows/auto-patch-release.yml`** – New workflow that automates patch version bumps when the upstream base images are rebuilt. Triggered by `workflow_dispatch` (manual, GitHub Actions UI) or `repository_dispatch` (programmatic, via `curl` or `gh workflow run` from the build machine). Reads the latest git tag, increments the patch digit (e.g. `v2.1.0` → `v2.1.1`), and creates a GitHub release. The existing `docker-release.yml` fires on the new release and rebuilds and pushes both Docker Hub images with the updated base image baked in.
+- **GitHub Actions: Node.js 24 compatibility** – Added `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` as a workflow-level environment variable in `docker-release.yml` to silence Node.js 20 deprecation warnings emitted by the GitHub Actions runner. Bumped `docker/build-push-action` to `@v6`.
+
+### Changed
+
+- **`docker/docker-compose-full.yml`: SSH key mount added by default** – The agent service now includes a `/root/.ssh:/root/.ssh:ro` volume mount. Without this mount the agent container has no SSH keys or known-hosts file, so crontab import and remote job execution against SSH targets silently fail. An agent-specific directory alternative (`/opt/cronmanager/.ssh`) is documented in `README.md` for installations that require key isolation.
+- **`simple_debian_setup.sh` v2.0.0: docker-only mode removed** – The interactive `docker-only` deployment path (Step 1b, all associated conditionals) has been removed. The script now exclusively supports host-agent mode (PHP CLI + systemd service). This simplifies the guided setup considerably and avoids the overlap with the recommended Docker Hub installation path. Users who want a fully containerised agent should follow the Docker Hub setup described in `README.md`.
+
+---
+
 ## [2.1.0] – branch: `dockerfull`
 
 ### Added

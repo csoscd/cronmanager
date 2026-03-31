@@ -28,11 +28,15 @@
 #     the actual job from running.
 #   - If the agent is unreachable or returns an error the job still executes.
 #
-# Dependencies:
+# Dependencies (on the agent host):
 #   - bash 4+
 #   - curl
 #   - openssl  (HMAC-SHA256 signature computation)
 #   - php 8.4  (JSON building/parsing; always available on the host)
+#
+# Dependencies (on remote SSH target hosts):
+#   - POSIX sh  (any shell: bash, dash, busybox ash, etc.)
+#   - kill      (POSIX – available on all Linux distributions)
 #
 # Make executable: chmod +x /opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh
 #
@@ -359,11 +363,14 @@ if [[ "${TARGET}" != "local" ]]; then
     REMOTE_PID_FILE="/tmp/.cmgr_${EXECUTION_ID}"
 
     # Wrap the command so the remote shell writes its PID before exec-ing.
-    # Using $BASHPID inside the remote bash ensures we get the shell's own PID.
+    # Using POSIX $$ (not bash-specific $BASHPID) so this works on any remote
+    # shell: Alpine busybox sh, dash, bash, etc.  When SSH starts 'sh -c ...'
+    # directly, $$ is the PID of that sh process; after exec it becomes the PID
+    # of the actual command, which is what the kill endpoint needs to target.
     # The pid file is cleaned up by the kill endpoint or when the job finishes.
     # shellcheck disable=SC2029
     ssh -o BatchMode=yes -o ConnectTimeout=30 "${TARGET}" -- \
-        "bash -c 'echo \$BASHPID > ${REMOTE_PID_FILE}; exec ${COMMAND}'" \
+        "sh -c 'echo \$\$ > ${REMOTE_PID_FILE}; exec ${COMMAND}'" \
         > "${TMP_OUTPUT}" 2>&1 &
     SSH_BG_PID=$!
 

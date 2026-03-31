@@ -177,13 +177,15 @@ class SwimlaneController extends BaseController
             }
 
             // Prefer the human-readable description as the display name;
-            // fall back to the raw command string if no description is set.
+            // fall back to "Job #N" when no description is set, consistent
+            // with the list, timeline, and detail views.
             $description = trim((string) ($job['description'] ?? ''));
             $command     = trim((string) ($job['command']     ?? ''));
+            $jobIdVal    = (int) ($job['id'] ?? 0);
 
             $swimlaneJobs[] = [
-                'id'         => $job['id']       ?? 0,
-                'name'       => $description !== '' ? $description : $command,
+                'id'         => $jobIdVal,
+                'name'       => $description !== '' ? $description : "Job #{$jobIdVal}",
                 'command'    => $command,
                 'cron'       => $cronExpr,
                 'cronHuman'  => $this->translateCronCached($cronExpr, $apCuAvailable),

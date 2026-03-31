@@ -373,13 +373,13 @@ if [[ "${TARGET}" != "local" ]]; then
     # Construct the remote pid-file path (based on execution_id so it is unique)
     REMOTE_PID_FILE="/tmp/.cmgr_${EXECUTION_ID}"
 
-    # The remote sh writes its PID, then exec's sh -s which reads and runs
-    # the command from stdin (provided via the here-string below).
-    # exec preserves the PID so the kill endpoint can target the right process.
-    # Using POSIX $$ so this works on Alpine/busybox/dash/bash.
+    # setsid ensures the remote sh runs as its own session/process-group leader
+    # (PGID == PID == $$), so `kill -TERM -$PID` from the kill/check-limits
+    # logic reaches sh AND all its children (e.g. a spawned sleep).
+    # exec sh -s reads the command from stdin (the here-string), preserving the PID.
     # shellcheck disable=SC2029
     ssh -o BatchMode=yes -o ConnectTimeout=30 "${TARGET}" -- \
-        "sh -c 'echo \$\$ > ${REMOTE_PID_FILE}; exec sh -s'" \
+        "setsid sh -c 'echo \$\$ > ${REMOTE_PID_FILE}; exec sh -s'" \
         <<< "${COMMAND}" \
         > "${TMP_OUTPUT}" 2>&1 &
     SSH_BG_PID=$!

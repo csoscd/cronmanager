@@ -170,7 +170,8 @@ $byUser        = (array) ($stats['byUser']      ?? []);
                         <?php foreach ($recentFailures as $entry): ?>
                             <?php
                                 $jobId      = (string) ($entry['job_id']     ?? '');
-                                $desc       = (string) ($entry['job_description'] ?? $entry['description'] ?? "Job #{$jobId}");
+                                $descRaw    = (string) ($entry['job_description'] ?? $entry['description'] ?? '');
+                                $desc       = $descRaw !== '' ? $descRaw : "Job #{$jobId}";
                                 $user       = (string) ($entry['linux_user'] ?? '');
                                 $exitCode   = isset($entry['exit_code']) ? (int) $entry['exit_code'] : null;
                                 $startedAt  = (string) ($entry['started_at']  ?? '');

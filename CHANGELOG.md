@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`cron-wrapper.sh`** updated to background the job command (local and SSH), capture the PID, report it to the agent, and then wait for completion — enabling reliable kill support without changing the wrapper's overall sequential semantics.
 - **`simple_debian_setup.sh`** now installs `/etc/cron.d/cronmanager-limits` (Step 16) to activate the execution limit checker after the agent service is started.
 - **`docker/agent/entrypoint.sh`** now writes `/etc/cron.d/cronmanager-limits` dynamically before starting the in-container cron daemon, so the checker is active in the Docker image setup without any additional configuration.
+- **Automatic crontab resync on container start** – A new `bin/resync-crontab.php` CLI script rebuilds all crontab entries from the database. The Docker agent entrypoint calls it as step 3 on every startup (before the cron daemon launches), so crontab entries are automatically restored after a container recreation, Portainer stack redeploy, or image update. No manual resync is ever needed.
 - **Schema migration tracking** – A new `schema_migrations` table records each applied migration file with a timestamp. The Docker entrypoint and `simple_debian_setup.sh` both consult this table before applying any migration file, making re-runs of the installer safe and idempotent. Fresh installs seed the table with all bundled migration filenames so that changes already present in `schema.sql` are never re-executed.
 
 ---

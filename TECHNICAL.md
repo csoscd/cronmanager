@@ -106,6 +106,7 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │   │   ├── cron-wrapper.sh        ← injected into every crontab entry
 │   │   ├── send-notification.php  ← background SMTP dispatcher (spawned by ExecutionFinishEndpoint)
 │   │   ├── check-limits.php       ← execution limit checker (runs every minute via /etc/cron.d)
+│   │   ├── resync-crontab.php     ← CLI: rebuild all crontab entries from the database
 │   │   ├── start-agent.sh         ← manual start helper
 │   │   └── create-admin.php       ← CLI tool: create first admin
 │   ├── sql/

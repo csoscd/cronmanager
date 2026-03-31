@@ -333,6 +333,25 @@ else
 fi
 
 # =============================================================================
+# 3. Resync crontab from database
+#    Rebuilds all crontab entries so that jobs are never lost after a
+#    container recreation (e.g. Portainer stack redeploy, image update).
+# =============================================================================
+
+RESYNC_SCRIPT="${AGENT_DIR}/bin/resync-crontab.php"
+
+if [[ -f "$RESYNC_SCRIPT" ]]; then
+    log_info "Resyncing crontab entries from database..."
+    if php "${RESYNC_SCRIPT}" 2>&1; then
+        log_info "Crontab resync completed."
+    else
+        log_warn "Crontab resync exited with errors – jobs may need a manual resync."
+    fi
+else
+    log_warn "Resync script not found at ${RESYNC_SCRIPT} – skipping crontab resync."
+fi
+
+# =============================================================================
 # 4. Install execution-limit checker cron entry and start cron daemon
 # =============================================================================
 

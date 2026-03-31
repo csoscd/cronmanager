@@ -105,6 +105,8 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │   ├── bin/
 │   │   ├── cron-wrapper.sh        ← injected into every crontab entry
 │   │   ├── send-notification.php  ← background SMTP dispatcher (spawned by ExecutionFinishEndpoint)
+│   │   ├── check-limits.php       ← execution limit checker (runs every minute via /etc/cron.d)
+│   │   ├── resync-crontab.php     ← CLI: rebuild all crontab entries from the database
 │   │   ├── start-agent.sh         ← manual start helper
 │   │   └── create-admin.php       ← CLI tool: create first admin
 │   ├── sql/
@@ -130,6 +132,8 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │           ├── CronUnmanagedEndpoint.php
 │           ├── ExecutionStartEndpoint.php
 │           ├── ExecutionFinishEndpoint.php
+│           ├── ExecutionUpdatePidEndpoint.php
+│           ├── ExecutionKillEndpoint.php
 │           ├── TagListEndpoint.php
 │           ├── TagCreateEndpoint.php
 │           ├── TagDeleteEndpoint.php
@@ -332,19 +336,70 @@ complete crontab file from the current database state for the affected Linux use
 3. Compute HMAC signature for each request (openssl dgst -sha256 -hmac)
 4. POST /execution/start  → receive execution_id
 5. GET  /crons/{job_id}   → fetch command string
-6. Execute command:
-     target = "local"          → bash -c "<command>"  (dedicated child process)
-     target = "<ssh-alias>"    → ssh -o BatchMode=yes <alias> -- <command>
+6. Launch command in background to enable PID capture:
+     target = "local"          → writes command to a temp file (mktemp --suffix=.sh)
+                                  bash <tmp_script> > tmp_output 2>&1 &
+                                  LOCAL_JOB_PID=$!
+                                  POST /execution/{id}/pid  {"pid": $LOCAL_JOB_PID}
+                                  wait $LOCAL_JOB_PID
+                                  removes temp script file after wait
+     target = "<ssh-alias>"    → passes command via stdin (here-string) to remote sh:
+                                    ssh host -- "sh -c 'echo $$ > /tmp/.cmgr_EXEC_ID; exec sh -s'" <<< COMMAND
+                                  the remote sh -s reads and executes COMMAND from stdin,
+                                  avoiding all quoting issues with single quotes / &&  / ||
+                                  POST /execution/{id}/pid  {"pid_file": "/tmp/.cmgr_EXEC_ID"}
+                                  wait $SSH_BG_PID
+                                  removes remote PID file after wait
 7. Capture stdout + stderr combined, truncate at 50,000 bytes
 8. POST /execution/finish  → report exit_code, output, finished_at  (60 s timeout)
 9. Exit with the original command's exit code
 ```
 
+The wrapper handles HTTP `409 Conflict` from `POST /execution/start` silently: it logs
+a notice and exits 0 without running the command. This is the mechanism behind singleton
+mode (see below).
+
 The wrapper logs to stderr (which is delivered by cron as a mail to the Linux user if
 cron mail is configured). It does not abort if the agent is unreachable — the command
 runs regardless and a best-effort finish report is sent.
 
+**Singleton mode:**
+
+When a job has the `singleton` flag set, the `ExecutionStartEndpoint` queries
+`execution_log` for any row with the same `cronjob_id` that has `finished_at IS NULL`
+(i.e. still running). If one is found, the agent returns `409 Conflict` instead of
+inserting a new log row. The wrapper detects the `409` HTTP status code and exits 0
+immediately — no execution record is created and no failure is reported. This is
+transparent to the user unless they inspect the agent log.
+
 **Dependencies:** `bash 4+`, `curl`, `openssl`, `php`
+
+### check-limits.php
+
+`bin/check-limits.php` is a CLI script that runs every minute via a system cron entry
+installed at `/etc/cron.d/cronmanager-limits`.
+
+**Purpose:** detect executions that have exceeded their configured `execution_limit_seconds`
+and either notify, auto-kill, or both — handling the case where the job outlives a single
+`check-limits.php` invocation.
+
+**Logic per exceeded execution:**
+
+```
+1. Query all running executions (finished_at IS NULL) whose elapsed time
+   exceeds the job's execution_limit_seconds
+2. For each:
+   a. If notify_on_failure=1 AND notified_limit_exceeded=0:
+        dispatch notification (exit_code=-3) via send-notification.php
+        set notified_limit_exceeded=1
+   b. If auto_kill_on_limit=1:
+        kill process (same logic as ExecutionKillEndpoint)
+        mark execution finished with exit_code=-2
+```
+
+The `notified_limit_exceeded` flag ensures only one notification is sent even if the
+job runs for multiple checker cycles. `ExecutionFinishEndpoint` performs the same
+check at finish time to cover jobs that complete before the next checker run.
 
 ### MailNotifier
 
@@ -521,10 +576,14 @@ Called by `cron-wrapper.sh` when a job begins.
 }
 ```
 
-**Response:**
+**Response (201 Created):**
 ```json
 { "execution_id": 1001 }
 ```
+
+**Response (409 Conflict)** – returned when the job has `singleton = 1` and a previous
+execution has no `finished_at` (still running). The wrapper exits 0; no execution record
+is created.
 
 ---
 
@@ -545,6 +604,47 @@ Called by `cron-wrapper.sh` when a job completes.
 ```
 
 **Response:** HTTP 204 No Content.
+
+---
+
+### POST /execution/{id}/pid
+
+Called by `cron-wrapper.sh` immediately after the job process is launched (before `wait`).
+Stores the local process PID or the remote PID file path so the kill endpoint can locate the process.
+
+**Request body (local):**
+```json
+{ "pid": 12345 }
+```
+
+**Request body (remote SSH):**
+```json
+{ "pid_file": "/tmp/.cmgr_1001" }
+```
+
+Either field may be omitted; both may be supplied simultaneously.
+
+**Response:** HTTP 204 No Content, or HTTP 404 if the execution is not found / already finished.
+
+---
+
+### POST /execution/{id}/kill
+
+Terminates a running execution. Admin-only via web UI.
+
+- **Local targets**: sends `SIGTERM` to the entire process group (`-$pid`) using `posix_kill()`.
+- **Remote SSH targets**: SSHes to the target host, reads the PID from the stored PID file (path validated against `^/tmp/\.cmgr_\d+$`), sends `kill -TERM -$PID`, then removes the file.
+
+After killing, marks the execution finished with `exit_code = -2`, appends `[Job was killed by operator]` to the output, and clears `pid` / `pid_file`.
+
+**Response:** HTTP 204 No Content, or an error JSON on failure.
+
+| Status | Meaning |
+|--------|---------|
+| 204 | Kill signal sent; execution marked finished |
+| 404 | Execution not found or already finished |
+| 422 | No PID stored for this execution |
+| 500 | Kill attempt failed (process not found, SSH error, etc.) |
 
 ---
 
@@ -931,7 +1031,10 @@ is stored in `$_SESSION['lang']`. Fallback is English if a key is missing.
 | `command` | TEXT | Command to execute |
 | `description` | VARCHAR(255) | Human-readable name |
 | `active` | TINYINT(1) | `1` = enabled |
-| `notify_on_failure` | TINYINT(1) | Send email on failure |
+| `notify_on_failure` | TINYINT(1) | Send email on failure or limit exceeded |
+| `execution_limit_seconds` | INT UNSIGNED NULL | Maximum allowed runtime; NULL = no limit |
+| `auto_kill_on_limit` | TINYINT(1) | `1` = auto-kill when limit is exceeded |
+| `singleton` | TINYINT(1) | `1` = skip new execution if a previous instance is still running |
 | `execution_mode` | ENUM('local','remote') | Legacy; superseded by `job_targets` |
 | `ssh_host` | VARCHAR(255) NULL | Legacy; superseded by `job_targets` |
 | `created_at` | DATETIME | |
@@ -970,9 +1073,19 @@ UNIQUE KEY: `(job_id, target)`
 | `cronjob_id` | INT UNSIGNED FK → `cronjobs.id` | CASCADE DELETE |
 | `started_at` | DATETIME | |
 | `finished_at` | DATETIME NULL | NULL while running |
-| `exit_code` | INT NULL | NULL while running |
+| `exit_code` | INT NULL | NULL while running; `-2` = killed by operator; `-3` = limit exceeded (still running) |
 | `output` | TEXT NULL | Truncated at 50,000 bytes |
 | `target` | VARCHAR(255) NULL | `"local"`, SSH alias, or NULL (pre-migration rows) |
+| `pid` | INT UNSIGNED NULL | Process PID for local executions; cleared on finish |
+| `pid_file` | VARCHAR(255) NULL | Remote PID file path for SSH executions; cleared on finish |
+| `notified_limit_exceeded` | TINYINT(1) | `1` = limit-exceeded notification already sent |
+
+### `schema_migrations`
+
+| Column | Type | Notes |
+|---|---|---|
+| `filename` | VARCHAR(255) PK | Base filename of the applied migration (e.g. `004_kill_and_limits.sql`) |
+| `applied_at` | DATETIME | Timestamp of application (DEFAULT CURRENT_TIMESTAMP) |
 
 ---
 
@@ -1531,6 +1644,14 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
     < /opt/cronmanager/agent/sql/migrations/NNN_description.sql'
 ```
 
+**Migration tracking via `schema_migrations`:**
+
+Every applied migration is recorded in the `schema_migrations` table (filename + timestamp).
+Both the Docker entrypoint and `simple_debian_setup.sh` check this table before applying a file,
+so re-running the installer on an existing deployment is always safe. On a fresh install, all
+bundled migration filenames are seeded into the table immediately after `schema.sql` is applied,
+since all their changes are already included in the baseline schema.
+
 **Existing migrations:**
 
 | File | Change |
@@ -1538,6 +1659,7 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
 | `001_add_cron_list_page_size.sql` | Added `cron_list_page_size` column to `users` |
 | `002_add_job_targets.sql` | Added `job_targets` table for multi-host support |
 | `003_add_target_to_execution_log.sql` | Added `target` column to `execution_log` |
+| `004_kill_and_limits.sql` | Added `pid`, `pid_file`, `notified_limit_exceeded` to `execution_log`; added `execution_limit_seconds`, `auto_kill_on_limit` to `cronjobs` |
 
 Always apply migrations in order. The full schema in `agent/sql/schema.sql` reflects
 the current state after all migrations and is used for fresh installations.

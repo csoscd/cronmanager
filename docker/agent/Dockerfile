@@ -48,6 +48,11 @@ COPY agent/ /opt/cronmanager/agent/
 # Copy the SQL schema so the entrypoint can bootstrap an empty database
 COPY agent/sql/schema.sql /opt/cronmanager/schema.sql
 
+# Make bin scripts executable
+RUN chmod +x /opt/cronmanager/agent/bin/cron-wrapper.sh \
+             /opt/cronmanager/agent/bin/resync-crontab.php \
+             /opt/cronmanager/agent/bin/check-limits.php
+
 # Copy and configure entrypoint
 COPY docker/agent/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

@@ -227,9 +227,9 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
         <!-- Apply button -->
         <div>
             <button type="submit"
-                    class="bg-gray-700 hover:bg-gray-800 text-white text-sm font-medium
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium
                            px-5 py-2 rounded-lg transition focus:outline-none
-                           focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                           focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                 <?= htmlspecialchars($t('filter_apply'), ENT_QUOTES, 'UTF-8') ?>
             </button>
         </div>
@@ -237,8 +237,8 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
         <?php if ($filterTag !== '' || $filterUser !== '' || $filterTarget !== '' || $filterSearch !== '' || $filterResult !== ''): ?>
             <div>
                 <a href="/crons?_reset=1"
-                   class="text-sm text-gray-500 hover:text-gray-700 underline py-2 block">
-                    &times; <?= htmlspecialchars($t('cancel'), ENT_QUOTES, 'UTF-8') ?>
+                   class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white underline py-2 block">
+                    &times; <?= htmlspecialchars($t('filter_reset'), ENT_QUOTES, 'UTF-8') ?>
                 </a>
             </div>
         <?php endif; ?>
@@ -315,12 +315,20 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                             $crontabOk     = !isset($job['crontab_ok']) || (bool) $job['crontab_ok'];
                             $lastRun       = (string) ($job['last_run'] ?? '');
                             $exitCode      = isset($job['last_exit_code']) ? (int) $job['last_exit_code'] : null;
+                            $limitSeconds  = isset($job['execution_limit_seconds']) && $job['execution_limit_seconds'] !== null
+                                ? (int) $job['execution_limit_seconds'] : null;
 
                             // Exit code badge style
                             if ($exitCode === null) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">—</span>';
                             } elseif ($exitCode === 0) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">0</span>';
+                            } elseif ($exitCode === -2) {
+                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">'
+                                    . htmlspecialchars($t('cron_killed_badge'), ENT_QUOTES, 'UTF-8') . '</span>';
+                            } elseif ($exitCode === -3) {
+                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">'
+                                    . htmlspecialchars($t('cron_limit_badge'), ENT_QUOTES, 'UTF-8') . '</span>';
                             } else {
                                 $safeCode  = htmlspecialchars((string) $exitCode, ENT_QUOTES, 'UTF-8');
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">' . $safeCode . '</span>';
@@ -329,8 +337,12 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
 
                             <!-- Schedule -->
-                            <td class="px-4 py-3 text-sm font-mono text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                <?= htmlspecialchars($schedule, ENT_QUOTES, 'UTF-8') ?>
+                            <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                <span class="font-mono"><?= htmlspecialchars($schedule, ENT_QUOTES, 'UTF-8') ?></span>
+                                <?php $schedHuman = (string) ($job['schedule_human'] ?? ''); ?>
+                                <?php if ($schedHuman !== '' && $schedHuman !== $schedule): ?>
+                                    <br><span class="text-xs text-gray-400 dark:text-gray-500"><?= htmlspecialchars($schedHuman, ENT_QUOTES, 'UTF-8') ?></span>
+                                <?php endif; ?>
                             </td>
 
                             <!-- Description / link to detail -->
@@ -408,9 +420,17 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                                 <?= htmlspecialchars($lastRun !== '' ? $lastRun : $t('cron_never_run'), ENT_QUOTES, 'UTF-8') ?>
                             </td>
 
-                            <!-- Exit code badge -->
+                            <!-- Exit code badge + limit indicator -->
                             <td class="px-4 py-3 text-sm">
-                                <?= $exitBadge ?>
+                                <div class="flex flex-wrap items-center gap-1">
+                                    <?= $exitBadge ?>
+                                    <?php if ($limitSeconds !== null): ?>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-200"
+                                              title="<?= htmlspecialchars($t('cron_execution_limit') . ': ' . $limitSeconds . 's', ENT_QUOTES, 'UTF-8') ?>">
+                                            &#9201; <?= (int) $limitSeconds ?>s
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
                             </td>
 
                             <!-- Open button (all users) -->

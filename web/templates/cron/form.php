@@ -48,6 +48,8 @@ $jobId         = ($isEdit && !$isCopy) ? (string) ($job['id'] ?? '') : '';
 $formAction    = ($isEdit && $jobId !== '') ? '/crons/' . rawurlencode($jobId) . '/edit' : '/crons';
 $isActiveVal   = $job !== null ? !empty($job['active']) : true;
 $isNotifyVal   = $job !== null ? !empty($job['notify_on_failure']) : true;
+$isAutoKillVal = $job !== null ? !empty($job['auto_kill_on_limit']) : false;
+$isSingletonVal = $job !== null ? !empty($job['singleton']) : false;
 $pageTitle     = $isEdit ? $t('cron_edit') : $t('cron_add');
 
 // Collect existing tag names for click-to-insert hints
@@ -181,6 +183,8 @@ foreach ($tags as $tag) {
                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
                     Minute Hour Day Month Weekday &ndash; e.g. <code>0 3 * * *</code> = daily at 03:00
                 </p>
+                <!-- Live human-readable preview – populated by JS below -->
+                <p id="schedule-preview" class="mt-1 text-xs text-blue-500 dark:text-blue-400 min-h-[1.25rem]"></p>
             </div>
 
             <!-- Command -->
@@ -244,6 +248,30 @@ foreach ($tags as $tag) {
                 <?php endif; ?>
             </div>
 
+            <!-- Execution Limit -->
+            <div class="mb-4">
+                <label for="execution_limit_seconds"
+                       class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <?= htmlspecialchars($t('cron_execution_limit'), ENT_QUOTES, 'UTF-8') ?>
+                </label>
+                <div class="flex items-center gap-2">
+                    <input type="number" id="execution_limit_seconds" name="execution_limit_seconds"
+                           min="1" step="1"
+                           value="<?= htmlspecialchars($val('execution_limit_seconds'), ENT_QUOTES, 'UTF-8') ?>"
+                           class="w-36 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                  focus:outline-none focus:ring-2 focus:ring-blue-500
+                                  focus:border-blue-500 transition"
+                           placeholder="e.g. 300">
+                    <span class="text-sm text-gray-500 dark:text-gray-400">
+                        <?= htmlspecialchars($t('cron_execution_limit_seconds'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                </div>
+                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    <?= htmlspecialchars($t('cron_execution_limit_hint'), ENT_QUOTES, 'UTF-8') ?>
+                </p>
+            </div>
+
             <!-- Checkboxes row -->
             <div class="mb-6 flex flex-wrap gap-6">
 
@@ -258,7 +286,7 @@ foreach ($tags as $tag) {
                     </span>
                 </label>
 
-                <!-- Notify on failure -->
+                <!-- Notify on failure / limit exceeded -->
                 <label class="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" name="notify_on_failure" value="1"
                            <?= $isNotifyVal ? 'checked' : '' ?>
@@ -266,6 +294,30 @@ foreach ($tags as $tag) {
                                   focus:ring-blue-500 cursor-pointer">
                     <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
                         <?= htmlspecialchars($t('cron_notify_on_failure'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                </label>
+
+                <!-- Auto-kill on limit exceeded -->
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="auto_kill_on_limit" value="1"
+                           id="auto_kill_on_limit"
+                           <?= $isAutoKillVal ? 'checked' : '' ?>
+                           class="w-4 h-4 text-orange-500 border-gray-300 rounded
+                                  focus:ring-orange-400 cursor-pointer">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <?= htmlspecialchars($t('cron_auto_kill'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                </label>
+
+                <!-- Singleton mode -->
+                <label class="flex items-center gap-2 cursor-pointer" title="<?= htmlspecialchars($t('cron_singleton_hint'), ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="checkbox" name="singleton" value="1"
+                           id="singleton"
+                           <?= $isSingletonVal ? 'checked' : '' ?>
+                           class="w-4 h-4 text-purple-600 border-gray-300 rounded
+                                  focus:ring-purple-500 cursor-pointer">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <?= htmlspecialchars($t('cron_singleton'), ENT_QUOTES, 'UTF-8') ?>
                     </span>
                 </label>
 
@@ -371,5 +423,58 @@ function updateTargetCheckboxes(user) {
     linuxUserInput.addEventListener('blur', function() {
         updateTargetCheckboxes(this.value.trim());
     });
+})();
+
+/**
+ * Live human-readable preview for the schedule input.
+ *
+ * Fetches /crons/translate?expr=<expression> on every change (debounced 350 ms)
+ * and renders the result below the input field.  Shows nothing when the field
+ * is empty or the expression is invalid (the server falls back to the raw string
+ * in that case, which we suppress to avoid showing a pointless mirror).
+ */
+(function() {
+    const input   = document.getElementById('schedule');
+    const preview = document.getElementById('schedule-preview');
+    if (!input || !preview) return;
+
+    let debounceTimer = null;
+
+    /**
+     * Fetch the human-readable translation for expr and update the preview.
+     * @param {string} expr
+     */
+    function fetchTranslation(expr) {
+        expr = expr.trim();
+        if (expr === '') {
+            preview.textContent = '';
+            return;
+        }
+
+        fetch('/crons/translate?expr=' + encodeURIComponent(expr), {
+            credentials: 'same-origin'
+        })
+        .then(function(res) { return res.ok ? res.json() : null; })
+        .then(function(data) {
+            if (!data) { preview.textContent = ''; return; }
+            // Only show when the translation differs from the raw expression
+            // (CronTranslator returns the raw string for unsupported expressions)
+            preview.textContent = (data.human && data.human !== expr) ? data.human : '';
+        })
+        .catch(function() { preview.textContent = ''; });
+    }
+
+    // Debounce input events so we don't spam the server on every keystroke
+    input.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function() {
+            fetchTranslation(input.value);
+        }, 350);
+    });
+
+    // Fetch immediately on page load when editing an existing job
+    if (input.value.trim() !== '') {
+        fetchTranslation(input.value);
+    }
 })();
 </script>

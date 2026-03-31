@@ -124,14 +124,19 @@ final class CronCreateEndpoint
         // 3. Prepare values
         // ------------------------------------------------------------------
 
-        $linuxUser       = (string)  $body['linux_user'];
-        $schedule        = (string)  $body['schedule'];
-        $command         = (string)  $body['command'];
-        $description     = isset($body['description'])       ? (string) $body['description']       : null;
-        $active          = isset($body['active'])            ? (bool)   $body['active']            : true;
-        $notifyOnFailure = isset($body['notify_on_failure'])  ? (bool)   $body['notify_on_failure']  : true;
-        $targets         = $this->normaliseTargets($body['targets'] ?? ['local']);
-        $tags            = isset($body['tags']) && is_array($body['tags']) ? $body['tags'] : [];
+        $linuxUser            = (string)  $body['linux_user'];
+        $schedule             = (string)  $body['schedule'];
+        $command              = (string)  $body['command'];
+        $description          = isset($body['description'])       ? (string) $body['description']       : null;
+        $active               = isset($body['active'])            ? (bool)   $body['active']            : true;
+        $notifyOnFailure      = isset($body['notify_on_failure'])  ? (bool)   $body['notify_on_failure']  : true;
+        $executionLimitSeconds = isset($body['execution_limit_seconds']) && is_int($body['execution_limit_seconds']) && $body['execution_limit_seconds'] > 0
+            ? $body['execution_limit_seconds']
+            : null;
+        $autoKillOnLimit      = isset($body['auto_kill_on_limit']) ? (bool) $body['auto_kill_on_limit'] : false;
+        $singleton            = isset($body['singleton'])          ? (bool) $body['singleton']          : false;
+        $targets              = $this->normaliseTargets($body['targets'] ?? ['local']);
+        $tags                 = isset($body['tags']) && is_array($body['tags']) ? $body['tags'] : [];
 
         // Derive legacy columns from targets for backward compatibility with
         // old wrapper invocations that carry no target argument.
@@ -153,19 +158,24 @@ final class CronCreateEndpoint
             // INSERT the job
             $stmt = $this->pdo->prepare(
                 'INSERT INTO cronjobs
-                    (linux_user, schedule, command, description, active, notify_on_failure, execution_mode, ssh_host)
+                    (linux_user, schedule, command, description, active, notify_on_failure,
+                     execution_limit_seconds, auto_kill_on_limit, singleton, execution_mode, ssh_host)
                  VALUES
-                    (:linux_user, :schedule, :command, :description, :active, :notify_on_failure, :execution_mode, :ssh_host)'
+                    (:linux_user, :schedule, :command, :description, :active, :notify_on_failure,
+                     :execution_limit_seconds, :auto_kill_on_limit, :singleton, :execution_mode, :ssh_host)'
             );
             $stmt->execute([
-                ':linux_user'        => $linuxUser,
-                ':schedule'          => $schedule,
-                ':command'           => $command,
-                ':description'       => $description,
-                ':active'            => (int) $active,
-                ':notify_on_failure' => (int) $notifyOnFailure,
-                ':execution_mode'    => $executionMode,
-                ':ssh_host'          => $sshHost,
+                ':linux_user'             => $linuxUser,
+                ':schedule'               => $schedule,
+                ':command'                => $command,
+                ':description'            => $description,
+                ':active'                 => (int) $active,
+                ':notify_on_failure'      => (int) $notifyOnFailure,
+                ':execution_limit_seconds'=> $executionLimitSeconds,
+                ':auto_kill_on_limit'     => (int) $autoKillOnLimit,
+                ':singleton'              => (int) $singleton,
+                ':execution_mode'         => $executionMode,
+                ':ssh_host'               => $sshHost,
             ]);
 
             $jobId = (int) $this->pdo->lastInsertId();
@@ -287,6 +297,11 @@ final class CronCreateEndpoint
         // notify_on_failure: optional bool
         if (isset($body['notify_on_failure']) && !is_bool($body['notify_on_failure'])) {
             $errors['notify_on_failure'] = 'Must be a boolean.';
+        }
+
+        // singleton: optional bool
+        if (isset($body['singleton']) && !is_bool($body['singleton'])) {
+            $errors['singleton'] = 'Must be a boolean.';
         }
 
         // targets: optional array, at least one non-empty string, each max 255 chars
@@ -481,6 +496,9 @@ final class CronCreateEndpoint
                 j.description,
                 j.active,
                 j.notify_on_failure,
+                j.execution_limit_seconds,
+                j.auto_kill_on_limit,
+                j.singleton,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -509,19 +527,24 @@ final class CronCreateEndpoint
         $targets = $targetsRaw !== '' ? explode(',', $targetsRaw) : ['local'];
 
         return [
-            'id'                => (int)    $row['id'],
-            'linux_user'        => (string) $row['linux_user'],
-            'schedule'          => (string) $row['schedule'],
-            'command'           => (string) $row['command'],
-            'description'       => isset($row['description']) ? (string) $row['description'] : null,
-            'active'            => (bool)   $row['active'],
-            'notify_on_failure' => (bool)   $row['notify_on_failure'],
-            'targets'           => $targets,
+            'id'                       => (int)    $row['id'],
+            'linux_user'               => (string) $row['linux_user'],
+            'schedule'                 => (string) $row['schedule'],
+            'command'                  => (string) $row['command'],
+            'description'              => isset($row['description']) ? (string) $row['description'] : null,
+            'active'                   => (bool)   $row['active'],
+            'notify_on_failure'        => (bool)   $row['notify_on_failure'],
+            'execution_limit_seconds'  => isset($row['execution_limit_seconds']) && $row['execution_limit_seconds'] !== null
+                ? (int) $row['execution_limit_seconds']
+                : null,
+            'auto_kill_on_limit'       => (bool)   ($row['auto_kill_on_limit'] ?? false),
+            'singleton'                => (bool)   ($row['singleton']        ?? false),
+            'targets'                  => $targets,
             // Legacy fields kept for backward compatibility
-            'execution_mode'    => (string) ($row['execution_mode'] ?? 'local'),
-            'ssh_host'          => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,
-            'created_at'        => (string) $row['created_at'],
-            'tags'              => $tags,
+            'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),
+            'ssh_host'                 => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,
+            'created_at'               => (string) $row['created_at'],
+            'tags'                     => $tags,
         ];
     }
 }

@@ -23,17 +23,23 @@ $job     = isset($job)     && is_array($job)     ? $job     : [];
 $history = isset($history) && is_array($history) ? $history : [];
 $isAdmin = isset($isAdmin) && (bool) $isAdmin;
 
-$jobId     = (string) ($job['id']             ?? '');
-$desc      = (string) ($job['description']    ?? "Job #{$jobId}");
-$user      = (string) ($job['linux_user']     ?? '');
-$sched     = (string) ($job['schedule']       ?? '');
-$command   = (string) ($job['command']        ?? '');
-$jobTags    = (array)  ($job['tags']           ?? []);
-$jobTargets = (array)  ($job['targets']        ?? ['local']);
-$active     = !empty($job['active']);
-$notify     = !empty($job['notify_on_failure']);
-$created    = (string) ($job['created_at']     ?? '');
-$lastRun    = (string) ($job['last_run']       ?? '');
+$jobId         = (string) ($job['id']             ?? '');
+$desc          = (string) ($job['description']    ?? "Job #{$jobId}");
+$user          = (string) ($job['linux_user']     ?? '');
+$sched         = (string) ($job['schedule']       ?? '');
+$scheduleHuman = isset($scheduleHuman) ? (string) $scheduleHuman : '';
+$command       = (string) ($job['command']        ?? '');
+$jobTags       = (array)  ($job['tags']            ?? []);
+$jobTargets    = (array)  ($job['targets']         ?? ['local']);
+$active        = !empty($job['active']);
+$notify        = !empty($job['notify_on_failure']);
+$created       = (string) ($job['created_at']      ?? '');
+$lastRun       = (string) ($job['last_run']        ?? '');
+$limitSeconds  = isset($job['execution_limit_seconds']) && $job['execution_limit_seconds'] !== null
+    ? (int) $job['execution_limit_seconds']
+    : null;
+$autoKill      = !empty($job['auto_kill_on_limit']);
+$singleton     = !empty($job['singleton']);
 ?>
 
 <!-- ======================================================================
@@ -44,6 +50,28 @@ $lastRun    = (string) ($job['last_run']       ?? '');
         &larr; <?= htmlspecialchars($t('crons_title'), ENT_QUOTES, 'UTF-8') ?>
     </a>
 </div>
+
+<?php
+// Flash messages from kill action
+$killNoticeKey = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_notice');
+$killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_error');
+?>
+<?php if ($killNoticeKey !== null): ?>
+<div class="mb-4 flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300">
+    <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+    </svg>
+    <?= htmlspecialchars($t($killNoticeKey), ENT_QUOTES, 'UTF-8') ?>
+</div>
+<?php endif; ?>
+<?php if ($killErrorKey !== null): ?>
+<div class="mb-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+    <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <?= htmlspecialchars($t($killErrorKey), ENT_QUOTES, 'UTF-8') ?>
+</div>
+<?php endif; ?>
 
 <!-- ======================================================================
      Job detail card
@@ -180,6 +208,11 @@ $lastRun    = (string) ($job['last_run']       ?? '');
             <dd class="text-sm text-gray-900 dark:text-gray-100 font-mono">
                 <?= htmlspecialchars($sched, ENT_QUOTES, 'UTF-8') ?>
             </dd>
+            <?php if ($scheduleHuman !== '' && $scheduleHuman !== $sched): ?>
+            <dd class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                <?= htmlspecialchars($scheduleHuman, ENT_QUOTES, 'UTF-8') ?>
+            </dd>
+            <?php endif; ?>
         </div>
 
         <!-- Command -->
@@ -215,13 +248,49 @@ $lastRun    = (string) ($job['last_run']       ?? '');
             </dd>
         </div>
 
-        <!-- Notify on failure -->
+        <!-- Notify on failure / limit exceeded -->
         <div>
             <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
                 <?= htmlspecialchars($t('cron_notify_on_failure'), ENT_QUOTES, 'UTF-8') ?>
             </dt>
             <dd class="text-sm text-gray-600">
                 <?= $notify ? '✓' : '—' ?>
+            </dd>
+        </div>
+
+        <!-- Execution limit -->
+        <div>
+            <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
+                <?= htmlspecialchars($t('cron_execution_limit'), ENT_QUOTES, 'UTF-8') ?>
+            </dt>
+            <dd class="text-sm text-gray-600 dark:text-gray-300">
+                <?php if ($limitSeconds !== null): ?>
+                    <?= htmlspecialchars((string) $limitSeconds, ENT_QUOTES, 'UTF-8') ?>
+                    <?= htmlspecialchars($t('cron_execution_limit_seconds'), ENT_QUOTES, 'UTF-8') ?>
+                    <?php if ($autoKill): ?>
+                        <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+                            <?= htmlspecialchars($t('cron_auto_kill'), ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                    <?php endif; ?>
+                <?php else: ?>
+                    —
+                <?php endif; ?>
+            </dd>
+        </div>
+
+        <!-- Singleton -->
+        <div>
+            <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
+                <?= htmlspecialchars($t('cron_singleton'), ENT_QUOTES, 'UTF-8') ?>
+            </dt>
+            <dd class="text-sm text-gray-600 dark:text-gray-300">
+                <?php if ($singleton): ?>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                        <?= htmlspecialchars($t('cron_singleton'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                <?php else: ?>
+                    —
+                <?php endif; ?>
             </dd>
         </div>
 
@@ -286,31 +355,42 @@ $lastRun    = (string) ($job['last_run']       ?? '');
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             <?= htmlspecialchars($t('output'), ENT_QUOTES, 'UTF-8') ?>
                         </th>
+                        <?php if ($isAdmin): ?>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            <?= htmlspecialchars($t('actions'), ENT_QUOTES, 'UTF-8') ?>
+                        </th>
+                        <?php endif; ?>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                     <?php foreach ($history as $idx => $entry): ?>
                         <?php
-                            $startedAt  = (string) ($entry['started_at']      ?? '');
-                            $finishedAt = (string) ($entry['finished_at']     ?? '');
-                            $exitCode   = isset($entry['exit_code']) ? $entry['exit_code'] : null;
-                            $duration   = isset($entry['duration_seconds'])
+                            $startedAt    = (string) ($entry['started_at']  ?? '');
+                            $finishedAt   = (string) ($entry['finished_at'] ?? '');
+                            $exitCode     = isset($entry['exit_code']) ? $entry['exit_code'] : null;
+                            $executionId  = (string) ($entry['execution_id'] ?? '');
+                            $isRunning    = $exitCode === null && $finishedAt === '';
+                            $duration     = isset($entry['duration_seconds'])
                                 ? round((float) $entry['duration_seconds'], 1) . 's'
                                 : '–';
-                            $entryTarget = (string) ($entry['target'] ?? '');
-                            $output      = (string) ($entry['output'] ?? '');
-                            $outputId    = 'hist-output-' . $idx;
-                            $outputTrunc = mb_strlen($output) > 200
+                            $entryTarget  = (string) ($entry['target'] ?? '');
+                            $output       = (string) ($entry['output'] ?? '');
+                            $outputId     = 'hist-output-' . $idx;
+                            $outputTrunc  = mb_strlen($output) > 200
                                 ? mb_substr($output, 0, 200) . '…'
                                 : $output;
 
                             // Exit code badge
-                            if ($exitCode === null) {
+                            if ($isRunning) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">'
                                     . htmlspecialchars($t('status_running'), ENT_QUOTES, 'UTF-8')
                                     . '</span>';
-                            } elseif ((int) $exitCode === 0) {
+                            } elseif ($exitCode !== null && (int) $exitCode === 0) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">0</span>';
+                            } elseif ($exitCode !== null && (int) $exitCode === -2) {
+                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">'
+                                    . htmlspecialchars($t('cron_kill_running'), ENT_QUOTES, 'UTF-8')
+                                    . '</span>';
                             } else {
                                 $safeCode  = htmlspecialchars((string) $exitCode, ENT_QUOTES, 'UTF-8');
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">' . $safeCode . '</span>';
@@ -321,7 +401,7 @@ $lastRun    = (string) ($job['last_run']       ?? '');
                                 <?= htmlspecialchars($startedAt, ENT_QUOTES, 'UTF-8') ?>
                             </td>
                             <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
-                                <?= htmlspecialchars($finishedAt, ENT_QUOTES, 'UTF-8') ?>
+                                <?= htmlspecialchars($finishedAt !== '' ? $finishedAt : '—', ENT_QUOTES, 'UTF-8') ?>
                             </td>
                             <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
                                 <?= htmlspecialchars($duration, ENT_QUOTES, 'UTF-8') ?>
@@ -361,6 +441,26 @@ $lastRun    = (string) ($job['last_run']       ?? '');
                                     <span class="text-gray-300 dark:text-gray-600">—</span>
                                 <?php endif; ?>
                             </td>
+                            <?php if ($isAdmin): ?>
+                            <td class="px-4 py-3 text-sm whitespace-nowrap">
+                                <?php if ($isRunning && $executionId !== ''): ?>
+                                    <form method="POST"
+                                          action="/execution/<?= htmlspecialchars(rawurlencode($executionId), ENT_QUOTES, 'UTF-8') ?>/kill"
+                                          onsubmit="return confirm('<?= htmlspecialchars($t('cron_kill_confirm'), ENT_QUOTES, 'UTF-8') ?>')">
+                                        <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                        <input type="hidden" name="_return" value="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>">
+                                        <button type="submit"
+                                                class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
+                                                       bg-red-50 hover:bg-red-100 text-red-700 border border-red-200
+                                                       transition focus:outline-none focus:ring-2 focus:ring-red-400">
+                                            <?= htmlspecialchars($t('cron_kill_running'), ENT_QUOTES, 'UTF-8') ?>
+                                        </button>
+                                    </form>
+                                <?php else: ?>
+                                    <span class="text-gray-300 dark:text-gray-600">—</span>
+                                <?php endif; ?>
+                            </td>
+                            <?php endif; ?>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

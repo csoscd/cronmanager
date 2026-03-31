@@ -183,14 +183,16 @@ try {
     $router->addProtectedRoute('POST', '/crons/import',        [$cronCtrl, 'importStore'], 'admin');
     $router->addProtectedRoute('GET',  '/crons/new',           [$cronCtrl, 'create'],  'admin');
     $router->addProtectedRoute('POST', '/crons',               [$cronCtrl, 'store'],   'admin');
-    // /crons/{id}/monitor must come before /crons/{id} so that the router does
-    // not accidentally match the "monitor" sub-path as a job ID.
+    // /crons/translate and /crons/{id}/monitor must come before /crons/{id} so
+    // that the router does not accidentally match these paths as job IDs.
+    $router->addProtectedRoute('GET',  '/crons/translate',     [$cronCtrl, 'translateExpr']);
     $router->addProtectedRoute('GET',  '/crons/{id}/monitor',  [$cronCtrl, 'monitor']);
     $router->addProtectedRoute('GET',  '/crons/{id}',          [$cronCtrl, 'show']);
     $router->addProtectedRoute('GET',  '/crons/{id}/edit',     [$cronCtrl, 'edit'],    'admin');
     $router->addProtectedRoute('POST', '/crons/{id}/edit',     [$cronCtrl, 'update'],  'admin');
     $router->addProtectedRoute('POST', '/crons/{id}/delete',   [$cronCtrl, 'destroy'],    'admin');
-    $router->addProtectedRoute('POST', '/crons/{id}/execute',  [$cronCtrl, 'executeNow'], 'admin');
+    $router->addProtectedRoute('POST', '/crons/{id}/execute',  [$cronCtrl, 'executeNow'],    'admin');
+    $router->addProtectedRoute('POST', '/execution/{id}/kill', [$cronCtrl, 'killExecution'], 'admin');
 
     $router->addProtectedRoute('GET',  '/timeline',            [$timelineCtrl,  'index']);
     $router->addProtectedRoute('GET',  '/swimlane',            [$swimlaneCtrl,  'index']);

@@ -144,7 +144,7 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
                 </label>
                 <input type="number" name="hours" min="1" max="720"
                        value="<?= htmlspecialchars((string) $hours, ENT_QUOTES, 'UTF-8') ?>"
-                       class="w-20 px-2 py-1.5 rounded-lg text-sm cm-input">
+                       class="w-20 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <label class="text-sm" style="color:var(--cm-text-muted)">
                     <?= htmlspecialchars($t('maintenance_stuck_hours_unit'), ENT_QUOTES, 'UTF-8') ?>
                 </label>
@@ -302,7 +302,7 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
                     </label>
                     <input type="number" id="older_than_days" name="older_than_days"
                            min="1" max="3650" value="90"
-                           class="w-24 px-2 py-1.5 rounded-lg text-sm cm-input">
+                           class="w-24 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <span class="text-sm" style="color:var(--cm-text-muted)">
                         <?= htmlspecialchars($t('maintenance_cleanup_days'), ENT_QUOTES, 'UTF-8') ?>
                     </span>

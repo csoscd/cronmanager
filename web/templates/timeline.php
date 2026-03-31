@@ -237,9 +237,9 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
         <!-- Apply -->
         <div>
             <button type="submit"
-                    class="bg-gray-700 hover:bg-gray-800 text-white text-sm font-medium
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium
                            px-5 py-2 rounded-lg transition focus:outline-none
-                           focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                           focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                 <?= htmlspecialchars($t('filter_apply'), ENT_QUOTES, 'UTF-8') ?>
             </button>
         </div>
@@ -248,8 +248,8 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
         <?php if ($hasActiveFilter): ?>
         <div>
             <a href="/timeline?_reset=1"
-               class="text-sm text-gray-500 hover:text-gray-700 underline py-2 block">
-                &times; <?= htmlspecialchars($t('cancel'), ENT_QUOTES, 'UTF-8') ?>
+               class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white underline py-2 block">
+                &times; <?= htmlspecialchars($t('filter_reset'), ENT_QUOTES, 'UTF-8') ?>
             </a>
         </div>
         <?php endif; ?>
@@ -314,7 +314,7 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
                     <?php foreach ($history as $idx => $entry): ?>
                         <?php
                             $jobId      = (string) ($entry['job_id']          ?? '');
-                            $jobDesc    = (string) ($entry['job_description'] ?? $entry['description'] ?? "Job #{$jobId}");
+                            $jobDesc    = ((string) ($entry['description'] ?? '')) !== '' ? (string) $entry['description'] : "Job #{$jobId}";
                             $entryUser  = (string) ($entry['linux_user']      ?? '');
                             $entryTags  = (array)  ($entry['tags']            ?? []);
                             $exitCode   = isset($entry['exit_code']) ? $entry['exit_code'] : null;

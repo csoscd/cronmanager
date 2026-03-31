@@ -28,11 +28,15 @@
 #     the actual job from running.
 #   - If the agent is unreachable or returns an error the job still executes.
 #
-# Dependencies:
+# Dependencies (on the agent host):
 #   - bash 4+
 #   - curl
 #   - openssl  (HMAC-SHA256 signature computation)
 #   - php 8.4  (JSON building/parsing; always available on the host)
+#
+# Dependencies (on remote SSH target hosts):
+#   - POSIX sh  (any shell: bash, dash, busybox ash, etc.)
+#   - kill      (POSIX – available on all Linux distributions)
 #
 # Make executable: chmod +x /opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh
 #
@@ -273,6 +277,12 @@ else
     log_warn "Job ${JOB_ID}: agent unreachable for /execution/start – continuing without tracking"
 fi
 
+# 409 Conflict = singleton job already running → skip this execution cleanly
+if [[ "${_HTTP_CODE}" == "409" ]]; then
+    log_info "Job ${JOB_ID}: skipped – singleton mode active and a previous instance is still running"
+    exit 0
+fi
+
 if [[ -z "$EXECUTION_ID" || "$EXECUTION_ID" == "0" ]]; then
     log_warn "Job ${JOB_ID}: no valid execution_id received (http_code=${_HTTP_CODE}) – continuing anyway"
     EXECUTION_ID="0"
@@ -347,23 +357,90 @@ if [[ "${TARGET}" != "local" ]]; then
     # Remote execution via SSH
     # TARGET is an SSH config host alias from ~/.ssh/config.
     # BatchMode=yes disables interactive prompts; ConnectTimeout limits hang.
+    #
+    # The remote shell writes its own PID to /tmp/.cmgr_<execution_id> before
+    # exec-ing sh -s, enabling the Kill Running Jobs feature.
+    # The command is passed via stdin (here-string) rather than being embedded
+    # in the shell string.  This avoids ALL quoting issues: commands with
+    # single quotes, double quotes, &&, ||, pipes, backticks, etc. all work
+    # correctly because the command is treated as data, not as shell syntax
+    # that must survive multiple levels of quoting.
+    # The PID file path is reported to the agent so the kill endpoint knows
+    # where to find it on the remote host.
     # -------------------------------------------------------------------------
     log_info "Job ${JOB_ID}: remote execution via SSH host '${TARGET}'"
+
+    # Construct the remote pid-file path (based on execution_id so it is unique)
+    REMOTE_PID_FILE="/tmp/.cmgr_${EXECUTION_ID}"
+
+    # setsid ensures the remote sh runs as its own session/process-group leader
+    # (PGID == PID == $$), so `kill -TERM -$PID` from the kill/check-limits
+    # logic reaches sh AND all its children (e.g. a spawned sleep).
+    # exec sh -s reads the command from stdin (the here-string), preserving the PID.
     # shellcheck disable=SC2029
-    ssh -o BatchMode=yes -o ConnectTimeout=30 "${TARGET}" -- "${COMMAND}" \
-        > "${TMP_OUTPUT}" 2>&1
+    ssh -o BatchMode=yes -o ConnectTimeout=30 "${TARGET}" -- \
+        "setsid sh -c 'echo \$\$ > ${REMOTE_PID_FILE}; exec sh -s'" \
+        <<< "${COMMAND}" \
+        > "${TMP_OUTPUT}" 2>&1 &
+    SSH_BG_PID=$!
+
+    # Report the pid_file path to the agent so the kill endpoint can find it
+    if [[ "$EXECUTION_ID" != "0" ]]; then
+        PID_BODY="$(php -r "
+            echo json_encode([
+                'pid_file' => '${REMOTE_PID_FILE}',
+            ], JSON_UNESCAPED_UNICODE);
+        ")"
+        agent_request "POST" "/execution/${EXECUTION_ID}/pid" "${PID_BODY}" >/dev/null 2>&1 || true
+    fi
+
+    wait "${SSH_BG_PID}"
     JOB_EXIT_CODE=$?
+
+    # Remove the remote pid file on clean finish (best-effort; kill endpoint also removes it)
+    if [[ "$EXECUTION_ID" != "0" ]]; then
+        ssh -o BatchMode=yes -o ConnectTimeout=10 "${TARGET}" -- \
+            "rm -f ${REMOTE_PID_FILE}" >/dev/null 2>&1 || true
+    fi
 else
     # -------------------------------------------------------------------------
-    # Local execution (default)
-    # eval is intentional: the command was entered by the operator and stored
-    # in the database; it is retrieved from the authenticated, HMAC-protected
-    # agent endpoint.
+    # Local execution
+    # The command is written to a temporary script file and executed with a
+    # fresh bash invocation.  This avoids two problems:
+    #   1. Quoting: commands with single quotes, &&, ||, pipes, etc. all work
+    #      correctly because the command is stored as-is in a file rather than
+    #      being embedded in a shell string argument.
+    #   2. SHELLOPTS inheritance: bash -c inherits set -uo pipefail from this
+    #      wrapper via the exported SHELLOPTS variable, which can interfere with
+    #      the job command.  A fresh bash invoked as a script file starts with
+    #      default options.
+    # The temp file is removed after the job finishes (bash has it open until
+    # then via its file descriptor, so unlinking is safe on Linux).
     # -------------------------------------------------------------------------
     log_info "Job ${JOB_ID}: local execution"
-    # shellcheck disable=SC2094
-    bash -c "${COMMAND}" > "${TMP_OUTPUT}" 2>&1
+
+    LOCAL_CMD_FILE="$(mktemp --suffix=.sh)"
+    printf '%s\n' "${COMMAND}" > "${LOCAL_CMD_FILE}"
+
+    # setsid creates a new session so bash becomes its own process-group leader
+    # (PGID == PID).  This is required for `kill -TERM -$PID` in the agent's
+    # kill / check-limits logic to reach bash *and* all its children (e.g. sleep).
+    setsid bash "${LOCAL_CMD_FILE}" > "${TMP_OUTPUT}" 2>&1 &
+    LOCAL_JOB_PID=$!
+
+    # Report the PID to the agent so the kill endpoint can kill this process
+    if [[ "$EXECUTION_ID" != "0" ]]; then
+        PID_BODY="$(php -r "
+            echo json_encode([
+                'pid' => (int)'${LOCAL_JOB_PID}',
+            ], JSON_UNESCAPED_UNICODE);
+        ")"
+        agent_request "POST" "/execution/${EXECUTION_ID}/pid" "${PID_BODY}" >/dev/null 2>&1 || true
+    fi
+
+    wait "${LOCAL_JOB_PID}"
     JOB_EXIT_CODE=$?
+    rm -f "${LOCAL_CMD_FILE}"
 fi
 
 RAW_OUTPUT="$(cat "${TMP_OUTPUT}")"

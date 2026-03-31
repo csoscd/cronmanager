@@ -283,7 +283,7 @@ class HostAgentClient
                 'status' => $status,
                 'body'   => substr($body, 0, 500),
             ]);
-            throw new \RuntimeException("Agent error {$status}: {$body}");
+            throw new AgentHttpException($status, "Agent error {$status}: {$body}");
         }
 
         $decoded = json_decode($body, associative: true);

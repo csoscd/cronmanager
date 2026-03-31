@@ -97,7 +97,7 @@ $users = isset($users) && is_array($users) ? $users : [];
                 <div class="flex flex-col gap-2">
 
                     <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-600
-                                  hover:bg-gray-50 dark:hover:bg-gray-700 transition has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 dark:has-[:checked]:bg-blue-900/20">
+                                  hover:bg-gray-50 dark:hover:bg-gray-700 transition has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 dark:has-[:checked]:bg-gray-700">
                         <input type="radio" name="format" value="crontab" checked
                                class="text-blue-600 border-gray-300 focus:ring-blue-500">
                         <div>
@@ -111,7 +111,7 @@ $users = isset($users) && is_array($users) ? $users : [];
                     </label>
 
                     <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-600
-                                  hover:bg-gray-50 dark:hover:bg-gray-700 transition has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 dark:has-[:checked]:bg-blue-900/20">
+                                  hover:bg-gray-50 dark:hover:bg-gray-700 transition has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 dark:has-[:checked]:bg-gray-700">
                         <input type="radio" name="format" value="json"
                                class="text-blue-600 border-gray-300 focus:ring-blue-500">
                         <div>

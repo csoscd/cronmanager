@@ -314,7 +314,7 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
                     <?php foreach ($history as $idx => $entry): ?>
                         <?php
                             $jobId      = (string) ($entry['job_id']          ?? '');
-                            $jobDesc    = (string) ($entry['job_description'] ?? $entry['description'] ?? "Job #{$jobId}");
+                            $jobDesc    = ((string) ($entry['description'] ?? '')) !== '' ? (string) $entry['description'] : "Job #{$jobId}";
                             $entryUser  = (string) ($entry['linux_user']      ?? '');
                             $entryTags  = (array)  ($entry['tags']            ?? []);
                             $exitCode   = isset($entry['exit_code']) ? $entry['exit_code'] : null;

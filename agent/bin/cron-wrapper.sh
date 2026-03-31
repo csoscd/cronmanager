@@ -353,7 +353,12 @@ if [[ "${TARGET}" != "local" ]]; then
     # BatchMode=yes disables interactive prompts; ConnectTimeout limits hang.
     #
     # The remote shell writes its own PID to /tmp/.cmgr_<execution_id> before
-    # exec-ing the actual command, enabling the Kill Running Jobs feature.
+    # exec-ing sh -s, enabling the Kill Running Jobs feature.
+    # The command is passed via stdin (here-string) rather than being embedded
+    # in the shell string.  This avoids ALL quoting issues: commands with
+    # single quotes, double quotes, &&, ||, pipes, backticks, etc. all work
+    # correctly because the command is treated as data, not as shell syntax
+    # that must survive multiple levels of quoting.
     # The PID file path is reported to the agent so the kill endpoint knows
     # where to find it on the remote host.
     # -------------------------------------------------------------------------
@@ -362,15 +367,14 @@ if [[ "${TARGET}" != "local" ]]; then
     # Construct the remote pid-file path (based on execution_id so it is unique)
     REMOTE_PID_FILE="/tmp/.cmgr_${EXECUTION_ID}"
 
-    # Wrap the command so the remote shell writes its PID before exec-ing.
-    # Using POSIX $$ (not bash-specific $BASHPID) so this works on any remote
-    # shell: Alpine busybox sh, dash, bash, etc.  When SSH starts 'sh -c ...'
-    # directly, $$ is the PID of that sh process; after exec it becomes the PID
-    # of the actual command, which is what the kill endpoint needs to target.
-    # The pid file is cleaned up by the kill endpoint or when the job finishes.
+    # The remote sh writes its PID, then exec's sh -s which reads and runs
+    # the command from stdin (provided via the here-string below).
+    # exec preserves the PID so the kill endpoint can target the right process.
+    # Using POSIX $$ so this works on Alpine/busybox/dash/bash.
     # shellcheck disable=SC2029
     ssh -o BatchMode=yes -o ConnectTimeout=30 "${TARGET}" -- \
-        "sh -c 'echo \$\$ > ${REMOTE_PID_FILE}; exec ${COMMAND}'" \
+        "sh -c 'echo \$\$ > ${REMOTE_PID_FILE}; exec sh -s'" \
+        <<< "${COMMAND}" \
         > "${TMP_OUTPUT}" 2>&1 &
     SSH_BG_PID=$!
 
@@ -395,12 +399,24 @@ if [[ "${TARGET}" != "local" ]]; then
 else
     # -------------------------------------------------------------------------
     # Local execution
-    # Run the command in the background so we can capture its PID and report
-    # it to the agent (enabling the Kill Running Jobs feature).
+    # The command is written to a temporary script file and executed with a
+    # fresh bash invocation.  This avoids two problems:
+    #   1. Quoting: commands with single quotes, &&, ||, pipes, etc. all work
+    #      correctly because the command is stored as-is in a file rather than
+    #      being embedded in a shell string argument.
+    #   2. SHELLOPTS inheritance: bash -c inherits set -uo pipefail from this
+    #      wrapper via the exported SHELLOPTS variable, which can interfere with
+    #      the job command.  A fresh bash invoked as a script file starts with
+    #      default options.
+    # The temp file is removed after the job finishes (bash has it open until
+    # then via its file descriptor, so unlinking is safe on Linux).
     # -------------------------------------------------------------------------
     log_info "Job ${JOB_ID}: local execution"
-    # shellcheck disable=SC2094
-    bash -c "${COMMAND}" > "${TMP_OUTPUT}" 2>&1 &
+
+    LOCAL_CMD_FILE="$(mktemp --suffix=.sh)"
+    printf '%s\n' "${COMMAND}" > "${LOCAL_CMD_FILE}"
+
+    bash "${LOCAL_CMD_FILE}" > "${TMP_OUTPUT}" 2>&1 &
     LOCAL_JOB_PID=$!
 
     # Report the PID to the agent so the kill endpoint can kill this process
@@ -415,6 +431,7 @@ else
 
     wait "${LOCAL_JOB_PID}"
     JOB_EXIT_CODE=$?
+    rm -f "${LOCAL_CMD_FILE}"
 fi
 
 RAW_OUTPUT="$(cat "${TMP_OUTPUT}")"

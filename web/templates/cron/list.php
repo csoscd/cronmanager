@@ -315,12 +315,20 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                             $crontabOk     = !isset($job['crontab_ok']) || (bool) $job['crontab_ok'];
                             $lastRun       = (string) ($job['last_run'] ?? '');
                             $exitCode      = isset($job['last_exit_code']) ? (int) $job['last_exit_code'] : null;
+                            $limitSeconds  = isset($job['execution_limit_seconds']) && $job['execution_limit_seconds'] !== null
+                                ? (int) $job['execution_limit_seconds'] : null;
 
                             // Exit code badge style
                             if ($exitCode === null) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">—</span>';
                             } elseif ($exitCode === 0) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">0</span>';
+                            } elseif ($exitCode === -2) {
+                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">'
+                                    . htmlspecialchars($t('cron_killed_badge'), ENT_QUOTES, 'UTF-8') . '</span>';
+                            } elseif ($exitCode === -3) {
+                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">'
+                                    . htmlspecialchars($t('cron_limit_badge'), ENT_QUOTES, 'UTF-8') . '</span>';
                             } else {
                                 $safeCode  = htmlspecialchars((string) $exitCode, ENT_QUOTES, 'UTF-8');
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">' . $safeCode . '</span>';
@@ -412,9 +420,17 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                                 <?= htmlspecialchars($lastRun !== '' ? $lastRun : $t('cron_never_run'), ENT_QUOTES, 'UTF-8') ?>
                             </td>
 
-                            <!-- Exit code badge -->
+                            <!-- Exit code badge + limit indicator -->
                             <td class="px-4 py-3 text-sm">
-                                <?= $exitBadge ?>
+                                <div class="flex flex-wrap items-center gap-1">
+                                    <?= $exitBadge ?>
+                                    <?php if ($limitSeconds !== null): ?>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-200"
+                                              title="<?= htmlspecialchars($t('cron_execution_limit') . ': ' . $limitSeconds . 's', ENT_QUOTES, 'UTF-8') ?>">
+                                            &#9201; <?= (int) $limitSeconds ?>s
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
                             </td>
 
                             <!-- Open button (all users) -->

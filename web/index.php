@@ -191,7 +191,8 @@ try {
     $router->addProtectedRoute('GET',  '/crons/{id}/edit',     [$cronCtrl, 'edit'],    'admin');
     $router->addProtectedRoute('POST', '/crons/{id}/edit',     [$cronCtrl, 'update'],  'admin');
     $router->addProtectedRoute('POST', '/crons/{id}/delete',   [$cronCtrl, 'destroy'],    'admin');
-    $router->addProtectedRoute('POST', '/crons/{id}/execute',  [$cronCtrl, 'executeNow'], 'admin');
+    $router->addProtectedRoute('POST', '/crons/{id}/execute',  [$cronCtrl, 'executeNow'],    'admin');
+    $router->addProtectedRoute('POST', '/execution/{id}/kill', [$cronCtrl, 'killExecution'], 'admin');
 
     $router->addProtectedRoute('GET',  '/timeline',            [$timelineCtrl,  'index']);
     $router->addProtectedRoute('GET',  '/swimlane',            [$swimlaneCtrl,  'index']);

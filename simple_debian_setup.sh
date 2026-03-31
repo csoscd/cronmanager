@@ -1070,6 +1070,23 @@ else
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
+#  16. EXECUTION LIMIT CHECKER  (system cron entry on target)
+# ═════════════════════════════════════════════════════════════════════════════
+
+header "Step 16 – Execution Limit Checker"
+
+LIMITS_CRON_FILE="/etc/cron.d/cronmanager-limits"
+LIMITS_CRON_ENTRY="* * * * * root /usr/bin/php ${AGENT_DIR}/bin/check-limits.php >> /dev/null 2>&1"
+
+step "Installing execution-limit checker cron entry..."
+if target_exec "echo '${LIMITS_CRON_ENTRY}' > ${LIMITS_CRON_FILE} && chmod 0644 ${LIMITS_CRON_FILE}" 2>&1; then
+    ok "Cron entry written to ${LIMITS_CRON_FILE}."
+else
+    warn "Could not write cron entry to ${LIMITS_CRON_FILE}."
+    warn "Add manually: ${LIMITS_CRON_ENTRY}"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
 #  17. SUMMARY
 # ═════════════════════════════════════════════════════════════════════════════
 

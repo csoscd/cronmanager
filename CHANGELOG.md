@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.3.0] – branch: `gen_improve`
+
+### Added
+
+- **Kill running execution** – Admins can now terminate a running cron job mid-flight via the job detail page. A "Kill Job" button appears next to every in-progress execution in the history table. Clicking it sends `POST /execution/{id}/kill` to the web layer, which proxies to the new agent endpoint. The agent kills the process (local: `SIGTERM` to process group via `posix_kill`; remote SSH: reads a PID file written by the wrapper, sends `kill -TERM -$PID` over SSH). The execution is marked finished with exit code **-2** ("killed by operator") and an annotation is appended to the output.
+- **Execution limit per job** – Each job now has an optional `execution_limit_seconds` field. When a job runs longer than the configured limit:
+  - A **notification** is dispatched (if `notify_on_failure` / "Notify on failure / limit exceeded" is enabled) with exit code **-3** as context.
+  - If **Auto-kill on limit exceeded** is also enabled, the process is terminated automatically and the execution is finished with exit code **-2**.
+  - A `notified_limit_exceeded` flag prevents duplicate notifications when both the periodic checker and the finish endpoint encounter the same exceeded execution.
+- **`check-limits.php` checker script** – A new PHP CLI script (`agent/bin/check-limits.php`) runs every minute via a system cron entry (`/etc/cron.d/cronmanager-limits`) installed by `simple_debian_setup.sh`. It queries all running executions that have exceeded their configured limit and dispatches notifications / auto-kills as appropriate.
+- **PID tracking in execution_log** – The wrapper script now records the local process PID (or a remote PID file path for SSH targets) via the new agent endpoint `POST /execution/{id}/pid` immediately after launching the job. This enables the kill endpoint to locate the process reliably.
+- **New agent endpoints**:
+  - `POST /execution/{id}/pid` – stores the process PID or PID file for a running execution.
+  - `POST /execution/{id}/kill` – terminates a running execution and marks it finished.
+- **Database migration `004_kill_and_limits.sql`** – Adds five new columns: `execution_log.pid`, `execution_log.pid_file`, `execution_log.notified_limit_exceeded`, `cronjobs.execution_limit_seconds`, `cronjobs.auto_kill_on_limit`.
+- **Exit code badges** – The cron list and detail pages now display distinct badges for exit code `-2` (orange "Killed") and exit code `-3` (yellow "Limit exceeded"). The list also shows a small blue time indicator for any job that has an execution limit configured.
+
+### Changed
+
+- **`cron_notify_on_failure` label** updated to "Notify on failure / limit exceeded" in both English and German to reflect the expanded scope of the notification flag.
+- **`cron-wrapper.sh`** updated to background the job command (local and SSH), capture the PID, report it to the agent, and then wait for completion — enabling reliable kill support without changing the wrapper's overall sequential semantics.
+- **`simple_debian_setup.sh`** now installs `/etc/cron.d/cronmanager-limits` (Step 16) to activate the execution limit checker after the agent service is started.
+
+---
+
 ## [2.2.0] – branch: `dockerfull`
 
 ### Fixed

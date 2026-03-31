@@ -199,11 +199,16 @@ try {
 
     $mailNotifier = new \Cronmanager\Agent\Notification\MailNotifier($logger, $config);
 
-    $execStart  = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger);
-    $execFinish = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier);
+    $execStart     = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger);
+    $execFinish    = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier);
+    $execUpdatePid = new \Cronmanager\Agent\Endpoints\ExecutionUpdatePidEndpoint($pdo, $logger);
+    $execKill      = new \Cronmanager\Agent\Endpoints\ExecutionKillEndpoint($pdo, $logger);
 
-    $router->addRoute('POST', '/execution/start',  [$execStart,  'handle']);
-    $router->addRoute('POST', '/execution/finish', [$execFinish, 'handle']);
+    $router->addRoute('POST', '/execution/start',       [$execStart,     'handle']);
+    $router->addRoute('POST', '/execution/finish',      [$execFinish,    'handle']);
+    // /execution/{id}/pid and /execution/{id}/kill – more specific than /execution/start|finish
+    $router->addRoute('POST', '/execution/{id}/pid',    [$execUpdatePid, 'handle']);
+    $router->addRoute('POST', '/execution/{id}/kill',   [$execKill,      'handle']);
 
     // -- Tags -----------------------------------------------------------------
 

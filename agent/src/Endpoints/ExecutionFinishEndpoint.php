@@ -9,9 +9,14 @@ declare(strict_types=1);
  *
  * This endpoint is called by the cron-wrapper.sh bash script immediately after
  * the managed job command exits. It updates the corresponding `execution_log`
- * row with the exit code, captured output, and finished_at timestamp. If the
- * job exited with a non-zero code and has `notify_on_failure` enabled, a
- * failure-alert e-mail is dispatched via MailNotifier.
+ * row with the exit code, captured output, and finished_at timestamp.
+ *
+ * Notifications are dispatched in two situations:
+ *   1. The job exited with a non-zero code and has `notify_on_failure` enabled.
+ *   2. The job's runtime exceeded `execution_limit_seconds` and a notification
+ *      has not been sent yet (notified_limit_exceeded = 0).  This handles
+ *      short-lived jobs that exceeded their limit but finished before the
+ *      periodic check-limits.php checker ran.
  *
  * Request body (JSON):
  * ```json
@@ -171,7 +176,9 @@ final class ExecutionFinishEndpoint
                     SET finished_at = :finished_at,
                         exit_code   = :exit_code,
                         output      = :output,
-                        target      = COALESCE(:target, target)
+                        target      = COALESCE(:target, target),
+                        pid         = NULL,
+                        pid_file    = NULL
                   WHERE id = :id'
             );
             $stmt->execute([
@@ -204,23 +211,23 @@ final class ExecutionFinishEndpoint
         }
 
         // ------------------------------------------------------------------
-        // 5. Send failure notification if exit_code != 0
+        // 5. Send failure / limit-exceeded notification
         // ------------------------------------------------------------------
 
         $notified = false;
 
-        if ($exitCode !== 0) {
-            try {
-                $job = $this->fetchJob($jobId);
+        try {
+            $job = $this->fetchJob($jobId);
 
-                if ($job !== null && (bool) $job['notify_on_failure']) {
-                    // Use description if available, otherwise fall back to command
-                    $label = ($job['description'] !== null && $job['description'] !== '')
-                        ? (string) $job['description']
-                        : (string) $job['command'];
+            if ($job !== null && (bool) $job['notify_on_failure']) {
+                // Use description if available, otherwise fall back to command
+                $label     = ($job['description'] !== null && $job['description'] !== '')
+                    ? (string) $job['description']
+                    : (string) $job['command'];
+                $startedAt = $this->fetchStartedAt($executionId);
 
-                    // Dispatch mail sending to a detached background process so that
-                    // slow or unreachable SMTP servers cannot block the agent.
+                // ---- Failure notification (non-zero exit code) ----
+                if ($exitCode !== 0) {
                     $notified = $this->dispatchNotification(
                         jobId:       $jobId,
                         description: $label,
@@ -228,23 +235,62 @@ final class ExecutionFinishEndpoint
                         schedule:    (string) $job['schedule'],
                         exitCode:    $exitCode,
                         output:      $output,
-                        startedAt:   $this->fetchStartedAt($executionId),
+                        startedAt:   $startedAt,
                         finishedAt:  $finishedAt
                     );
-                } else {
-                    $this->logger->debug('ExecutionFinishEndpoint: notification skipped (notify_on_failure=false or job not found)', [
-                        'job_id'    => $jobId,
-                        'exit_code' => $exitCode,
-                    ]);
                 }
-            } catch (\Throwable $e) {
-                // Notification failure must never prevent a successful 200 response
-                $this->logger->error('ExecutionFinishEndpoint: unexpected error during notification', [
-                    'execution_id' => $executionId,
-                    'job_id'       => $jobId,
-                    'message'      => $e->getMessage(),
+
+                // ---- Limit-exceeded notification (if not already sent by check-limits.php) ----
+                $limitSeconds = isset($job['execution_limit_seconds']) && $job['execution_limit_seconds'] !== null
+                    ? (int) $job['execution_limit_seconds']
+                    : null;
+
+                if ($limitSeconds !== null && !$this->isLimitNotified($executionId)) {
+                    // Calculate actual elapsed seconds from the stored started_at
+                    $elapsedSeconds = $this->calcElapsedSeconds($startedAt, $finishedAt);
+
+                    if ($elapsedSeconds > $limitSeconds) {
+                        $limitOutput = sprintf(
+                            'Execution limit exceeded: job ran for %d seconds (limit: %d seconds).%s',
+                            $elapsedSeconds,
+                            $limitSeconds,
+                            $output !== '' ? "\n\nOutput:\n" . $output : '',
+                        );
+
+                        $notified = $this->dispatchNotification(
+                            jobId:       $jobId,
+                            description: $label,
+                            linuxUser:   (string) $job['linux_user'],
+                            schedule:    (string) $job['schedule'],
+                            exitCode:    -3,  // sentinel: -3 = limit exceeded
+                            output:      $limitOutput,
+                            startedAt:   $startedAt,
+                            finishedAt:  $finishedAt
+                        );
+
+                        // Mark as notified to prevent a duplicate from check-limits.php
+                        $this->markLimitNotified($executionId);
+
+                        $this->logger->info('ExecutionFinishEndpoint: limit-exceeded notification dispatched at finish', [
+                            'execution_id'    => $executionId,
+                            'elapsed_seconds' => $elapsedSeconds,
+                            'limit_seconds'   => $limitSeconds,
+                        ]);
+                    }
+                }
+            } else {
+                $this->logger->debug('ExecutionFinishEndpoint: notification skipped (notify_on_failure=false or job not found)', [
+                    'job_id'    => $jobId,
+                    'exit_code' => $exitCode,
                 ]);
             }
+        } catch (\Throwable $e) {
+            // Notification failure must never prevent a successful 200 response
+            $this->logger->error('ExecutionFinishEndpoint: unexpected error during notification', [
+                'execution_id' => $executionId,
+                'job_id'       => $jobId,
+                'message'      => $e->getMessage(),
+            ]);
         }
 
         // ------------------------------------------------------------------
@@ -341,7 +387,8 @@ final class ExecutionFinishEndpoint
     private function fetchJob(int $jobId): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT id, linux_user, schedule, command, description, notify_on_failure
+            'SELECT id, linux_user, schedule, command, description, notify_on_failure,
+                    execution_limit_seconds
                FROM cronjobs
               WHERE id = :id
               LIMIT 1'
@@ -350,6 +397,61 @@ final class ExecutionFinishEndpoint
         $row = $stmt->fetch();
 
         return $row !== false ? (array) $row : null;
+    }
+
+    /**
+     * Check whether a limit-exceeded notification has already been sent for an execution.
+     *
+     * @param int $executionId Execution log ID.
+     *
+     * @return bool True when the notification has already been dispatched.
+     *
+     * @throws PDOException On database errors.
+     */
+    private function isLimitNotified(int $executionId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT notified_limit_exceeded FROM execution_log WHERE id = :id LIMIT 1'
+        );
+        $stmt->execute([':id' => $executionId]);
+        $value = $stmt->fetchColumn();
+
+        return $value !== false && (bool) $value;
+    }
+
+    /**
+     * Set notified_limit_exceeded = 1 for an execution to prevent duplicate alerts.
+     *
+     * @param int $executionId Execution log ID.
+     *
+     * @return void
+     *
+     * @throws PDOException On database errors.
+     */
+    private function markLimitNotified(int $executionId): void
+    {
+        $this->pdo->prepare(
+            'UPDATE execution_log SET notified_limit_exceeded = 1 WHERE id = :id'
+        )->execute([':id' => $executionId]);
+    }
+
+    /**
+     * Calculate elapsed seconds between two datetime strings.
+     *
+     * @param string $startedAt  ISO 8601 / MySQL datetime string.
+     * @param string $finishedAt ISO 8601 / MySQL datetime string.
+     *
+     * @return int Elapsed seconds (0 on parse error).
+     */
+    private function calcElapsedSeconds(string $startedAt, string $finishedAt): int
+    {
+        try {
+            $start  = new \DateTimeImmutable($startedAt);
+            $finish = new \DateTimeImmutable($finishedAt);
+            return max(0, (int) $finish->getTimestamp() - (int) $start->getTimestamp());
+        } catch (\Exception) {
+            return 0;
+        }
     }
 
     /**

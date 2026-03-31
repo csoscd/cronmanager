@@ -347,22 +347,66 @@ if [[ "${TARGET}" != "local" ]]; then
     # Remote execution via SSH
     # TARGET is an SSH config host alias from ~/.ssh/config.
     # BatchMode=yes disables interactive prompts; ConnectTimeout limits hang.
+    #
+    # The remote shell writes its own PID to /tmp/.cmgr_<execution_id> before
+    # exec-ing the actual command, enabling the Kill Running Jobs feature.
+    # The PID file path is reported to the agent so the kill endpoint knows
+    # where to find it on the remote host.
     # -------------------------------------------------------------------------
     log_info "Job ${JOB_ID}: remote execution via SSH host '${TARGET}'"
+
+    # Construct the remote pid-file path (based on execution_id so it is unique)
+    REMOTE_PID_FILE="/tmp/.cmgr_${EXECUTION_ID}"
+
+    # Wrap the command so the remote shell writes its PID before exec-ing.
+    # Using $BASHPID inside the remote bash ensures we get the shell's own PID.
+    # The pid file is cleaned up by the kill endpoint or when the job finishes.
     # shellcheck disable=SC2029
-    ssh -o BatchMode=yes -o ConnectTimeout=30 "${TARGET}" -- "${COMMAND}" \
-        > "${TMP_OUTPUT}" 2>&1
+    ssh -o BatchMode=yes -o ConnectTimeout=30 "${TARGET}" -- \
+        "bash -c 'echo \$BASHPID > ${REMOTE_PID_FILE}; exec ${COMMAND}'" \
+        > "${TMP_OUTPUT}" 2>&1 &
+    SSH_BG_PID=$!
+
+    # Report the pid_file path to the agent so the kill endpoint can find it
+    if [[ "$EXECUTION_ID" != "0" ]]; then
+        PID_BODY="$(php -r "
+            echo json_encode([
+                'pid_file' => '${REMOTE_PID_FILE}',
+            ], JSON_UNESCAPED_UNICODE);
+        ")"
+        agent_request "POST" "/execution/${EXECUTION_ID}/pid" "${PID_BODY}" >/dev/null 2>&1 || true
+    fi
+
+    wait "${SSH_BG_PID}"
     JOB_EXIT_CODE=$?
+
+    # Remove the remote pid file on clean finish (best-effort; kill endpoint also removes it)
+    if [[ "$EXECUTION_ID" != "0" ]]; then
+        ssh -o BatchMode=yes -o ConnectTimeout=10 "${TARGET}" -- \
+            "rm -f ${REMOTE_PID_FILE}" >/dev/null 2>&1 || true
+    fi
 else
     # -------------------------------------------------------------------------
-    # Local execution (default)
-    # eval is intentional: the command was entered by the operator and stored
-    # in the database; it is retrieved from the authenticated, HMAC-protected
-    # agent endpoint.
+    # Local execution
+    # Run the command in the background so we can capture its PID and report
+    # it to the agent (enabling the Kill Running Jobs feature).
     # -------------------------------------------------------------------------
     log_info "Job ${JOB_ID}: local execution"
     # shellcheck disable=SC2094
-    bash -c "${COMMAND}" > "${TMP_OUTPUT}" 2>&1
+    bash -c "${COMMAND}" > "${TMP_OUTPUT}" 2>&1 &
+    LOCAL_JOB_PID=$!
+
+    # Report the PID to the agent so the kill endpoint can kill this process
+    if [[ "$EXECUTION_ID" != "0" ]]; then
+        PID_BODY="$(php -r "
+            echo json_encode([
+                'pid' => (int)'${LOCAL_JOB_PID}',
+            ], JSON_UNESCAPED_UNICODE);
+        ")"
+        agent_request "POST" "/execution/${EXECUTION_ID}/pid" "${PID_BODY}" >/dev/null 2>&1 || true
+    fi
+
+    wait "${LOCAL_JOB_PID}"
     JOB_EXIT_CODE=$?
 fi
 

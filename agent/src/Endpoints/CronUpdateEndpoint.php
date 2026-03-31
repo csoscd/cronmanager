@@ -166,20 +166,24 @@ final class CronUpdateEndpoint
                      description = :description,
                      active = :active,
                      notify_on_failure = :notify_on_failure,
+                     execution_limit_seconds = :execution_limit_seconds,
+                     auto_kill_on_limit = :auto_kill_on_limit,
                      execution_mode = :execution_mode,
                      ssh_host = :ssh_host
                  WHERE id = :id'
             );
             $stmt->execute([
-                ':linux_user'        => $merged['linux_user'],
-                ':schedule'          => $merged['schedule'],
-                ':command'           => $merged['command'],
-                ':description'       => $merged['description'],
-                ':active'            => (int) $isActive,
-                ':notify_on_failure' => (int) $merged['notify_on_failure'],
-                ':execution_mode'    => $executionMode,
-                ':ssh_host'          => $sshHost,
-                ':id'                => $jobId,
+                ':linux_user'              => $merged['linux_user'],
+                ':schedule'                => $merged['schedule'],
+                ':command'                 => $merged['command'],
+                ':description'             => $merged['description'],
+                ':active'                  => (int) $isActive,
+                ':notify_on_failure'       => (int) $merged['notify_on_failure'],
+                ':execution_limit_seconds' => $merged['execution_limit_seconds'],
+                ':auto_kill_on_limit'      => (int) ($merged['auto_kill_on_limit'] ?? false),
+                ':execution_mode'          => $executionMode,
+                ':ssh_host'                => $sshHost,
+                ':id'                      => $jobId,
             ]);
 
             // Sync tags
@@ -265,15 +269,31 @@ final class CronUpdateEndpoint
             ? $this->normaliseTargets($body['targets'])
             : $existingTargets;
 
+        // execution_limit_seconds: null means "no limit"; keep existing value if not provided
+        $existingLimit = isset($existing['execution_limit_seconds']) && $existing['execution_limit_seconds'] !== null
+            ? (int) $existing['execution_limit_seconds']
+            : null;
+        if (array_key_exists('execution_limit_seconds', $body)) {
+            $mergedLimit = (is_int($body['execution_limit_seconds']) && $body['execution_limit_seconds'] > 0)
+                ? $body['execution_limit_seconds']
+                : null;
+        } else {
+            $mergedLimit = $existingLimit;
+        }
+
         return [
-            'linux_user'        => array_key_exists('linux_user',        $body) ? $body['linux_user']        : $existing['linux_user'],
-            'schedule'          => array_key_exists('schedule',          $body) ? $body['schedule']          : $existing['schedule'],
-            'command'           => array_key_exists('command',           $body) ? $body['command']           : $existing['command'],
-            'description'       => array_key_exists('description',       $body) ? $body['description']       : $existing['description'],
-            'active'            => array_key_exists('active',            $body) ? $body['active']            : (bool) $existing['active'],
-            'notify_on_failure' => array_key_exists('notify_on_failure', $body) ? $body['notify_on_failure'] : (bool) $existing['notify_on_failure'],
-            'targets'           => $mergedTargets,
-            'tags'              => array_key_exists('tags',              $body) ? $body['tags']              : $existingTags,
+            'linux_user'               => array_key_exists('linux_user',        $body) ? $body['linux_user']        : $existing['linux_user'],
+            'schedule'                 => array_key_exists('schedule',          $body) ? $body['schedule']          : $existing['schedule'],
+            'command'                  => array_key_exists('command',           $body) ? $body['command']           : $existing['command'],
+            'description'              => array_key_exists('description',       $body) ? $body['description']       : $existing['description'],
+            'active'                   => array_key_exists('active',            $body) ? $body['active']            : (bool) $existing['active'],
+            'notify_on_failure'        => array_key_exists('notify_on_failure', $body) ? $body['notify_on_failure'] : (bool) $existing['notify_on_failure'],
+            'execution_limit_seconds'  => $mergedLimit,
+            'auto_kill_on_limit'       => array_key_exists('auto_kill_on_limit', $body)
+                ? (bool) $body['auto_kill_on_limit']
+                : (bool) ($existing['auto_kill_on_limit'] ?? false),
+            'targets'                  => $mergedTargets,
+            'tags'                     => array_key_exists('tags', $body) ? $body['tags'] : $existingTags,
         ];
     }
 
@@ -529,6 +549,8 @@ final class CronUpdateEndpoint
                 j.description,
                 j.active,
                 j.notify_on_failure,
+                j.execution_limit_seconds,
+                j.auto_kill_on_limit,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -571,18 +593,22 @@ final class CronUpdateEndpoint
         $targets = $targetsRaw !== '' ? explode(',', $targetsRaw) : $this->legacyTargets($row);
 
         return [
-            'id'                => (int)    $row['id'],
-            'linux_user'        => (string) $row['linux_user'],
-            'schedule'          => (string) $row['schedule'],
-            'command'           => (string) $row['command'],
-            'description'       => isset($row['description']) ? (string) $row['description'] : null,
-            'active'            => (bool)   $row['active'],
-            'notify_on_failure' => (bool)   $row['notify_on_failure'],
-            'targets'           => $targets,
-            'execution_mode'    => (string) ($row['execution_mode'] ?? 'local'),
-            'ssh_host'          => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,
-            'created_at'        => (string) $row['created_at'],
-            'tags'              => $tags,
+            'id'                       => (int)    $row['id'],
+            'linux_user'               => (string) $row['linux_user'],
+            'schedule'                 => (string) $row['schedule'],
+            'command'                  => (string) $row['command'],
+            'description'              => isset($row['description']) ? (string) $row['description'] : null,
+            'active'                   => (bool)   $row['active'],
+            'notify_on_failure'        => (bool)   $row['notify_on_failure'],
+            'execution_limit_seconds'  => isset($row['execution_limit_seconds']) && $row['execution_limit_seconds'] !== null
+                ? (int) $row['execution_limit_seconds']
+                : null,
+            'auto_kill_on_limit'       => (bool) ($row['auto_kill_on_limit'] ?? false),
+            'targets'                  => $targets,
+            'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),
+            'ssh_host'                 => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,
+            'created_at'               => (string) $row['created_at'],
+            'tags'                     => $tags,
         ];
     }
 

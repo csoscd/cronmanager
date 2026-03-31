@@ -175,6 +175,8 @@ final class CronGetEndpoint
                 j.description,
                 j.active,
                 j.notify_on_failure,
+                j.execution_limit_seconds,
+                j.auto_kill_on_limit,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -237,21 +239,25 @@ final class CronGetEndpoint
         }
 
         return [
-            'id'                => (int)    $row['id'],
-            'linux_user'        => (string) $row['linux_user'],
-            'schedule'          => (string) $row['schedule'],
-            'command'           => (string) $row['command'],
-            'description'       => isset($row['description']) ? (string) $row['description'] : null,
-            'active'            => (bool)   $row['active'],
-            'notify_on_failure' => (bool)   $row['notify_on_failure'],
-            'targets'           => $targets,
+            'id'                       => (int)    $row['id'],
+            'linux_user'               => (string) $row['linux_user'],
+            'schedule'                 => (string) $row['schedule'],
+            'command'                  => (string) $row['command'],
+            'description'              => isset($row['description']) ? (string) $row['description'] : null,
+            'active'                   => (bool)   $row['active'],
+            'notify_on_failure'        => (bool)   $row['notify_on_failure'],
+            'execution_limit_seconds'  => isset($row['execution_limit_seconds']) && $row['execution_limit_seconds'] !== null
+                ? (int) $row['execution_limit_seconds']
+                : null,
+            'auto_kill_on_limit'       => (bool) ($row['auto_kill_on_limit'] ?? false),
+            'targets'                  => $targets,
             // Legacy fields kept so old wrapper invocations (no target arg) still work
-            'execution_mode'    => (string) ($row['execution_mode'] ?? 'local'),
-            'ssh_host'          => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,
-            'created_at'        => (string) $row['created_at'],
-            'tags'              => $tags,
-            'last_run'          => isset($row['last_run'])       && $row['last_run']       !== null ? (string) $row['last_run']       : null,
-            'last_exit_code'    => isset($row['last_exit_code']) && $row['last_exit_code'] !== null ? (int)    $row['last_exit_code'] : null,
+            'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),
+            'ssh_host'                 => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,
+            'created_at'               => (string) $row['created_at'],
+            'tags'                     => $tags,
+            'last_run'                 => isset($row['last_run'])       && $row['last_run']       !== null ? (string) $row['last_run']       : null,
+            'last_exit_code'           => isset($row['last_exit_code']) && $row['last_exit_code'] !== null ? (int)    $row['last_exit_code'] : null,
         ];
     }
 }

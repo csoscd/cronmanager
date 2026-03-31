@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS cronjobs (
     command           TEXT         NOT NULL           COMMENT 'Full command string to execute',
     description       VARCHAR(255)                   COMMENT 'Human-readable job description',
     active            TINYINT(1)   DEFAULT 1          COMMENT '1 = enabled, 0 = disabled',
-    notify_on_failure TINYINT(1)   DEFAULT 1          COMMENT '1 = send alert mail on non-zero exit',
+    notify_on_failure        TINYINT(1)   DEFAULT 1          COMMENT '1 = send alert mail on non-zero exit',
+    execution_limit_seconds  INT UNSIGNED NULL              COMMENT 'Maximum allowed runtime in seconds; NULL = no limit',
+    auto_kill_on_limit       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = auto-kill when execution_limit_seconds is exceeded',
     execution_mode    ENUM('local','remote') NOT NULL DEFAULT 'local'
                                                COMMENT 'local = run on this host, remote = execute via SSH',
     ssh_host          VARCHAR(255)            NULL     COMMENT 'SSH config host alias (from ~/.ssh/config); required when execution_mode=remote',
@@ -90,9 +92,13 @@ CREATE TABLE IF NOT EXISTS execution_log (
     cronjob_id  INT      NOT NULL                   COMMENT 'References the job that was executed',
     started_at  DATETIME NOT NULL                   COMMENT 'Timestamp when the job started',
     finished_at DATETIME                            COMMENT 'Timestamp when the job finished (NULL if still running)',
-    exit_code   INT                                 COMMENT 'Process exit code (0 = success)',
-    output      TEXT                                COMMENT 'Combined stdout/stderr output',
-    target      VARCHAR(255)                        COMMENT '"local" or SSH host alias from ~/.ssh/config',
+    exit_code                INT                     COMMENT 'Process exit code (0 = success)',
+    output                   TEXT                    COMMENT 'Combined stdout/stderr output',
+    target                   VARCHAR(255)            COMMENT '"local" or SSH host alias from ~/.ssh/config',
+    pid                      INT UNSIGNED NULL       COMMENT 'OS PID of the running job process; NULL when not tracked',
+    pid_file                 VARCHAR(255) NULL       COMMENT 'Path to PID file on remote host (SSH targets); NULL for local jobs',
+    notified_limit_exceeded  TINYINT(1) NOT NULL DEFAULT 0
+                                                    COMMENT '1 = limit-exceeded notification already sent; prevents duplicate alerts',
     CONSTRAINT fk_el_cronjob FOREIGN KEY (cronjob_id)
         REFERENCES cronjobs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -864,6 +864,41 @@ class CronController extends BaseController
         (new Response())->redirect($safe);
     }
 
+    /**
+     * Kill a currently-running execution.
+     *
+     * Calls POST /execution/{id}/kill on the agent, which sends SIGTERM to the
+     * running process (local) or SSHes to the remote host to kill it.
+     *
+     * @param array<string,string> $params Path parameters: ['id' => string] (execution_log ID).
+     *
+     * @return void
+     */
+    public function killExecution(array $params): void
+    {
+        $executionId = isset($params['id']) ? (int) $params['id'] : 0;
+
+        $this->logger->info('CronController::killExecution: kill requested', [
+            'execution_id' => $executionId,
+        ]);
+
+        try {
+            $this->agentClient()->post("/execution/{$executionId}/kill", []);
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::killExecution: agent error', [
+                'execution_id' => $executionId,
+                'error'        => $e->getMessage(),
+            ]);
+            $this->renderError(503, 'error_agent_unavailable', '/crons');
+            return;
+        }
+
+        $returnUrl = trim((string) ($_POST['_return'] ?? ''));
+        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons';
+
+        (new Response())->redirect($safe);
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
@@ -990,15 +1025,23 @@ class CronController extends BaseController
             $targets = ['local'];
         }
 
+        // execution_limit_seconds: positive integer or null (no limit)
+        $rawLimit = trim((string) ($post['execution_limit_seconds'] ?? ''));
+        $executionLimitSeconds = ($rawLimit !== '' && ctype_digit($rawLimit) && (int) $rawLimit > 0)
+            ? (int) $rawLimit
+            : null;
+
         return [
-            'linux_user'        => trim((string) ($post['linux_user']   ?? '')),
-            'schedule'          => trim((string) ($post['schedule']     ?? '')),
-            'command'           => trim((string) ($post['command']      ?? '')),
-            'description'       => trim((string) ($post['description']  ?? '')),
-            'tags'              => $tags,
-            'active'            => isset($post['active']),
-            'notify_on_failure' => isset($post['notify_on_failure']),
-            'targets'           => $targets,
+            'linux_user'               => trim((string) ($post['linux_user']   ?? '')),
+            'schedule'                 => trim((string) ($post['schedule']     ?? '')),
+            'command'                  => trim((string) ($post['command']      ?? '')),
+            'description'              => trim((string) ($post['description']  ?? '')),
+            'tags'                     => $tags,
+            'active'                   => isset($post['active']),
+            'notify_on_failure'        => isset($post['notify_on_failure']),
+            'execution_limit_seconds'  => $executionLimitSeconds,
+            'auto_kill_on_limit'       => isset($post['auto_kill_on_limit']),
+            'targets'                  => $targets,
         ];
     }
 }

@@ -2,7 +2,7 @@
 
 A modern, web-based cron job management UI for Linux systems. Cronmanager lets you create,
 edit, monitor, and export cron jobs through a clean browser interface, with full execution
-history, email failure alerts, multi-host support, and SSO integration.
+history, email failure alerts, execution limits, multi-host support, and SSO integration.
 
 ---
 
@@ -48,8 +48,11 @@ history, email failure alerts, multi-host support, and SSO integration.
 
 | Feature | Description |
 |---|---|
-| **Job management** | Create, edit, and delete cron jobs with schedule, description, and tags |
-| **Execution tracking** | Every job run is recorded: start time, end time, exit code, and captured output |
+| **Job management** | Create, edit, copy, and delete cron jobs with schedule, command, description, and tags |
+| **Execution tracking** | Every job run is recorded: start time, end time, exit code, and captured stdout/stderr output |
+| **Execution limits** | Optional maximum runtime per job; alert and/or auto-kill when the limit is exceeded |
+| **Kill running execution** | Admins can terminate a running job mid-flight from the detail page (local: SIGTERM; SSH: remote kill) |
+| **Singleton mode** | Flag a job so that new executions are silently skipped while a previous instance is still running |
 | **Job monitor** | Per-job statistics page with KPI cards (success rate, avg/min/max duration, alerts), an execution duration line chart, and a stacked bar chart – selectable time window from 1 hour to 1 year |
 | **Dashboard** | At-a-glance view of total jobs, active/inactive counts, and recent failures |
 | **Timeline** | Filterable, paginated history of all executions across all jobs |
@@ -58,7 +61,8 @@ history, email failure alerts, multi-host support, and SSO integration.
 | **Tags** | Label jobs to enable filtering and grouped export |
 | **Crontab import** | Detect and import existing unmanaged crontab entries |
 | **Export** | Download a ready-to-use crontab file or JSON for all managed jobs |
-| **Email alerts** | Receive an email when a job exits with a non-zero status |
+| **Email alerts** | Receive an email when a job exits with a non-zero status or exceeds its execution limit |
+| **Maintenance** | Crontab sync, stuck-execution cleanup, and history bulk-delete |
 | **Local & SSO auth** | Username/password accounts or OAuth 2.0 / OpenID Connect (OIDC) via Authentik |
 | **Role-based access** | Admin (full access) and Viewer (read-only) roles |
 | **User management** | Admins can promote, demote, or remove users |

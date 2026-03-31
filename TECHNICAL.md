@@ -337,13 +337,16 @@ complete crontab file from the current database state for the affected Linux use
 4. POST /execution/start  → receive execution_id
 5. GET  /crons/{job_id}   → fetch command string
 6. Launch command in background to enable PID capture:
-     target = "local"          → bash -c "<command>" > tmp_output 2>&1 &
+     target = "local"          → writes command to a temp file (mktemp --suffix=.sh)
+                                  bash <tmp_script> > tmp_output 2>&1 &
                                   LOCAL_JOB_PID=$!
                                   POST /execution/{id}/pid  {"pid": $LOCAL_JOB_PID}
                                   wait $LOCAL_JOB_PID
-     target = "<ssh-alias>"    → wraps command as:
-                                    bash -c 'echo $BASHPID > /tmp/.cmgr_EXEC_ID; exec COMMAND'
-                                  runs SSH in background, captures SSH PID
+                                  removes temp script file after wait
+     target = "<ssh-alias>"    → passes command via stdin (here-string) to remote sh:
+                                    ssh host -- "sh -c 'echo $$ > /tmp/.cmgr_EXEC_ID; exec sh -s'" <<< COMMAND
+                                  the remote sh -s reads and executes COMMAND from stdin,
+                                  avoiding all quoting issues with single quotes / &&  / ||
                                   POST /execution/{id}/pid  {"pid_file": "/tmp/.cmgr_EXEC_ID"}
                                   wait $SSH_BG_PID
                                   removes remote PID file after wait

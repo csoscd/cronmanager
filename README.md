@@ -1150,3 +1150,282 @@ tail -f /opt/cronmanager/www/log/cronmanager-web.log
 
 Actions like creating, editing, or deleting jobs require the Admin role.
 An existing admin must promote the user at **Users → Make Admin**.
+
+---
+
+### Execution limit checker produces no log output / auto-kill never fires
+
+The limit checker (`check-limits.php`) runs every minute via a system cron entry. If it
+never produces any log output — even for jobs that visibly exceed their limit — the script
+is crashing silently before it can initialise logging.
+
+**Diagnose:**
+
+```bash
+# Host-agent mode: run the checker manually and look for PHP errors
+sudo php /opt/cronmanager/agent/bin/check-limits.php
+
+# Docker mode
+docker exec cronmanager-agent php /opt/cronmanager/agent/bin/check-limits.php
+```
+
+**Verify the cron entry exists:**
+
+```bash
+# Host-agent mode
+cat /etc/cron.d/cronmanager-limits
+
+# Docker mode (entry is written by the entrypoint)
+docker exec cronmanager-agent cat /etc/cron.d/cronmanager-limits
+```
+
+Expected output:
+```
+* * * * * root /usr/bin/php /opt/cronmanager/agent/bin/check-limits.php >> /dev/null 2>&1
+```
+
+If the file is missing, reinstall or run `simple_debian_setup.sh` again (it is idempotent).
+
+**Verify the checker runs and logs:**
+
+```bash
+# Host-agent mode
+grep "check-limits" /opt/cronmanager/agent/log/cronmanager-agent.log | tail -20
+
+# Docker mode
+docker exec cronmanager-agent grep "check-limits" \
+    /opt/cronmanager/agent/log/cronmanager-agent.log | tail -20
+```
+
+If there is no output at all, the script is exiting before Bootstrap initialises the
+logger. Run manually (see above) to expose the underlying PHP error.
+
+---
+
+### Auto-kill fires the notification but the job keeps running
+
+This means the notification was sent (exit code `-3`) but the `kill` call failed. The
+most common causes are:
+
+**1. The job process is not a process-group leader**
+
+`kill -TERM -$PID` sends SIGTERM to the entire **process group**. This only works when
+the child process was launched with `setsid` so that its PID equals its PGID. Jobs
+started via an older wrapper script (before the `setsid` fix) inherit the wrapper's
+process group and cannot be killed this way.
+
+Check the wrapper script version in use:
+
+```bash
+grep -n "setsid" /opt/cronmanager/agent/bin/cron-wrapper.sh
+```
+
+If `setsid` does not appear, redeploy the agent to get the current wrapper.
+
+**2. Remote SSH auto-kill: process group not created on the remote host**
+
+For SSH targets the remote command must also be launched via `setsid`. Check:
+
+```bash
+grep -A3 "REMOTE_PID_FILE" /opt/cronmanager/agent/bin/cron-wrapper.sh | grep setsid
+```
+
+Again, redeploy if `setsid` is absent.
+
+**3. PID file not written / not found**
+
+For SSH targets the agent reads the PID from a temporary file on the remote host.
+If the wrapper failed to write the file (permissions, disk space, race condition)
+the kill attempt will log a warning. Check the agent log around the time the
+limit was exceeded:
+
+```bash
+grep "auto-kill\|pid_file\|PID" /opt/cronmanager/agent/log/cronmanager-agent.log | tail -30
+```
+
+---
+
+### Job shows exit code 0 (or 143) after being auto-killed
+
+The wrapper script's `wait` call returns after SIGTERM (exit 143) and calls
+`POST /execution/finish`. If the execution row was already closed by the auto-killer
+with exit code `-2`, the finish endpoint ignores the second update (`AND finished_at IS NULL`
+guard). If you are seeing `0` or `143` in the UI, the running agent code predates this fix.
+
+Redeploy `agent/src/Endpoints/ExecutionFinishEndpoint.php` and restart the agent.
+
+---
+
+### Jobs stuck in "running" state
+
+Executions stay open (no `finished_at`) when the wrapper script is interrupted before
+it can call `POST /execution/finish` — for example, if the agent restarts mid-run or
+the container is recreated.
+
+**Clean up via the UI:**
+
+1. Go to **Maintenance → Stuck Executions**
+2. Adjust the lookback threshold if needed
+3. Use **Mark Finished** (sets exit code `-1`) or **Delete** per row, or select all and use the bulk toolbar
+
+**Clean up via SQL (emergency):**
+
+```sql
+-- Mark all executions running for more than 2 hours as finished
+UPDATE execution_log
+   SET finished_at = NOW(),
+       exit_code   = -1,
+       output      = CONCAT(COALESCE(output, ''), '\n[Marked finished manually]')
+ WHERE finished_at IS NULL
+   AND started_at < DATE_SUB(NOW(), INTERVAL 2 HOUR);
+```
+
+---
+
+### Email alerts are not being sent
+
+1. **Check that mail is enabled in the agent config:**
+   ```bash
+   grep -A10 '"mail"' /opt/cronmanager/agent/config/config.json
+   ```
+   `mail.enabled` must be `true`.
+
+2. **Per-job: verify "Notify on failure / limit exceeded" is checked** on the job edit page.
+
+3. **Test SMTP connectivity from the agent host:**
+   ```bash
+   # Replace with your SMTP host and port
+   nc -zv smtp.example.com 587
+   ```
+
+4. **Check the agent log for mail errors:**
+   ```bash
+   # Host-agent mode
+   grep -i "mail\|smtp\|notification" /opt/cronmanager/agent/log/cronmanager-agent.log | tail -30
+
+   # Docker mode
+   docker exec cronmanager-agent grep -i "mail\|smtp\|notification" \
+       /opt/cronmanager/agent/log/cronmanager-agent.log | tail -30
+   ```
+
+5. **Check the send-notification script directly** (it runs as a background process):
+   ```bash
+   # Create a minimal test payload
+   echo '{"job_id":1,"description":"Test","linux_user":"root","schedule":"* * * * *","exit_code":1,"output":"test","started_at":"2026-01-01 00:00:00","finished_at":"2026-01-01 00:01:00"}' \
+       > /tmp/test_notify.json
+   php /opt/cronmanager/agent/bin/send-notification.php /tmp/test_notify.json
+   ```
+
+---
+
+### Remote SSH jobs are not executing
+
+1. **Test SSH connectivity from the agent:**
+   ```bash
+   # Host-agent mode
+   ssh -o BatchMode=yes <host-alias> 'echo ok'
+
+   # Docker mode
+   docker exec cronmanager-agent ssh -o BatchMode=yes <host-alias> 'echo ok'
+   ```
+
+2. **Verify the SSH config is accessible inside the container:**
+   ```bash
+   docker exec cronmanager-agent cat /root/.ssh/config
+   ```
+
+3. **Check `known_hosts`** — SSH silently refuses to connect to hosts not in `known_hosts`
+   when `BatchMode=yes` is set:
+   ```bash
+   # Add the remote host key
+   docker exec cronmanager-agent ssh-keyscan -H <hostname> >> /root/.ssh/known_hosts
+   ```
+   Or add `StrictHostKeyChecking accept-new` to the SSH config block for that host.
+
+4. **Verify the crontab entry on the remote host** exists after saving the job:
+   ```bash
+   ssh <host-alias> 'crontab -l'
+   # or for a specific user:
+   ssh <host-alias> 'crontab -u <linux-user> -l'
+   ```
+
+5. **Run the wrapper manually** to reproduce the exact execution path:
+   ```bash
+   # Host-agent mode
+   /opt/cronmanager/agent/bin/cron-wrapper.sh <job-id> <ssh-host-alias>
+
+   # Docker mode
+   docker exec cronmanager-agent \
+       /opt/cronmanager/agent/bin/cron-wrapper.sh <job-id> <ssh-host-alias>
+   ```
+
+---
+
+### Singleton mode does not prevent duplicate runs
+
+If a job marked as singleton still spawns multiple concurrent instances:
+
+1. **Verify the `singleton` column exists** in the database:
+   ```sql
+   DESCRIBE cronjobs;
+   -- Should show a 'singleton' column
+   ```
+   If missing, apply migration `005_singleton.sql`:
+   ```bash
+   docker exec -i cronmanager-db mariadb -u cronmanager -p<password> cronmanager \
+       < /opt/cronmanager/agent/sql/migrations/005_singleton.sql
+   ```
+
+2. **Verify the job was saved with the flag** — re-open the job edit form and confirm
+   the Singleton checkbox is ticked. Due to a past bug in `CronGetEndpoint`, the flag
+   was not returned on GET, causing the form to appear unchecked and re-saving to clear
+   the value. Redeploy the current agent code to get the fix.
+
+3. **Check the agent log** for `409 Conflict` responses, which indicate the singleton
+   guard is working:
+   ```bash
+   grep "singleton\|409\|already running" /opt/cronmanager/agent/log/cronmanager-agent.log | tail -20
+   ```
+
+---
+
+### Viewing live agent activity
+
+```bash
+# Host-agent mode – follow the log in real time
+tail -f /opt/cronmanager/agent/log/cronmanager-agent.log
+
+# Docker mode
+docker exec cronmanager-agent tail -f /opt/cronmanager/agent/log/cronmanager-agent.log
+# or via docker logs (combines stdout + stderr):
+docker logs -f cronmanager-agent
+
+# Temporarily increase verbosity (without restarting — change in config.json + restart)
+# In config.json: "logging": { "level": "debug" }
+sudo systemctl restart cronmanager-agent   # host-agent
+docker restart cronmanager-agent           # docker mode
+```
+
+---
+
+### Checking what the execution-limit checker last did
+
+```bash
+# Host-agent mode
+grep "check-limits" /opt/cronmanager/agent/log/cronmanager-agent.log | tail -50
+
+# Docker mode
+docker exec cronmanager-agent grep "check-limits" \
+    /opt/cronmanager/agent/log/cronmanager-agent.log | tail -50
+```
+
+Key log lines to look for:
+
+| Message | Meaning |
+|---|---|
+| `check-limits: starting execution-limit check` | Checker ran successfully |
+| `check-limits: no executions exceeding their limit` | No jobs over limit at that minute |
+| `check-limits: found executions exceeding limit` | At least one job exceeded its limit |
+| `check-limits: auto-killed execution` | Kill succeeded |
+| `check-limits: auto-kill did not succeed` | Kill attempt failed — see `error` field |
+| `check-limits: limit-exceeded notification dispatched` | Alert email queued |

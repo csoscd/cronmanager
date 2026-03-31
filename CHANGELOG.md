@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`cron_notify_on_failure` label** updated to "Notify on failure / limit exceeded" in both English and German to reflect the expanded scope of the notification flag.
 - **`cron-wrapper.sh`** updated to background the job command (local and SSH), capture the PID, report it to the agent, and then wait for completion — enabling reliable kill support without changing the wrapper's overall sequential semantics.
 - **`simple_debian_setup.sh`** now installs `/etc/cron.d/cronmanager-limits` (Step 16) to activate the execution limit checker after the agent service is started.
+- **`docker/agent/entrypoint.sh`** now writes `/etc/cron.d/cronmanager-limits` dynamically before starting the in-container cron daemon, so the checker is active in the Docker image setup without any additional configuration.
 
 ---
 

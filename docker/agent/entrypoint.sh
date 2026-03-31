@@ -226,8 +226,17 @@ else
 fi
 
 # =============================================================================
-# 4. Start cron daemon
+# 4. Install execution-limit checker cron entry and start cron daemon
 # =============================================================================
+
+LIMITS_CRON_FILE="/etc/cron.d/cronmanager-limits"
+LIMITS_CHECKER="${AGENT_DIR}/bin/check-limits.php"
+
+log_info "Installing execution-limit checker cron entry..."
+printf '* * * * * root /usr/bin/php %s >> /dev/null 2>&1\n' "${LIMITS_CHECKER}" \
+    > "${LIMITS_CRON_FILE}"
+chmod 0644 "${LIMITS_CRON_FILE}"
+log_info "Cron entry written to ${LIMITS_CRON_FILE}."
 
 log_info "Starting cron daemon..."
 cron -f &

@@ -422,7 +422,10 @@ else
     LOCAL_CMD_FILE="$(mktemp --suffix=.sh)"
     printf '%s\n' "${COMMAND}" > "${LOCAL_CMD_FILE}"
 
-    bash "${LOCAL_CMD_FILE}" > "${TMP_OUTPUT}" 2>&1 &
+    # setsid creates a new session so bash becomes its own process-group leader
+    # (PGID == PID).  This is required for `kill -TERM -$PID` in the agent's
+    # kill / check-limits logic to reach bash *and* all its children (e.g. sleep).
+    setsid bash "${LOCAL_CMD_FILE}" > "${TMP_OUTPUT}" 2>&1 &
     LOCAL_JOB_PID=$!
 
     # Report the PID to the agent so the kill endpoint can kill this process

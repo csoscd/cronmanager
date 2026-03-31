@@ -125,12 +125,11 @@ final class MailNotifier
             ? \mb_substr($output, 0, 10000) . "\n\n[... output truncated to 10 000 characters ...]"
             : $output;
 
-        $subject = sprintf(
-            '[Cronmanager] Job #%d FAILED (exit %d): %s',
-            $jobId,
-            $exitCode,
-            $description
-        );
+        $subject = match (true) {
+            $exitCode === -2 => sprintf('[Cronmanager] Job #%d AUTO-KILLED (limit exceeded): %s', $jobId, $description),
+            $exitCode === -3 => sprintf('[Cronmanager] Job #%d LIMIT EXCEEDED (still running): %s', $jobId, $description),
+            default          => sprintf('[Cronmanager] Job #%d FAILED (exit %d): %s', $jobId, $exitCode, $description),
+        };
 
         $plainBody = $this->buildPlainBody(
             $jobId,
@@ -229,8 +228,14 @@ final class MailNotifier
         string $startedAt,
         string $finishedAt
     ): string {
+        $headline = match (true) {
+            $exitCode === -2 => 'CRONMANAGER – JOB AUTO-KILLED (EXECUTION LIMIT EXCEEDED)',
+            $exitCode === -3 => 'CRONMANAGER – JOB EXECUTION LIMIT EXCEEDED',
+            default          => 'CRONMANAGER – JOB FAILURE ALERT',
+        };
+
         return implode("\n", [
-            'CRONMANAGER – JOB FAILURE ALERT',
+            $headline,
             str_repeat('=', 60),
             '',
             sprintf('Job ID     : %d',   $jobId),
@@ -283,16 +288,34 @@ final class MailNotifier
 
         $outputHtml = $output !== '' ? $e($output) : '<em>(no output)</em>';
 
+        [$h1Text, $introText, $h1Color] = match (true) {
+            $exitCode === -2 => [
+                '&#x1F6AB; Cron Job Auto-Killed',
+                'A managed cron job was automatically terminated because it exceeded its configured execution time limit.',
+                '#e67e22',
+            ],
+            $exitCode === -3 => [
+                '&#x23F0; Cron Job Execution Limit Exceeded',
+                'A managed cron job has been running longer than its configured execution time limit.',
+                '#8e44ad',
+            ],
+            default => [
+                '&#x26A0; Cron Job Failure Alert',
+                'A managed cron job has exited with a non-zero exit code.',
+                '#c0392b',
+            ],
+        };
+
         return <<<HTML
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Cronmanager – Job Failure Alert</title>
+    <title>Cronmanager – Job Alert</title>
     <style>
         body      { font-family: Arial, sans-serif; font-size: 14px; color: #333; background: #f4f4f4; margin: 0; padding: 20px; }
         .container{ background: #fff; border-radius: 6px; padding: 24px 32px; max-width: 800px; margin: 0 auto; box-shadow: 0 2px 6px rgba(0,0,0,.1); }
-        h1        { color: #c0392b; font-size: 20px; margin-top: 0; }
+        h1        { color: {$h1Color}; font-size: 20px; margin-top: 0; }
         table     { width: 100%; border-collapse: collapse; margin: 16px 0; }
         th        { background: #f0f0f0; text-align: left; padding: 8px 12px; width: 160px; font-weight: 600; border: 1px solid #ddd; }
         td        { padding: 8px 12px; border: 1px solid #ddd; }
@@ -303,8 +326,8 @@ final class MailNotifier
 </head>
 <body>
 <div class="container">
-    <h1>&#x26A0; Cron Job Failure Alert</h1>
-    <p>A managed cron job has exited with a non-zero exit code.</p>
+    <h1>{$h1Text}</h1>
+    <p>{$introText}</p>
 
     <table>
         <tr><th>Job ID</th>      <td>{$e((string)$jobId)}</td></tr>

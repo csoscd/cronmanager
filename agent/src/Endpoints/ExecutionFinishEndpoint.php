@@ -171,6 +171,9 @@ final class ExecutionFinishEndpoint
             // 4. UPDATE the execution_log row
             // ------------------------------------------------------------------
 
+            // Guard: only update rows that are still running.  If check-limits.php
+            // already auto-killed this execution (finished_at IS NOT NULL, exit_code = -2),
+            // we must not overwrite it with the wrapper's exit code (e.g. 143 from SIGTERM).
             $stmt = $this->pdo->prepare(
                 'UPDATE execution_log
                     SET finished_at = :finished_at,
@@ -179,7 +182,8 @@ final class ExecutionFinishEndpoint
                         target      = COALESCE(:target, target),
                         pid         = NULL,
                         pid_file    = NULL
-                  WHERE id = :id'
+                  WHERE id = :id
+                    AND finished_at IS NULL'
             );
             $stmt->execute([
                 ':finished_at' => $finishedAt,
@@ -189,12 +193,24 @@ final class ExecutionFinishEndpoint
                 ':id'          => $executionId,
             ]);
 
-            $this->logger->info('ExecutionFinishEndpoint: execution finished', [
-                'execution_id' => $executionId,
-                'job_id'       => $jobId,
-                'exit_code'    => $exitCode,
-                'finished_at'  => $finishedAt,
-            ]);
+            $alreadyFinished = $stmt->rowCount() === 0;
+
+            if ($alreadyFinished) {
+                // Execution was already closed by check-limits.php (auto-kill).
+                // Acknowledge silently without overwriting the stored result.
+                $this->logger->info('ExecutionFinishEndpoint: execution already finished (auto-killed), ignoring wrapper finish report', [
+                    'execution_id' => $executionId,
+                    'job_id'       => $jobId,
+                    'wrapper_exit_code' => $exitCode,
+                ]);
+            } else {
+                $this->logger->info('ExecutionFinishEndpoint: execution finished', [
+                    'execution_id' => $executionId,
+                    'job_id'       => $jobId,
+                    'exit_code'    => $exitCode,
+                    'finished_at'  => $finishedAt,
+                ]);
+            }
 
         } catch (PDOException $e) {
             $this->logger->error('ExecutionFinishEndpoint: database error while updating execution log', [
@@ -213,6 +229,17 @@ final class ExecutionFinishEndpoint
         // ------------------------------------------------------------------
         // 5. Send failure / limit-exceeded notification
         // ------------------------------------------------------------------
+
+        // Skip notification dispatch entirely when auto-kill already handled it.
+        if ($alreadyFinished) {
+            jsonResponse(200, [
+                'execution_id' => $executionId,
+                'job_id'       => $jobId,
+                'exit_code'    => $exitCode,
+                'finished_at'  => $finishedAt,
+            ]);
+            return;
+        }
 
         $notified = false;
 

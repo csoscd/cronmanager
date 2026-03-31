@@ -177,6 +177,7 @@ final class CronGetEndpoint
                 j.notify_on_failure,
                 j.execution_limit_seconds,
                 j.auto_kill_on_limit,
+                j.singleton,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -250,6 +251,7 @@ final class CronGetEndpoint
                 ? (int) $row['execution_limit_seconds']
                 : null,
             'auto_kill_on_limit'       => (bool) ($row['auto_kill_on_limit'] ?? false),
+            'singleton'                => (bool) ($row['singleton'] ?? false),
             'targets'                  => $targets,
             // Legacy fields kept so old wrapper invocations (no target arg) still work
             'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),

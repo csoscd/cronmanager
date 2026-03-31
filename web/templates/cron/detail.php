@@ -50,6 +50,28 @@ $autoKill      = !empty($job['auto_kill_on_limit']);
     </a>
 </div>
 
+<?php
+// Flash messages from kill action
+$killNoticeKey = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_notice');
+$killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_error');
+?>
+<?php if ($killNoticeKey !== null): ?>
+<div class="mb-4 flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300">
+    <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+    </svg>
+    <?= htmlspecialchars($t($killNoticeKey), ENT_QUOTES, 'UTF-8') ?>
+</div>
+<?php endif; ?>
+<?php if ($killErrorKey !== null): ?>
+<div class="mb-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+    <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <?= htmlspecialchars($t($killErrorKey), ENT_QUOTES, 'UTF-8') ?>
+</div>
+<?php endif; ?>
+
 <!-- ======================================================================
      Job detail card
      ====================================================================== -->

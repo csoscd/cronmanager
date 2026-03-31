@@ -113,6 +113,8 @@ return [
     'cron_kill_running'             => 'Kill Job',
     'cron_kill_confirm'             => 'Are you sure you want to kill this running execution?',
     'cron_kill_success'             => 'Kill signal sent.',
+    'cron_kill_no_pid'              => 'Cannot kill automatically: this execution has no PID recorded (it was started before kill support was added). Kill the process manually on the host.',
+    'cron_kill_already_finished'    => 'This execution has already finished.',
     'cron_killed_badge'             => 'Killed',
     'cron_limit_exceeded_badge'     => 'Limit exceeded',
     'cron_limit_badge'              => 'Limit: {n}s',

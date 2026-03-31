@@ -113,6 +113,8 @@ return [
     'cron_kill_running'             => 'Job beenden',
     'cron_kill_confirm'             => 'Möchten Sie diese laufende Ausführung wirklich beenden?',
     'cron_kill_success'             => 'Beendigungssignal gesendet.',
+    'cron_kill_no_pid'              => 'Automatisches Beenden nicht möglich: Für diese Ausführung wurde keine PID gespeichert (sie wurde gestartet, bevor die Kill-Funktion hinzugefügt wurde). Beenden Sie den Prozess manuell auf dem Host.',
+    'cron_kill_already_finished'    => 'Diese Ausführung ist bereits abgeschlossen.',
     'cron_killed_badge'             => 'Beendet',
     'cron_limit_exceeded_badge'     => 'Limit überschritten',
     'cron_limit_badge'              => 'Limit: {n}s',

@@ -27,6 +27,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Web\Controller;
 
+use Cronmanager\Web\Agent\AgentHttpException;
 use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Response;
 use Cronmanager\Web\Repository\UserPreferenceRepository;
@@ -877,6 +878,8 @@ class CronController extends BaseController
     public function killExecution(array $params): void
     {
         $executionId = isset($params['id']) ? (int) $params['id'] : 0;
+        $returnUrl   = trim((string) ($_POST['_return'] ?? ''));
+        $safe        = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons';
 
         $this->logger->info('CronController::killExecution: kill requested', [
             'execution_id' => $executionId,
@@ -884,17 +887,26 @@ class CronController extends BaseController
 
         try {
             $this->agentClient()->post("/execution/{$executionId}/kill", []);
+            SessionManager::set('_flash_kill_notice', 'cron_kill_success');
+        } catch (AgentHttpException $e) {
+            $this->logger->warning('CronController::killExecution: agent returned error', [
+                'execution_id' => $executionId,
+                'status'       => $e->getStatusCode(),
+                'error'        => $e->getMessage(),
+            ]);
+            $flashKey = match ($e->getStatusCode()) {
+                422     => 'cron_kill_no_pid',
+                404     => 'cron_kill_already_finished',
+                default => 'error_agent_unavailable',
+            };
+            SessionManager::set('_flash_kill_error', $flashKey);
         } catch (\RuntimeException $e) {
-            $this->logger->error('CronController::killExecution: agent error', [
+            $this->logger->error('CronController::killExecution: agent unreachable', [
                 'execution_id' => $executionId,
                 'error'        => $e->getMessage(),
             ]);
-            $this->renderError(503, 'error_agent_unavailable', '/crons');
-            return;
+            SessionManager::set('_flash_kill_error', 'error_agent_unavailable');
         }
-
-        $returnUrl = trim((string) ($_POST['_return'] ?? ''));
-        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons';
 
         (new Response())->redirect($safe);
     }

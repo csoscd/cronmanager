@@ -340,7 +340,7 @@ final class HistoryEndpoint
             LEFT JOIN tags t ON t.id = ct.tag_id
             {$whereClause}
             GROUP BY el.id
-            ORDER BY el.started_at DESC
+            ORDER BY (el.finished_at IS NULL) DESC, el.started_at DESC
             LIMIT :limit OFFSET :offset
             SQL;
 

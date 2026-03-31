@@ -109,13 +109,14 @@ echo 'Config written.' . PHP_EOL;
 log_info "Config written to ${CONFIG_FILE}."
 
 # =============================================================================
-# 2. Wait for MariaDB and apply schema if needed
+# 2. Wait for MariaDB, apply schema, and run pending migrations
 # =============================================================================
 
 DB_HOST="${DB_HOST:-cronmanager-db}"
 DB_PORT="${DB_PORT:-3306}"
 DB_NAME="${DB_NAME:-cronmanager}"
 DB_USER="${DB_USER:-cronmanager}"
+MIGRATIONS_DIR="${AGENT_DIR}/sql/migrations"
 
 log_info "Waiting for MariaDB at ${DB_HOST}:${DB_PORT}..."
 
@@ -124,11 +125,12 @@ RETRY_WAIT=2
 CONNECTED=false
 
 for i in $(seq 1 $MAX_RETRIES); do
-    if php -r "
+    if DB_HOST="${DB_HOST}" DB_PORT="${DB_PORT}" DB_NAME="${DB_NAME}" DB_USER="${DB_USER}" \
+       php -r "
         try {
             \$pdo = new PDO(
-                'mysql:host=${DB_HOST};port=${DB_PORT};dbname=${DB_NAME}',
-                '${DB_USER}',
+                'mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME'),
+                getenv('DB_USER'),
                 getenv('DB_PASSWORD'),
                 [PDO::ATTR_TIMEOUT => 3]
             );
@@ -150,13 +152,17 @@ if [[ "$CONNECTED" == false ]]; then
     exit 1
 fi
 
-# Apply schema.sql if the 'cronjobs' table does not yet exist
+# ── 2a. Apply schema.sql on first boot ────────────────────────────────────────
+
 log_info "Checking database schema..."
-TABLE_EXISTS=$(php -r "
+FRESH_INSTALL=false
+
+TABLE_EXISTS=$(DB_HOST="${DB_HOST}" DB_PORT="${DB_PORT}" DB_NAME="${DB_NAME}" DB_USER="${DB_USER}" \
+php -r "
     try {
         \$pdo = new PDO(
-            'mysql:host=${DB_HOST};port=${DB_PORT};dbname=${DB_NAME}',
-            '${DB_USER}',
+            'mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME'),
+            getenv('DB_USER'),
             getenv('DB_PASSWORD')
         );
         \$stmt = \$pdo->query(\"SHOW TABLES LIKE 'cronjobs'\");
@@ -173,12 +179,13 @@ if [[ "$TABLE_EXISTS" == "no" ]]; then
         log_error "Schema file not found: ${SCHEMA_FILE}"
         exit 1
     fi
-    php -r "
-        \$sql = file_get_contents('${SCHEMA_FILE}');
+    DB_HOST="${DB_HOST}" DB_PORT="${DB_PORT}" DB_NAME="${DB_NAME}" DB_USER="${DB_USER}" \
+    SCHEMA_FILE="${SCHEMA_FILE}" php -r "
+        \$sql = file_get_contents(getenv('SCHEMA_FILE'));
         try {
             \$pdo = new PDO(
-                'mysql:host=${DB_HOST};port=${DB_PORT};dbname=${DB_NAME}',
-                '${DB_USER}',
+                'mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME'),
+                getenv('DB_USER'),
                 getenv('DB_PASSWORD')
             );
             \$pdo->exec(\$sql);
@@ -189,10 +196,110 @@ if [[ "$TABLE_EXISTS" == "no" ]]; then
         }
     "
     log_info "Database schema initialised."
+    FRESH_INSTALL=true
 elif [[ "$TABLE_EXISTS" == "yes" ]]; then
-    log_info "Database schema already present – skipping init."
+    log_info "Database schema already present."
 else
     log_warn "Could not determine schema state (${TABLE_EXISTS}) – continuing anyway."
+fi
+
+# ── 2b. Ensure schema_migrations table exists ─────────────────────────────────
+# Needed for installations that predate the migration-tracking feature.
+
+DB_HOST="${DB_HOST}" DB_PORT="${DB_PORT}" DB_NAME="${DB_NAME}" DB_USER="${DB_USER}" \
+php -r "
+    \$pdo = new PDO(
+        'mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME'),
+        getenv('DB_USER'),
+        getenv('DB_PASSWORD')
+    );
+    \$pdo->exec(\"CREATE TABLE IF NOT EXISTS schema_migrations (
+        filename   VARCHAR(255) NOT NULL,
+        applied_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (filename)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci\");
+" 2>/dev/null && log_info "schema_migrations table ready." \
+             || log_warn "Could not ensure schema_migrations table."
+
+# ── 2c. Seed schema_migrations on fresh install ───────────────────────────────
+# All bundled migrations are already included in schema.sql, so mark them as
+# applied without executing them again.
+
+if [[ "$FRESH_INSTALL" == true ]]; then
+    log_info "Fresh install – seeding schema_migrations with bundled migrations..."
+    for mig in $(ls -1v "${MIGRATIONS_DIR}"/*.sql 2>/dev/null); do
+        fname=$(basename "$mig")
+        DB_HOST="${DB_HOST}" DB_PORT="${DB_PORT}" DB_NAME="${DB_NAME}" DB_USER="${DB_USER}" \
+        MIGRATION_NAME="${fname}" php -r "
+            \$pdo = new PDO(
+                'mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME'),
+                getenv('DB_USER'),
+                getenv('DB_PASSWORD')
+            );
+            \$stmt = \$pdo->prepare('INSERT IGNORE INTO schema_migrations (filename) VALUES (?)');
+            \$stmt->execute([getenv('MIGRATION_NAME')]);
+        " 2>/dev/null && log_info "  seeded: ${fname}" \
+                      || log_warn "  could not seed: ${fname}"
+    done
+fi
+
+# ── 2d. Apply pending migrations ──────────────────────────────────────────────
+
+log_info "Checking for pending migrations..."
+MIGRATIONS_APPLIED=0
+
+for mig in $(ls -1v "${MIGRATIONS_DIR}"/*.sql 2>/dev/null); do
+    fname=$(basename "$mig")
+
+    ALREADY_APPLIED=$(DB_HOST="${DB_HOST}" DB_PORT="${DB_PORT}" DB_NAME="${DB_NAME}" DB_USER="${DB_USER}" \
+    MIGRATION_NAME="${fname}" php -r "
+        \$pdo = new PDO(
+            'mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME'),
+            getenv('DB_USER'),
+            getenv('DB_PASSWORD')
+        );
+        \$stmt = \$pdo->prepare('SELECT COUNT(*) FROM schema_migrations WHERE filename = ?');
+        \$stmt->execute([getenv('MIGRATION_NAME')]);
+        echo \$stmt->fetchColumn();
+    " 2>/dev/null || echo "0")
+
+    if [[ "${ALREADY_APPLIED}" -gt 0 ]]; then
+        log_info "  already applied: ${fname}"
+        continue
+    fi
+
+    log_info "  applying: ${fname}..."
+    RESULT=$(DB_HOST="${DB_HOST}" DB_PORT="${DB_PORT}" DB_NAME="${DB_NAME}" DB_USER="${DB_USER}" \
+    MIGRATION_FILE="${mig}" MIGRATION_NAME="${fname}" php -r "
+        try {
+            \$sql = file_get_contents(getenv('MIGRATION_FILE'));
+            \$pdo = new PDO(
+                'mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME'),
+                getenv('DB_USER'),
+                getenv('DB_PASSWORD')
+            );
+            \$pdo->exec(\$sql);
+            \$stmt = \$pdo->prepare('INSERT IGNORE INTO schema_migrations (filename) VALUES (?)');
+            \$stmt->execute([getenv('MIGRATION_NAME')]);
+            echo 'ok';
+        } catch (Exception \$e) {
+            fwrite(STDERR, 'Migration failed: ' . \$e->getMessage() . PHP_EOL);
+            echo 'fail';
+        }
+    " 2>/dev/null)
+
+    if [[ "$RESULT" == "ok" ]]; then
+        log_info "  applied: ${fname}"
+        MIGRATIONS_APPLIED=$((MIGRATIONS_APPLIED + 1))
+    else
+        log_warn "  FAILED: ${fname} – check logs and apply manually if needed"
+    fi
+done
+
+if [[ "$MIGRATIONS_APPLIED" -gt 0 ]]; then
+    log_info "${MIGRATIONS_APPLIED} migration(s) applied."
+else
+    log_info "No pending migrations."
 fi
 
 # =============================================================================

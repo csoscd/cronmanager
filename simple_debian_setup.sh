@@ -1015,26 +1015,72 @@ if [[ "$DOCKER_DEPLOYED" == true ]]; then
         else
             ok "MariaDB is ready."
 
-            step "Applying schema.sql..."
+            step "Applying schema.sql (if not already initialised)..."
             # Connect as root: docker exec always resolves to @'localhost' in
             # MariaDB (even with -h 127.0.0.1 due to reverse DNS), so the
             # app user cronmanager@'%' created by the Docker image would be
             # denied. Root has unconditional @'localhost' access.
-            target_exec \
-                "docker exec -i cronmanager-db \
-                 mariadb -u root -p'${DB_ROOT_PASSWORD}' '${DB_NAME}' \
-                 < '${SCHEMA_FILE}'" \
-                && ok "Schema applied." \
-                || warn "Schema failed (may already exist – safe to ignore on re-runs)."
+            target_script << 'SHELLSCRIPT'
+TABLE_EXISTS=$(docker exec cronmanager-db \
+    mariadb -u root -p"${DB_ROOT_PASSWORD}" "${DB_NAME}" \
+    -sNe "SHOW TABLES LIKE 'cronjobs'" 2>/dev/null)
 
-            step "Applying migrations..."
+FRESH_INSTALL=false
+if [[ -z "$TABLE_EXISTS" ]]; then
+    docker exec -i cronmanager-db \
+        mariadb -u root -p"${DB_ROOT_PASSWORD}" "${DB_NAME}" \
+        < "${SCHEMA_FILE}" \
+        && echo "    Schema applied." \
+        || { echo "    Schema failed."; exit 1; }
+    FRESH_INSTALL=true
+else
+    echo "    Schema already present – skipping."
+fi
+SHELLSCRIPT
+            ok "Schema step complete."
+
+            step "Ensuring schema_migrations table exists..."
+            target_exec \
+                "docker exec cronmanager-db \
+                 mariadb -u root -p'${DB_ROOT_PASSWORD}' '${DB_NAME}' \
+                 -e \"CREATE TABLE IF NOT EXISTS schema_migrations (
+                     filename   VARCHAR(255) NOT NULL,
+                     applied_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                     PRIMARY KEY (filename)
+                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci\"" \
+                && ok "schema_migrations table ready." \
+                || warn "Could not ensure schema_migrations table."
+
+            step "Applying pending migrations..."
             target_script << SHELLSCRIPT
+# Seed schema_migrations on a fresh install so that bundled migrations
+# (already included in schema.sql) are never re-executed.
+if [[ "\${FRESH_INSTALL:-false}" == true ]]; then
+    for mig in \$(ls -1v '${MIGRATIONS_DIR}'/*.sql 2>/dev/null); do
+        fname=\$(basename "\$mig")
+        docker exec cronmanager-db \
+            mariadb -u root -p'${DB_ROOT_PASSWORD}' '${DB_NAME}' \
+            -e "INSERT IGNORE INTO schema_migrations (filename) VALUES ('\$fname')" 2>/dev/null
+        echo "    seeded: \${fname}"
+    done
+fi
+
 for mig in \$(ls -1v '${MIGRATIONS_DIR}'/*.sql 2>/dev/null); do
-    name=\$(basename "\$mig")
+    fname=\$(basename "\$mig")
+    already=\$(docker exec cronmanager-db \
+        mariadb -u root -p'${DB_ROOT_PASSWORD}' '${DB_NAME}' \
+        -sNe "SELECT COUNT(*) FROM schema_migrations WHERE filename='\$fname'" 2>/dev/null || echo "0")
+    if [[ "\$already" -gt 0 ]]; then
+        echo "    already applied: \${fname}"
+        continue
+    fi
     docker exec -i cronmanager-db \
         mariadb -u root -p'${DB_ROOT_PASSWORD}' '${DB_NAME}' < "\$mig" \
-        && echo "    applied: \${name}" \
-        || echo "    skipped (may already be applied): \${name}"
+        && docker exec cronmanager-db \
+               mariadb -u root -p'${DB_ROOT_PASSWORD}' '${DB_NAME}' \
+               -e "INSERT IGNORE INTO schema_migrations (filename) VALUES ('\$fname')" \
+        && echo "    applied: \${fname}" \
+        || echo "    FAILED: \${fname} – apply manually and insert into schema_migrations"
 done
 SHELLSCRIPT
         fi

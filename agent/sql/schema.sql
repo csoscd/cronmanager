@@ -102,3 +102,17 @@ CREATE TABLE IF NOT EXISTS execution_log (
     CONSTRAINT fk_el_cronjob FOREIGN KEY (cronjob_id)
         REFERENCES cronjobs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- schema_migrations – tracks which incremental migration files have been applied
+--
+-- Populated automatically by the Docker entrypoint and simple_debian_setup.sh.
+-- Fresh installs seed this table with all bundled migration filenames so that
+-- already-applied changes are never re-run on first-boot.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename   VARCHAR(255) NOT NULL                    COMMENT 'Base filename of the migration SQL file (e.g. 004_kill_and_limits.sql)',
+    applied_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                                        COMMENT 'Timestamp when this migration was applied',
+    PRIMARY KEY (filename)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

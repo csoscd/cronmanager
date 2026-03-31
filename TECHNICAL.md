@@ -1058,6 +1058,13 @@ UNIQUE KEY: `(job_id, target)`
 | `pid_file` | VARCHAR(255) NULL | Remote PID file path for SSH executions; cleared on finish |
 | `notified_limit_exceeded` | TINYINT(1) | `1` = limit-exceeded notification already sent |
 
+### `schema_migrations`
+
+| Column | Type | Notes |
+|---|---|---|
+| `filename` | VARCHAR(255) PK | Base filename of the applied migration (e.g. `004_kill_and_limits.sql`) |
+| `applied_at` | DATETIME | Timestamp of application (DEFAULT CURRENT_TIMESTAMP) |
+
 ---
 
 ## Security Model
@@ -1614,6 +1621,14 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
     -u cronmanager -p<password> cronmanager \
     < /opt/cronmanager/agent/sql/migrations/NNN_description.sql'
 ```
+
+**Migration tracking via `schema_migrations`:**
+
+Every applied migration is recorded in the `schema_migrations` table (filename + timestamp).
+Both the Docker entrypoint and `simple_debian_setup.sh` check this table before applying a file,
+so re-running the installer on an existing deployment is always safe. On a fresh install, all
+bundled migration filenames are seeded into the table immediately after `schema.sql` is applied,
+since all their changes are already included in the baseline schema.
 
 **Existing migrations:**
 

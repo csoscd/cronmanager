@@ -244,9 +244,9 @@ foreach ($exceeded as $row) {
         $killError = '';
 
         if ($target !== 'local' && $pidFile !== null) {
-            $killed = killRemote($sshHost: $target, $pidFile: $pidFile, $error: $killError, $logger: $logger);
+            $killed = killRemote(sshHost: $target, pidFile: $pidFile, error: $killError, logger: $logger);
         } elseif ($pid !== null) {
-            $killed = killLocal(pid: $pid, error: $killError, $logger: $logger);
+            $killed = killLocal(pid: $pid, error: $killError, logger: $logger);
         } else {
             $killError = 'No PID or PID file stored; cannot auto-kill.';
         }

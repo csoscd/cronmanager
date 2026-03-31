@@ -237,8 +237,8 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
         <?php if ($filterTag !== '' || $filterUser !== '' || $filterTarget !== '' || $filterSearch !== '' || $filterResult !== ''): ?>
             <div>
                 <a href="/crons?_reset=1"
-                   class="text-sm text-gray-500 hover:text-gray-700 underline py-2 block">
-                    &times; <?= htmlspecialchars($t('cancel'), ENT_QUOTES, 'UTF-8') ?>
+                   class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white underline py-2 block">
+                    &times; <?= htmlspecialchars($t('filter_reset'), ENT_QUOTES, 'UTF-8') ?>
                 </a>
             </div>
         <?php endif; ?>

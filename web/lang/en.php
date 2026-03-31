@@ -322,6 +322,7 @@ return [
     'select_all'              => 'Select all',
     'save'                    => 'Save',
     'cancel'                  => 'Cancel',
+    'filter_reset'            => 'Reset',
     'back'                    => 'Back',
     'no_results'              => 'No results found.',
 

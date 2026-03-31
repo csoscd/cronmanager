@@ -237,9 +237,9 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
         <!-- Apply -->
         <div>
             <button type="submit"
-                    class="bg-gray-700 hover:bg-gray-800 text-white text-sm font-medium
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium
                            px-5 py-2 rounded-lg transition focus:outline-none
-                           focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                           focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                 <?= htmlspecialchars($t('filter_apply'), ENT_QUOTES, 'UTF-8') ?>
             </button>
         </div>

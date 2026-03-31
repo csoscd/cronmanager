@@ -351,7 +351,7 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                             $startedAt    = (string) ($entry['started_at']  ?? '');
                             $finishedAt   = (string) ($entry['finished_at'] ?? '');
                             $exitCode     = isset($entry['exit_code']) ? $entry['exit_code'] : null;
-                            $executionId  = (string) ($entry['id'] ?? '');
+                            $executionId  = (string) ($entry['execution_id'] ?? '');
                             $isRunning    = $exitCode === null && $finishedAt === '';
                             $duration     = isset($entry['duration_seconds'])
                                 ? round((float) $entry['duration_seconds'], 1) . 's'

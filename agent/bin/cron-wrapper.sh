@@ -277,6 +277,12 @@ else
     log_warn "Job ${JOB_ID}: agent unreachable for /execution/start – continuing without tracking"
 fi
 
+# 409 Conflict = singleton job already running → skip this execution cleanly
+if [[ "${_HTTP_CODE}" == "409" ]]; then
+    log_info "Job ${JOB_ID}: skipped – singleton mode active and a previous instance is still running"
+    exit 0
+fi
+
 if [[ -z "$EXECUTION_ID" || "$EXECUTION_ID" == "0" ]]; then
     log_warn "Job ${JOB_ID}: no valid execution_id received (http_code=${_HTTP_CODE}) – continuing anyway"
     EXECUTION_ID="0"

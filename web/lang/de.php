@@ -110,6 +110,8 @@ return [
     'cron_execution_limit_hint'     => 'Maximale Laufzeit in Sekunden. Leer lassen für kein Limit.',
     'cron_execution_limit_seconds'  => 'Sekunden',
     'cron_auto_kill'                => 'Bei Limit-Überschreitung automatisch beenden',
+    'cron_singleton'                => 'Singleton',
+    'cron_singleton_hint'           => 'Neue Ausführungen überspringen, solange eine vorherige Instanz noch läuft.',
     'cron_kill_running'             => 'Job beenden',
     'cron_kill_confirm'             => 'Möchten Sie diese laufende Ausführung wirklich beenden?',
     'cron_kill_success'             => 'Beendigungssignal gesendet.',

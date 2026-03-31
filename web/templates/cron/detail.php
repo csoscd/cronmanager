@@ -39,6 +39,7 @@ $limitSeconds  = isset($job['execution_limit_seconds']) && $job['execution_limit
     ? (int) $job['execution_limit_seconds']
     : null;
 $autoKill      = !empty($job['auto_kill_on_limit']);
+$singleton     = !empty($job['singleton']);
 ?>
 
 <!-- ======================================================================
@@ -271,6 +272,22 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                             <?= htmlspecialchars($t('cron_auto_kill'), ENT_QUOTES, 'UTF-8') ?>
                         </span>
                     <?php endif; ?>
+                <?php else: ?>
+                    —
+                <?php endif; ?>
+            </dd>
+        </div>
+
+        <!-- Singleton -->
+        <div>
+            <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
+                <?= htmlspecialchars($t('cron_singleton'), ENT_QUOTES, 'UTF-8') ?>
+            </dt>
+            <dd class="text-sm text-gray-600 dark:text-gray-300">
+                <?php if ($singleton): ?>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                        <?= htmlspecialchars($t('cron_singleton'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
                 <?php else: ?>
                     —
                 <?php endif; ?>

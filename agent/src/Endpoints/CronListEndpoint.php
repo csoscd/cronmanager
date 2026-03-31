@@ -241,6 +241,7 @@ final class CronListEndpoint
                 j.notify_on_failure,
                 j.execution_limit_seconds,
                 j.auto_kill_on_limit,
+                j.singleton,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -335,6 +336,7 @@ final class CronListEndpoint
                 ? (int) $row['execution_limit_seconds']
                 : null,
             'auto_kill_on_limit'       => (bool) ($row['auto_kill_on_limit'] ?? false),
+            'singleton'                => (bool) ($row['singleton'] ?? false),
             'targets'                  => $targets,
             'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),
             'ssh_host'                 => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,

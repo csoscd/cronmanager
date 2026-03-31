@@ -147,7 +147,23 @@ final class ExecutionStartEndpoint
             }
 
             // ------------------------------------------------------------------
-            // 4. Insert the execution log row
+            // 4. Singleton guard: reject if another instance is already running
+            // ------------------------------------------------------------------
+
+            if ($this->isSingleton($jobId) && $this->hasRunningExecution($jobId)) {
+                $this->logger->info('ExecutionStartEndpoint: singleton job already running – skipping', [
+                    'job_id' => $jobId,
+                ]);
+                jsonResponse(409, [
+                    'error'   => 'Conflict',
+                    'message' => 'Singleton job already has a running execution.',
+                    'code'    => 409,
+                ]);
+                return;
+            }
+
+            // ------------------------------------------------------------------
+            // 5. Insert the execution log row
             // ------------------------------------------------------------------
 
             $stmt = $this->pdo->prepare(
@@ -237,6 +253,44 @@ final class ExecutionStartEndpoint
     private function jobExists(int $jobId): bool
     {
         $stmt = $this->pdo->prepare('SELECT 1 FROM cronjobs WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $jobId]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * Return true when the job has the singleton flag set.
+     *
+     * @param int $jobId The job ID to check.
+     *
+     * @return bool
+     *
+     * @throws PDOException On database errors.
+     */
+    private function isSingleton(int $jobId): bool
+    {
+        $stmt = $this->pdo->prepare('SELECT singleton FROM cronjobs WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $jobId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        return $row !== false && (bool) $row['singleton'];
+    }
+
+    /**
+     * Return true when at least one execution of the given job is still running
+     * (i.e. has no finished_at timestamp).
+     *
+     * @param int $jobId The job ID to check.
+     *
+     * @return bool
+     *
+     * @throws PDOException On database errors.
+     */
+    private function hasRunningExecution(int $jobId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT 1 FROM execution_log WHERE cronjob_id = :id AND finished_at IS NULL LIMIT 1'
+        );
         $stmt->execute([':id' => $jobId]);
 
         return $stmt->fetchColumn() !== false;

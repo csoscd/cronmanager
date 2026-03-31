@@ -134,6 +134,7 @@ final class CronCreateEndpoint
             ? $body['execution_limit_seconds']
             : null;
         $autoKillOnLimit      = isset($body['auto_kill_on_limit']) ? (bool) $body['auto_kill_on_limit'] : false;
+        $singleton            = isset($body['singleton'])          ? (bool) $body['singleton']          : false;
         $targets              = $this->normaliseTargets($body['targets'] ?? ['local']);
         $tags                 = isset($body['tags']) && is_array($body['tags']) ? $body['tags'] : [];
 
@@ -158,10 +159,10 @@ final class CronCreateEndpoint
             $stmt = $this->pdo->prepare(
                 'INSERT INTO cronjobs
                     (linux_user, schedule, command, description, active, notify_on_failure,
-                     execution_limit_seconds, auto_kill_on_limit, execution_mode, ssh_host)
+                     execution_limit_seconds, auto_kill_on_limit, singleton, execution_mode, ssh_host)
                  VALUES
                     (:linux_user, :schedule, :command, :description, :active, :notify_on_failure,
-                     :execution_limit_seconds, :auto_kill_on_limit, :execution_mode, :ssh_host)'
+                     :execution_limit_seconds, :auto_kill_on_limit, :singleton, :execution_mode, :ssh_host)'
             );
             $stmt->execute([
                 ':linux_user'             => $linuxUser,
@@ -172,6 +173,7 @@ final class CronCreateEndpoint
                 ':notify_on_failure'      => (int) $notifyOnFailure,
                 ':execution_limit_seconds'=> $executionLimitSeconds,
                 ':auto_kill_on_limit'     => (int) $autoKillOnLimit,
+                ':singleton'              => (int) $singleton,
                 ':execution_mode'         => $executionMode,
                 ':ssh_host'               => $sshHost,
             ]);
@@ -295,6 +297,11 @@ final class CronCreateEndpoint
         // notify_on_failure: optional bool
         if (isset($body['notify_on_failure']) && !is_bool($body['notify_on_failure'])) {
             $errors['notify_on_failure'] = 'Must be a boolean.';
+        }
+
+        // singleton: optional bool
+        if (isset($body['singleton']) && !is_bool($body['singleton'])) {
+            $errors['singleton'] = 'Must be a boolean.';
         }
 
         // targets: optional array, at least one non-empty string, each max 255 chars
@@ -491,6 +498,7 @@ final class CronCreateEndpoint
                 j.notify_on_failure,
                 j.execution_limit_seconds,
                 j.auto_kill_on_limit,
+                j.singleton,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -530,6 +538,7 @@ final class CronCreateEndpoint
                 ? (int) $row['execution_limit_seconds']
                 : null,
             'auto_kill_on_limit'       => (bool)   ($row['auto_kill_on_limit'] ?? false),
+            'singleton'                => (bool)   ($row['singleton']        ?? false),
             'targets'                  => $targets,
             // Legacy fields kept for backward compatibility
             'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),

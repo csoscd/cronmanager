@@ -168,6 +168,7 @@ final class CronUpdateEndpoint
                      notify_on_failure = :notify_on_failure,
                      execution_limit_seconds = :execution_limit_seconds,
                      auto_kill_on_limit = :auto_kill_on_limit,
+                     singleton = :singleton,
                      execution_mode = :execution_mode,
                      ssh_host = :ssh_host
                  WHERE id = :id'
@@ -181,6 +182,7 @@ final class CronUpdateEndpoint
                 ':notify_on_failure'       => (int) $merged['notify_on_failure'],
                 ':execution_limit_seconds' => $merged['execution_limit_seconds'],
                 ':auto_kill_on_limit'      => (int) ($merged['auto_kill_on_limit'] ?? false),
+                ':singleton'               => (int) ($merged['singleton'] ?? false),
                 ':execution_mode'          => $executionMode,
                 ':ssh_host'                => $sshHost,
                 ':id'                      => $jobId,
@@ -292,6 +294,9 @@ final class CronUpdateEndpoint
             'auto_kill_on_limit'       => array_key_exists('auto_kill_on_limit', $body)
                 ? (bool) $body['auto_kill_on_limit']
                 : (bool) ($existing['auto_kill_on_limit'] ?? false),
+            'singleton'                => array_key_exists('singleton', $body)
+                ? (bool) $body['singleton']
+                : (bool) ($existing['singleton'] ?? false),
             'targets'                  => $mergedTargets,
             'tags'                     => array_key_exists('tags', $body) ? $body['tags'] : $existingTags,
         ];
@@ -366,6 +371,11 @@ final class CronUpdateEndpoint
         // notify_on_failure
         if (!is_bool($data['notify_on_failure'])) {
             $errors['notify_on_failure'] = 'Must be a boolean.';
+        }
+
+        // singleton
+        if (isset($data['singleton']) && !is_bool($data['singleton'])) {
+            $errors['singleton'] = 'Must be a boolean.';
         }
 
         // targets
@@ -551,6 +561,7 @@ final class CronUpdateEndpoint
                 j.notify_on_failure,
                 j.execution_limit_seconds,
                 j.auto_kill_on_limit,
+                j.singleton,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -604,6 +615,7 @@ final class CronUpdateEndpoint
                 ? (int) $row['execution_limit_seconds']
                 : null,
             'auto_kill_on_limit'       => (bool) ($row['auto_kill_on_limit'] ?? false),
+            'singleton'                => (bool) ($row['singleton'] ?? false),
             'targets'                  => $targets,
             'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),
             'ssh_host'                 => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,

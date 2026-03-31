@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Singleton job mode** – Each cron job can be flagged as "singleton". When enabled, the agent checks whether a previous instance of the same job is still running (i.e. has no `finished_at` timestamp) before inserting a new execution log row. If a running instance is found, the agent returns HTTP `409 Conflict` and the wrapper script exits silently without recording a failure. The flag is configurable on the create/edit form and visible on the job detail page. Database migration `005_singleton.sql` adds the `singleton` column to `cronjobs`.
+
 - **Kill running execution** – Admins can now terminate a running cron job mid-flight via the job detail page. A "Kill Job" button appears next to every in-progress execution in the history table. Clicking it sends `POST /execution/{id}/kill` to the web layer, which proxies to the new agent endpoint. The agent kills the process (local: `SIGTERM` to process group via `posix_kill`; remote SSH: reads a PID file written by the wrapper, sends `kill -TERM -$PID` over SSH). The execution is marked finished with exit code **-2** ("killed by operator") and an annotation is appended to the output.
 - **Execution limit per job** – Each job now has an optional `execution_limit_seconds` field. When a job runs longer than the configured limit:
   - A **notification** is dispatched (if `notify_on_failure` / "Notify on failure / limit exceeded" is enabled) with exit code **-3** as context.

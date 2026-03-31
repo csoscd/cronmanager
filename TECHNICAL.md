@@ -355,9 +355,22 @@ complete crontab file from the current database state for the affected Linux use
 9. Exit with the original command's exit code
 ```
 
+The wrapper handles HTTP `409 Conflict` from `POST /execution/start` silently: it logs
+a notice and exits 0 without running the command. This is the mechanism behind singleton
+mode (see below).
+
 The wrapper logs to stderr (which is delivered by cron as a mail to the Linux user if
 cron mail is configured). It does not abort if the agent is unreachable — the command
 runs regardless and a best-effort finish report is sent.
+
+**Singleton mode:**
+
+When a job has the `singleton` flag set, the `ExecutionStartEndpoint` queries
+`execution_log` for any row with the same `cronjob_id` that has `finished_at IS NULL`
+(i.e. still running). If one is found, the agent returns `409 Conflict` instead of
+inserting a new log row. The wrapper detects the `409` HTTP status code and exits 0
+immediately — no execution record is created and no failure is reported. This is
+transparent to the user unless they inspect the agent log.
 
 **Dependencies:** `bash 4+`, `curl`, `openssl`, `php`
 
@@ -563,10 +576,14 @@ Called by `cron-wrapper.sh` when a job begins.
 }
 ```
 
-**Response:**
+**Response (201 Created):**
 ```json
 { "execution_id": 1001 }
 ```
+
+**Response (409 Conflict)** – returned when the job has `singleton = 1` and a previous
+execution has no `finished_at` (still running). The wrapper exits 0; no execution record
+is created.
 
 ---
 
@@ -1017,6 +1034,7 @@ is stored in `$_SESSION['lang']`. Fallback is English if a key is missing.
 | `notify_on_failure` | TINYINT(1) | Send email on failure or limit exceeded |
 | `execution_limit_seconds` | INT UNSIGNED NULL | Maximum allowed runtime; NULL = no limit |
 | `auto_kill_on_limit` | TINYINT(1) | `1` = auto-kill when limit is exceeded |
+| `singleton` | TINYINT(1) | `1` = skip new execution if a previous instance is still running |
 | `execution_mode` | ENUM('local','remote') | Legacy; superseded by `job_targets` |
 | `ssh_host` | VARCHAR(255) NULL | Legacy; superseded by `job_targets` |
 | `created_at` | DATETIME | |

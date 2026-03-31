@@ -1053,6 +1053,7 @@ class CronController extends BaseController
             'notify_on_failure'        => isset($post['notify_on_failure']),
             'execution_limit_seconds'  => $executionLimitSeconds,
             'auto_kill_on_limit'       => isset($post['auto_kill_on_limit']),
+            'singleton'                => isset($post['singleton']),
             'targets'                  => $targets,
         ];
     }

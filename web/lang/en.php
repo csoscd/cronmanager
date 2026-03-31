@@ -110,6 +110,8 @@ return [
     'cron_execution_limit_hint'     => 'Maximum runtime in seconds. Leave empty for no limit.',
     'cron_execution_limit_seconds'  => 'seconds',
     'cron_auto_kill'                => 'Auto-kill on limit exceeded',
+    'cron_singleton'                => 'Singleton',
+    'cron_singleton_hint'           => 'Skip new executions while a previous instance is still running.',
     'cron_kill_running'             => 'Kill Job',
     'cron_kill_confirm'             => 'Are you sure you want to kill this running execution?',
     'cron_kill_success'             => 'Kill signal sent.',

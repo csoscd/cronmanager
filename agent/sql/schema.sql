@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS cronjobs (
     notify_on_failure        TINYINT(1)   DEFAULT 1          COMMENT '1 = send alert mail on non-zero exit',
     execution_limit_seconds  INT UNSIGNED NULL              COMMENT 'Maximum allowed runtime in seconds; NULL = no limit',
     auto_kill_on_limit       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = auto-kill when execution_limit_seconds is exceeded',
+    singleton                TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = skip new execution if a previous instance is still running',
     execution_mode    ENUM('local','remote') NOT NULL DEFAULT 'local'
                                                COMMENT 'local = run on this host, remote = execute via SSH',
     ssh_host          VARCHAR(255)            NULL     COMMENT 'SSH config host alias (from ~/.ssh/config); required when execution_mode=remote',

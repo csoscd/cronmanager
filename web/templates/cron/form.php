@@ -49,6 +49,7 @@ $formAction    = ($isEdit && $jobId !== '') ? '/crons/' . rawurlencode($jobId) .
 $isActiveVal   = $job !== null ? !empty($job['active']) : true;
 $isNotifyVal   = $job !== null ? !empty($job['notify_on_failure']) : true;
 $isAutoKillVal = $job !== null ? !empty($job['auto_kill_on_limit']) : false;
+$isSingletonVal = $job !== null ? !empty($job['singleton']) : false;
 $pageTitle     = $isEdit ? $t('cron_edit') : $t('cron_add');
 
 // Collect existing tag names for click-to-insert hints
@@ -305,6 +306,18 @@ foreach ($tags as $tag) {
                                   focus:ring-orange-400 cursor-pointer">
                     <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
                         <?= htmlspecialchars($t('cron_auto_kill'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                </label>
+
+                <!-- Singleton mode -->
+                <label class="flex items-center gap-2 cursor-pointer" title="<?= htmlspecialchars($t('cron_singleton_hint'), ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="checkbox" name="singleton" value="1"
+                           id="singleton"
+                           <?= $isSingletonVal ? 'checked' : '' ?>
+                           class="w-4 h-4 text-purple-600 border-gray-300 rounded
+                                  focus:ring-purple-500 cursor-pointer">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <?= htmlspecialchars($t('cron_singleton'), ENT_QUOTES, 'UTF-8') ?>
                     </span>
                 </label>
 

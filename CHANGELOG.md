@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Limit-exceeded alert email showed misleading "Exit Code: -3" and "Finished" timestamp** – When the execution-limit checker sends a notification for a job that is still running, the email displayed `Exit Code: -3` (an internal sentinel) and labelled the notification timestamp as "Finished", both implying the job had already exited. The job has no exit code while running. Fixed in `MailNotifier`: for exit code `-3` the exit-code field now reads "N/A – job still running" and the timestamp row is labelled "Notified At" instead of "Finished".
 - **`cron-wrapper.sh` – SSH remote jobs silently did nothing (setsid breaks SSH stdin)** – SSH always starts the remote command in a fresh session, making it its own process-group leader (PGID == PID == SID). Adding `setsid` in front of the remote shell caused `setsid` to detect that the process was already a process-group leader and fork a child. The parent then exited, SSH interpreted this as the command completing and closed stdin before the child's `sh -s` could read it. The job ran with empty stdin, executed nothing, and exited 0 with no output — completing in 1–2 seconds regardless of the job command. Fixed by removing `setsid` from the remote SSH command: `sh -c 'echo $$ > PID_FILE; exec sh -s'`. The PGID == PID guarantee is already provided by sshd, so process-group-based killing with `kill -TERM -$PID` continues to work correctly.
 
 ---

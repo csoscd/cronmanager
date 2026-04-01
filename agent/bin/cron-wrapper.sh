@@ -373,13 +373,22 @@ if [[ "${TARGET}" != "local" ]]; then
     # Construct the remote pid-file path (based on execution_id so it is unique)
     REMOTE_PID_FILE="/tmp/.cmgr_${EXECUTION_ID}"
 
-    # setsid ensures the remote sh runs as its own session/process-group leader
-    # (PGID == PID == $$), so `kill -TERM -$PID` from the kill/check-limits
-    # logic reaches sh AND all its children (e.g. a spawned sleep).
-    # exec sh -s reads the command from stdin (the here-string), preserving the PID.
+    # SSH already starts the remote command in a fresh session, so the remote sh
+    # is already its own process-group leader (PGID == PID == SID) without any
+    # help from setsid.  Using setsid here is actively harmful: setsid detects
+    # that it is being invoked as a process-group leader (which SSH guarantees),
+    # forks a child, and then the parent exits.  SSH interprets the parent exit
+    # as the command finishing, closes stdin before the child's sh -s can read
+    # it, and the job runs with empty stdin – executing nothing, exiting 0, with
+    # no output.
+    #
+    # The correct pattern: sh -c writes $$ (= the SSH process's PID, which is
+    # also its PGID) to the PID file, then exec sh -s reads the command from the
+    # SSH-forwarded stdin here-string.  `kill -TERM -$PID` reaches sh and all
+    # its children because PGID == PID is already guaranteed by sshd.
     # shellcheck disable=SC2029
     ssh -o BatchMode=yes -o ConnectTimeout=30 "${TARGET}" -- \
-        "setsid sh -c 'echo \$\$ > ${REMOTE_PID_FILE}; exec sh -s'" \
+        "sh -c 'echo \$\$ > ${REMOTE_PID_FILE}; exec sh -s'" \
         <<< "${COMMAND}" \
         > "${TMP_OUTPUT}" 2>&1 &
     SSH_BG_PID=$!

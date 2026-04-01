@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.3.1] – branch: `small_fix20260401`
+
+### Fixed
+
+- **`cron-wrapper.sh` – SSH remote jobs silently did nothing (setsid breaks SSH stdin)** – SSH always starts the remote command in a fresh session, making it its own process-group leader (PGID == PID == SID). Adding `setsid` in front of the remote shell caused `setsid` to detect that the process was already a process-group leader and fork a child. The parent then exited, SSH interpreted this as the command completing and closed stdin before the child's `sh -s` could read it. The job ran with empty stdin, executed nothing, and exited 0 with no output — completing in 1–2 seconds regardless of the job command. Fixed by removing `setsid` from the remote SSH command: `sh -c 'echo $$ > PID_FILE; exec sh -s'`. The PGID == PID guarantee is already provided by sshd, so process-group-based killing with `kill -TERM -$PID` continues to work correctly.
+
+---
+
 ## [2.3.0] – branch: `gen_improve`
 
 ### Added

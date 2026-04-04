@@ -49,6 +49,7 @@ declare(strict_types=1);
 namespace Cronmanager\Agent\Endpoints;
 
 use Cronmanager\Agent\Notification\MailNotifier;
+use Cronmanager\Agent\Notification\TelegramNotifier;
 use Monolog\Logger;
 use PDO;
 use PDOException;
@@ -75,14 +76,16 @@ final class ExecutionFinishEndpoint
     /**
      * ExecutionFinishEndpoint constructor.
      *
-     * @param PDO          $pdo          Active PDO database connection.
-     * @param Logger       $logger       Monolog logger instance.
-     * @param MailNotifier $mailNotifier Mail notifier for failure alerts.
+     * @param PDO              $pdo              Active PDO database connection.
+     * @param Logger           $logger           Monolog logger instance.
+     * @param MailNotifier     $mailNotifier     Mail notifier for failure alerts.
+     * @param TelegramNotifier $telegramNotifier Telegram notifier for failure alerts.
      */
     public function __construct(
-        private readonly PDO          $pdo,
-        private readonly Logger       $logger,
-        private readonly MailNotifier $mailNotifier,
+        private readonly PDO              $pdo,
+        private readonly Logger           $logger,
+        private readonly MailNotifier     $mailNotifier,
+        private readonly TelegramNotifier $telegramNotifier,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -523,11 +526,11 @@ final class ExecutionFinishEndpoint
             && !in_array('exec', array_map('trim', explode(',', (string) ini_get('disable_functions'))), true);
 
         if (!file_exists($notifyScript) || !$execAvailable) {
-            $this->logger->warning('ExecutionFinishEndpoint: falling back to synchronous mail sending', [
-                'script_exists' => file_exists($notifyScript),
+            $this->logger->warning('ExecutionFinishEndpoint: falling back to synchronous notification sending', [
+                'script_exists'  => file_exists($notifyScript),
                 'exec_available' => $execAvailable,
             ]);
-            return $this->mailNotifier->sendFailureAlert(
+            $mailSent     = $this->mailNotifier->sendFailureAlert(
                 jobId:       $jobId,
                 description: $description,
                 linuxUser:   $linuxUser,
@@ -537,14 +540,25 @@ final class ExecutionFinishEndpoint
                 startedAt:   $startedAt,
                 finishedAt:  $finishedAt
             );
+            $telegramSent = $this->telegramNotifier->sendFailureAlert(
+                jobId:       $jobId,
+                description: $description,
+                linuxUser:   $linuxUser,
+                schedule:    $schedule,
+                exitCode:    $exitCode,
+                output:      $output,
+                startedAt:   $startedAt,
+                finishedAt:  $finishedAt
+            );
+            return $mailSent || $telegramSent;
         }
 
         // Write payload to a temp file; the background script deletes it after reading
         $tempFile = tempnam(sys_get_temp_dir(), 'cronmgr_notify_');
 
         if ($tempFile === false) {
-            $this->logger->error('ExecutionFinishEndpoint: tempnam() failed – falling back to synchronous mail sending');
-            return $this->mailNotifier->sendFailureAlert(
+            $this->logger->error('ExecutionFinishEndpoint: tempnam() failed – falling back to synchronous notification sending');
+            $mailSent     = $this->mailNotifier->sendFailureAlert(
                 jobId:       $jobId,
                 description: $description,
                 linuxUser:   $linuxUser,
@@ -554,6 +568,17 @@ final class ExecutionFinishEndpoint
                 startedAt:   $startedAt,
                 finishedAt:  $finishedAt
             );
+            $telegramSent = $this->telegramNotifier->sendFailureAlert(
+                jobId:       $jobId,
+                description: $description,
+                linuxUser:   $linuxUser,
+                schedule:    $schedule,
+                exitCode:    $exitCode,
+                output:      $output,
+                startedAt:   $startedAt,
+                finishedAt:  $finishedAt
+            );
+            return $mailSent || $telegramSent;
         }
 
         $payload = json_encode([
@@ -569,8 +594,8 @@ final class ExecutionFinishEndpoint
 
         if (file_put_contents($tempFile, $payload) === false) {
             @unlink($tempFile);
-            $this->logger->error('ExecutionFinishEndpoint: failed to write notification temp file – falling back to synchronous mail sending');
-            return $this->mailNotifier->sendFailureAlert(
+            $this->logger->error('ExecutionFinishEndpoint: failed to write notification temp file – falling back to synchronous notification sending');
+            $mailSent     = $this->mailNotifier->sendFailureAlert(
                 jobId:       $jobId,
                 description: $description,
                 linuxUser:   $linuxUser,
@@ -580,6 +605,17 @@ final class ExecutionFinishEndpoint
                 startedAt:   $startedAt,
                 finishedAt:  $finishedAt
             );
+            $telegramSent = $this->telegramNotifier->sendFailureAlert(
+                jobId:       $jobId,
+                description: $description,
+                linuxUser:   $linuxUser,
+                schedule:    $schedule,
+                exitCode:    $exitCode,
+                output:      $output,
+                startedAt:   $startedAt,
+                finishedAt:  $finishedAt
+            );
+            return $mailSent || $telegramSent;
         }
 
         // Spawn the notification process in the background.

@@ -33,7 +33,7 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 9. [Configuration Reference](#configuration-reference)
    - [Web application config](#web-application-config)
    - [Agent config](#agent-config)
-10. [Email Failure Alerts](#email-failure-alerts)
+10. [Failure Alerts (Email & Telegram)](#failure-alerts-email--telegram)
 11. [Multi-Host Execution](#multi-host-execution)
 12. [Crontab Import](#crontab-import)
 13. [Maintenance](#maintenance)
@@ -62,6 +62,7 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Crontab import** | Detect and import existing unmanaged crontab entries |
 | **Export** | Download a ready-to-use crontab file or JSON for all managed jobs |
 | **Email alerts** | Receive an email when a job exits with a non-zero status or exceeds its execution limit |
+| **Telegram alerts** | Receive a Telegram message for the same events via the Bot API |
 | **Maintenance** | Crontab sync, stuck-execution cleanup, and history bulk-delete |
 | **Local & SSO auth** | Username/password accounts or OAuth 2.0 / OpenID Connect (OIDC) via Authentik |
 | **Role-based access** | Admin (full access) and Viewer (read-only) roles |
@@ -187,6 +188,24 @@ lets you create the initial admin account.
 | `cronmanager-web` | `cs1711/cronmanager-web:latest` | PHP-FPM + Nginx web UI |
 
 All persistent data lives in **Docker-managed named volumes** (`db-data`, `agent-log`, `web-log`).
+
+### Available image tags
+
+| Tag | Built from | Use for |
+|---|---|---|
+| `latest` | `main` branch (on every release) | Production — always stable |
+| `2.4.0`, `2.3.1`, … | Git tag on `main` | Pinning to a specific release |
+| `dev` | Latest development branch push | Testing unreleased features |
+
+> **Warning:** The `:dev` tag is overwritten on every push to any active development
+> branch. It may contain incomplete features, breaking changes, or unstable code.
+> **Never use `:dev` in production.**
+
+To use a specific version, replace `:latest` in `docker-compose-full.yml`:
+```yaml
+image: cs1711/cronmanager-agent:2.4.0
+image: cs1711/cronmanager-web:2.4.0
+```
 No host directory mounts are needed.  Optional host-path alternatives are available as
 commented-out lines in `docker-compose-full.yml`.
 
@@ -221,6 +240,10 @@ commented-out lines in `docker-compose-full.yml`.
 | `MAIL_FROM_NAME` | `Cronmanager` | Sender display name |
 | `MAIL_TO` | `admin@example.com` | Alert recipient |
 | `MAIL_ENCRYPTION` | `tls` | `tls` or `ssl` |
+| `TELEGRAM_ENABLED` | `false` | Enable Telegram failure alerts |
+| `TELEGRAM_BOT_TOKEN` | _(empty)_ | Bot API token from @BotFather |
+| `TELEGRAM_CHAT_ID` | _(empty)_ | Target chat, channel, or group ID |
+| `TELEGRAM_TIMEOUT` | `15` | HTTP request timeout in seconds |
 
 #### Web container optional variables
 
@@ -870,29 +893,71 @@ provider — the account will be re-created on the next login.
 | `mail.to` | | Recipient address for alerts |
 | `mail.encryption` | `tls` | `tls` (STARTTLS, port 587) or `ssl` (SMTPS, port 465) |
 | `mail.smtp_timeout` | `15` | SMTP connection timeout in seconds |
+| `telegram.enabled` | `false` | Enable Telegram failure alerts |
+| `telegram.bot_token` | | Bot API token from @BotFather |
+| `telegram.chat_id` | | Target chat, channel, or group ID |
+| `telegram.timeout` | `15` | HTTP request timeout in seconds |
 | `cron.wrapper_script` | `/opt/cronmanager/agent/bin/cron-wrapper.sh` | Wrapper script path |
 
 ---
 
-## Email Failure Alerts
+## Failure Alerts (Email & Telegram)
 
-Cronmanager can send an email when a cron job exits with a non-zero status code.
+Cronmanager can send failure alerts when a cron job exits with a non-zero status code,
+is auto-killed after exceeding its execution limit, or is still running past its limit.
+Both email and Telegram can be enabled independently and fire in parallel.
 
-**To enable alerts:**
+### Email alerts
+
+**To enable:**
 
 1. Set `mail.enabled = true` and fill in your SMTP credentials in the agent config
+   (or set `MAIL_ENABLED=true` and the other `MAIL_*` variables in Docker Compose)
 2. Restart the agent: `sudo systemctl restart cronmanager-agent`
 3. Per job: check **"Notify on failure"** when creating or editing the job
 
-Alerts are dispatched by the host agent asynchronously after the job completes — mail
-sending runs in a background process so a slow or unreachable SMTP server cannot block
-the agent.
+Alerts are dispatched asynchronously after the job completes — SMTP runs in a background
+process so a slow or unreachable server cannot block the agent.
 
 **Encryption settings:**
 - Port **465** (SMTPS / implicit TLS) → set `mail.encryption` to `ssl`
 - Port **587** (STARTTLS) → set `mail.encryption` to `tls`
 
 Mixing these will cause the connection to hang until the SMTP timeout is reached.
+
+### Telegram alerts
+
+Cronmanager can also send alerts via a Telegram bot.
+
+**Prerequisites:**
+
+1. Create a bot via [@BotFather](https://t.me/BotFather) — it gives you a **Bot API token**
+2. Start a conversation with your bot (or add it to a group/channel) and retrieve the **chat ID**
+
+   The easiest way to get the chat ID:
+   ```
+   https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
+   ```
+   Send any message to the bot first, then call the URL — look for `"chat":{"id":...}` in the response.
+
+**To enable:**
+
+1. Set `telegram.enabled = true`, `telegram.bot_token`, and `telegram.chat_id` in the agent config
+   (or set `TELEGRAM_ENABLED=true`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_CHAT_ID` in Docker Compose)
+2. Restart the agent
+3. Per job: check **"Notify on failure"** when creating or editing the job — the same flag controls both channels
+
+**Docker Compose example (`.env`):**
+```dotenv
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=123456789:AABBccDDeeFFggHHiiJJkkLLmmNNoo...
+TELEGRAM_CHAT_ID=-1001234567890
+```
+
+Messages are sent in HTML parse mode and include the job ID, description, user, schedule,
+exit code, start/notification time, and the captured output (truncated to 2 000 characters).
+The same context-aware labels as email apply: jobs that are still running show
+"N/A – job still running" as the exit code and "Notified At" instead of "Finished".
 
 ---
 

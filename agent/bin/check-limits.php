@@ -57,6 +57,7 @@ spl_autoload_register(function (string $class): void {
 use Cronmanager\Agent\Bootstrap;
 use Cronmanager\Agent\Database\Connection;
 use Cronmanager\Agent\Notification\MailNotifier;
+use Cronmanager\Agent\Notification\TelegramNotifier;
 
 // ---------------------------------------------------------------------------
 // Bootstrap
@@ -125,7 +126,8 @@ if (empty($exceeded)) {
 
 $logger->info('check-limits: found executions exceeding limit', ['count' => count($exceeded)]);
 
-$mailNotifier    = new MailNotifier($logger, $config);
+$mailNotifier     = new MailNotifier($logger, $config);
+$telegramNotifier = new TelegramNotifier($logger, $config);
 $notifyScript    = __DIR__ . '/send-notification.php';
 $execAvailable   = function_exists('exec')
     && !in_array('exec', array_map('trim', explode(',', (string) ini_get('disable_functions'))), true);
@@ -196,6 +198,12 @@ foreach ($exceeded as $row) {
 
         if (!$dispatched) {
             // Synchronous fallback
+            $limitOutput = sprintf(
+                'Execution limit exceeded: job has been running for %d seconds (limit: %d seconds).',
+                $elapsedSeconds,
+                $limitSeconds,
+            );
+
             try {
                 $mailNotifier->sendFailureAlert(
                     jobId:       $jobId,
@@ -203,19 +211,36 @@ foreach ($exceeded as $row) {
                     linuxUser:   (string) $row['linux_user'],
                     schedule:    (string) $row['schedule'],
                     exitCode:    -3,
-                    output:      sprintf(
-                        'Execution limit exceeded: job has been running for %d seconds (limit: %d seconds).',
-                        $elapsedSeconds,
-                        $limitSeconds,
-                    ),
+                    output:      $limitOutput,
                     startedAt:   $startedAt,
                     finishedAt:  date('Y-m-d H:i:s'),
                 );
-                $logger->info('check-limits: limit-exceeded notification sent synchronously', [
+                $logger->info('check-limits: limit-exceeded mail notification sent synchronously', [
                     'execution_id' => $executionId,
                 ]);
             } catch (\Throwable $e) {
-                $logger->error('check-limits: failed to send limit-exceeded notification', [
+                $logger->error('check-limits: failed to send limit-exceeded mail notification', [
+                    'execution_id' => $executionId,
+                    'message'      => $e->getMessage(),
+                ]);
+            }
+
+            try {
+                $telegramNotifier->sendFailureAlert(
+                    jobId:       $jobId,
+                    description: $label,
+                    linuxUser:   (string) $row['linux_user'],
+                    schedule:    (string) $row['schedule'],
+                    exitCode:    -3,
+                    output:      $limitOutput,
+                    startedAt:   $startedAt,
+                    finishedAt:  date('Y-m-d H:i:s'),
+                );
+                $logger->info('check-limits: limit-exceeded Telegram notification sent synchronously', [
+                    'execution_id' => $executionId,
+                ]);
+            } catch (\Throwable $e) {
+                $logger->error('check-limits: failed to send limit-exceeded Telegram notification', [
                     'execution_id' => $executionId,
                     'message'      => $e->getMessage(),
                 ]);

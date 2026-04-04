@@ -197,10 +197,11 @@ try {
 
     // -- Execution lifecycle --------------------------------------------------
 
-    $mailNotifier = new \Cronmanager\Agent\Notification\MailNotifier($logger, $config);
+    $mailNotifier     = new \Cronmanager\Agent\Notification\MailNotifier($logger, $config);
+    $telegramNotifier = new \Cronmanager\Agent\Notification\TelegramNotifier($logger, $config);
 
     $execStart     = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger);
-    $execFinish    = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier);
+    $execFinish    = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier, $telegramNotifier);
     $execUpdatePid = new \Cronmanager\Agent\Endpoints\ExecutionUpdatePidEndpoint($pdo, $logger);
     $execKill      = new \Cronmanager\Agent\Endpoints\ExecutionKillEndpoint($pdo, $logger);
 

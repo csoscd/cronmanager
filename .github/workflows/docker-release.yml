@@ -48,6 +48,22 @@ jobs:
             context:    .
 
     steps:
+      # ── Validate release tag ─────────────────────────────────────────────────
+      # Reject tags that don't match vMAJOR.MINOR.PATCH to prevent metadata-action
+      # from silently generating no tags and causing the buildx push to fail.
+      # workflow_dispatch with a manual tag override bypasses this check.
+      - name: Validate release tag
+        if: github.event_name == 'release'
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9._-]+)?$ ]]; then
+            echo "::error::Release tag '${TAG}' is not a valid semver tag."
+            echo "::error::Expected format: vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-suffix  (e.g. v2.4.0 or v2.4.0-dev)"
+            echo "::error::Delete this release, fix the tag, and publish again."
+            exit 1
+          fi
+          echo "Tag '${TAG}' is valid – proceeding with build."
+
       # ── Checkout ────────────────────────────────────────────────────────────
       - name: Check out repository
         uses: actions/checkout@v4

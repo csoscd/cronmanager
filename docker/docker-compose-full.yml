@@ -81,6 +81,11 @@ services:
       # MAIL_FROM_NAME: "Cronmanager"
       # MAIL_TO:        "admin@example.com"
       # MAIL_ENCRYPTION: "tls"
+      # Optional: Telegram failure alerts
+      # TELEGRAM_ENABLED:   "true"
+      # TELEGRAM_BOT_TOKEN: "123456789:AABBccDDeeFFggHH..."
+      # TELEGRAM_CHAT_ID:   "-1001234567890"
+      # TELEGRAM_TIMEOUT:   "15"
     networks:
       - cronmanager-internal
     volumes:

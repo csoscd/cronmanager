@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.4.0] – branch: `36-feature-request-send-information-via-telegram`
+
+### Added
+
+- **Telegram notifications** – The agent can now send failure and limit-exceeded alerts via Telegram in addition to (or instead of) e-mail. A new `TelegramNotifier` class (`agent/src/Notification/TelegramNotifier.php`) sends HTML-formatted messages to a configured bot/chat using the Telegram Bot API via Guzzle HTTP. The notifier respects the same sentinel exit codes as `MailNotifier`: exit code `-3` (limit exceeded, job still running) shows "N/A – job still running" as the exit code and "Notified At" as the timestamp label; exit code `-2` indicates auto-kill. Job output is pre-truncated to 2 000 characters and the entire message is capped at Telegram's 4 096-character hard limit.
+- **Telegram configuration keys** – Four new keys are recognised under the `telegram.*` namespace in `config.json`:
+  - `telegram.enabled` – master on/off switch (default: `false`)
+  - `telegram.bot_token` – Telegram Bot API token obtained from @BotFather
+  - `telegram.chat_id` – target chat, channel, or group ID
+  - `telegram.timeout` – HTTP request timeout in seconds (default: `15`)
+- **Dual-channel dispatch** – `send-notification.php`, `check-limits.php`, and `ExecutionFinishEndpoint` all call both `MailNotifier` and `TelegramNotifier` so each enabled channel fires independently. A notification is considered dispatched if at least one channel succeeds.
+- **Development Docker image builds** – A new GitHub Actions workflow (`.github/workflows/docker-dev.yml`) automatically builds and pushes a `:dev` tag to Docker Hub on every push to any non-main branch. The `:dev` tag is always overwritten and is intended for testing unreleased features. The existing `docker-release.yml` continues to produce `:latest` and versioned tags (`2.4.0`, etc.) from published GitHub releases. README updated with an available-image-tags table and a warning against using `:dev` in production.
+
+---
+
 ## [2.3.0] – branch: `gen_improve`
 
 ### Added

@@ -33,6 +33,10 @@
 #   MAIL_FROM_NAME      Cronmanager
 #   MAIL_TO             admin@example.com
 #   MAIL_ENCRYPTION     tls
+#   TELEGRAM_ENABLED    false
+#   TELEGRAM_BOT_TOKEN  ""
+#   TELEGRAM_CHAT_ID    ""
+#   TELEGRAM_TIMEOUT    15
 #   CRON_WRAPPER_SCRIPT /opt/cronmanager/agent/bin/cron-wrapper.sh
 #
 # @author  Christian Schulz <technik@meinetechnikwelt.rocks>
@@ -97,6 +101,12 @@ php -r "
         'from_name' => getenv('MAIL_FROM_NAME') ?: 'Cronmanager',
         'to'        => getenv('MAIL_TO') ?: 'admin@example.com',
         'encryption'=> getenv('MAIL_ENCRYPTION') ?: 'tls',
+    ],
+    'telegram' => [
+        'enabled'   => filter_var(getenv('TELEGRAM_ENABLED') ?: 'false', FILTER_VALIDATE_BOOLEAN),
+        'bot_token' => getenv('TELEGRAM_BOT_TOKEN') ?: '',
+        'chat_id'   => getenv('TELEGRAM_CHAT_ID') ?: '',
+        'timeout'   => (int)(getenv('TELEGRAM_TIMEOUT') ?: 15),
     ],
     'cron' => [
         'wrapper_script' => getenv('CRON_WRAPPER_SCRIPT') ?: '/opt/cronmanager/agent/bin/cron-wrapper.sh',

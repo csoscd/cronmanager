@@ -55,6 +55,7 @@ spl_autoload_register(function (string $class): void {
 
 use Cronmanager\Agent\Bootstrap;
 use Cronmanager\Agent\Notification\MailNotifier;
+use Cronmanager\Agent\Notification\TelegramNotifier;
 
 // ---------------------------------------------------------------------------
 // Read and immediately delete the temp file
@@ -91,17 +92,38 @@ try {
     $logger    = $bootstrap->getLogger();
     $config    = $bootstrap->getConfig();
 
-    $notifier = new MailNotifier($logger, $config);
+    $jobId       = (int)    ($data['job_id']      ?? 0);
+    $description = (string) ($data['description'] ?? '');
+    $linuxUser   = (string) ($data['linux_user']  ?? '');
+    $schedule    = (string) ($data['schedule']    ?? '');
+    $exitCode    = (int)    ($data['exit_code']   ?? 1);
+    $output      = (string) ($data['output']      ?? '');
+    $startedAt   = (string) ($data['started_at']  ?? '');
+    $finishedAt  = (string) ($data['finished_at'] ?? '');
 
-    $notifier->sendFailureAlert(
-        jobId:       (int)    ($data['job_id']      ?? 0),
-        description: (string) ($data['description'] ?? ''),
-        linuxUser:   (string) ($data['linux_user']  ?? ''),
-        schedule:    (string) ($data['schedule']    ?? ''),
-        exitCode:    (int)    ($data['exit_code']   ?? 1),
-        output:      (string) ($data['output']      ?? ''),
-        startedAt:   (string) ($data['started_at']  ?? ''),
-        finishedAt:  (string) ($data['finished_at'] ?? ''),
+    $mailNotifier     = new MailNotifier($logger, $config);
+    $telegramNotifier = new TelegramNotifier($logger, $config);
+
+    $mailNotifier->sendFailureAlert(
+        jobId:       $jobId,
+        description: $description,
+        linuxUser:   $linuxUser,
+        schedule:    $schedule,
+        exitCode:    $exitCode,
+        output:      $output,
+        startedAt:   $startedAt,
+        finishedAt:  $finishedAt,
+    );
+
+    $telegramNotifier->sendFailureAlert(
+        jobId:       $jobId,
+        description: $description,
+        linuxUser:   $linuxUser,
+        schedule:    $schedule,
+        exitCode:    $exitCode,
+        output:      $output,
+        startedAt:   $startedAt,
+        finishedAt:  $finishedAt,
     );
 
 } catch (\Throwable $e) {

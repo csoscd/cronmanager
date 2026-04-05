@@ -201,6 +201,48 @@ final class MailNotifier
     }
 
     // -------------------------------------------------------------------------
+    // Private helpers – individual HTML table rows
+    // -------------------------------------------------------------------------
+
+    /**
+     * Return the HTML table row for the exit code field.
+     * For limit-exceeded alerts (exit code -3) the job is still running and
+     * has no exit code yet; show a human-readable note instead of "-3".
+     *
+     * @param int      $exitCode
+     * @param callable $e  HTML-escape callable.
+     * @return string
+     */
+    private function exitCodeRow(int $exitCode, callable $e): string
+    {
+        if ($exitCode === -3) {
+            return '<tr><th>Exit Code</th><td><em>N/A &ndash; job still running</em></td></tr>';
+        }
+
+        return sprintf(
+            '<tr><th>Exit Code</th><td class="exit-bad">%s</td></tr>',
+            $e((string) $exitCode)
+        );
+    }
+
+    /**
+     * Return the HTML table row for the finished/notification timestamp.
+     * For limit-exceeded alerts (exit code -3) the job has not finished;
+     * label the timestamp as "Notified At" to avoid implying completion.
+     *
+     * @param int      $exitCode
+     * @param string   $finishedAt  Finish time (or notification time for -3).
+     * @param callable $e           HTML-escape callable.
+     * @return string
+     */
+    private function finishedRow(int $exitCode, string $finishedAt, callable $e): string
+    {
+        $label = $exitCode === -3 ? 'Notified At' : 'Finished';
+
+        return sprintf('<tr><th>%s</th><td>%s</td></tr>', $label, $e($finishedAt));
+    }
+
+    // -------------------------------------------------------------------------
     // Private helpers – message body builders
     // -------------------------------------------------------------------------
 
@@ -234,6 +276,15 @@ final class MailNotifier
             default          => 'CRONMANAGER – JOB FAILURE ALERT',
         };
 
+        // For limit-exceeded alerts the job is still running: there is no exit
+        // code yet and finishedAt is the notification time, not a finish time.
+        $exitCodeLine  = $exitCode === -3
+            ? 'Exit Code  : N/A (job still running)'
+            : sprintf('Exit Code  : %d', $exitCode);
+        $finishedLine  = $exitCode === -3
+            ? sprintf('Notified At: %s', $finishedAt)
+            : sprintf('Finished   : %s', $finishedAt);
+
         return implode("\n", [
             $headline,
             str_repeat('=', 60),
@@ -242,9 +293,9 @@ final class MailNotifier
             sprintf('Description: %s',   $description),
             sprintf('User       : %s',   $linuxUser),
             sprintf('Schedule   : %s',   $schedule),
-            sprintf('Exit Code  : %d',   $exitCode),
+            $exitCodeLine,
             sprintf('Started    : %s',   $startedAt),
-            sprintf('Finished   : %s',   $finishedAt),
+            $finishedLine,
             '',
             str_repeat('-', 60),
             'OUTPUT:',
@@ -334,9 +385,9 @@ final class MailNotifier
         <tr><th>Description</th> <td>{$e($description)}</td></tr>
         <tr><th>User</th>        <td>{$e($linuxUser)}</td></tr>
         <tr><th>Schedule</th>    <td>{$e($schedule)}</td></tr>
-        <tr><th>Exit Code</th>   <td class="exit-bad">{$e((string)$exitCode)}</td></tr>
+        {$this->exitCodeRow($exitCode, $e)}
         <tr><th>Started</th>     <td>{$e($startedAt)}</td></tr>
-        <tr><th>Finished</th>    <td>{$e($finishedAt)}</td></tr>
+        {$this->finishedRow($exitCode, $finishedAt, $e)}
     </table>
 
     <h2 style="font-size:15px; margin-bottom:6px;">Output</h2>

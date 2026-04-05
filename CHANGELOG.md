@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.4.1] – branch: `job_exec_fix`
+
+### Fixed
+
+- **Remote job execution silent failure** – SSH remote jobs (execution mode `remote`) completed in ~1 second with exit code 0 and no output. Root cause: `setsid` in `cron-wrapper.sh` was used before `sh -s` to create a new process group on the remote host. `setsid` (util-linux ≥ 2.41) detects that the calling process is already a process-group leader (SSH always guarantees PGID == PID == SID for the remote command), forks a child, and the parent exits immediately. SSH interprets the parent exit as command completion, closes stdin before the child's `sh -s` can read the job command, and the job runs with empty stdin — executing nothing, exiting 0, with no output. Fix: removed `setsid` from the remote SSH invocation entirely. SSH already provides the PGID == PID guarantee required by `kill -TERM -$PID`, so `setsid` was redundant and actively harmful there.
+- **Limit-exceeded alert email showed misleading exit code and timestamp** – When `check-limits.php` sends a notification for a job that is still running, the email displayed `Exit Code: -3` (an internal sentinel value) and labelled the timestamp as "Finished", both implying the job had already exited. Fixed in `MailNotifier`: exit code `-3` now renders as "N/A – job still running" and the timestamp row is labelled "Notified At" instead of "Finished".
+
+---
+
 ## [2.4.0] – branch: `36-feature-request-send-information-via-telegram`
 
 ### Added

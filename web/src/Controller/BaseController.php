@@ -97,6 +97,20 @@ abstract class BaseController
         // without needing to call SessionManager directly.
         $data['csrf_token'] = SessionManager::getCsrfToken();
 
+        // Inject version strings for the footer.
+        // App version is read from the VERSION file deployed alongside the web
+        // source (works for both direct deployments and Docker).
+        // Container version is read from the APP_VERSION environment variable
+        // baked into the Docker image at build time (unknown outside Docker).
+        // Agent version is fetched from the agent's /health endpoint and cached
+        // in the session for 5 minutes to avoid an extra HTTP call on every page.
+        $versionFile        = dirname(__DIR__, 2) . '/VERSION';
+        $data['webVersion'] = is_readable($versionFile)
+            ? trim((string) file_get_contents($versionFile))
+            : 'unknown';
+        $data['webContainerVersion']   = getenv('APP_VERSION') ?: 'unknown';
+        [$data['agentVersion'], $data['agentContainerVersion']] = $this->resolveAgentVersion();
+
         // ------------------------------------------------------------------
         // Step 1-4: capture the sub-template output
         // ------------------------------------------------------------------
@@ -226,6 +240,48 @@ abstract class BaseController
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Resolve the agent version strings (app version + container version).
+     *
+     * The values are fetched once from the agent's /health endpoint and cached
+     * in the session for 5 minutes to avoid a redundant HTTP call on every page.
+     *
+     * Returns ['unknown', 'unknown'] when the agent is unreachable.
+     *
+     * @return array{0: string, 1: string} [appVersion, containerVersion]
+     */
+    private function resolveAgentVersion(): array
+    {
+        $cacheKey = '_cm_agent_version';
+        $ttlKey   = '_cm_agent_version_ts';
+        $ttl      = 300; // 5 minutes
+
+        // Return cached value if it is still fresh
+        if (
+            isset($_SESSION[$cacheKey], $_SESSION[$ttlKey])
+            && (time() - (int) $_SESSION[$ttlKey]) < $ttl
+        ) {
+            return (array) $_SESSION[$cacheKey];
+        }
+
+        // Fetch from the agent /health endpoint
+        try {
+            $health           = $this->agentClient()->get('/health');
+            $appVersion       = isset($health['version'])           ? (string) $health['version']           : 'unknown';
+            $containerVersion = isset($health['container_version']) ? (string) $health['container_version'] : 'unknown';
+        } catch (\Throwable) {
+            $appVersion       = 'unknown';
+            $containerVersion = 'unknown';
+        }
+
+        $result = [$appVersion, $containerVersion];
+
+        $_SESSION[$cacheKey] = $result;
+        $_SESSION[$ttlKey]   = time();
+
+        return $result;
+    }
 
     /**
      * Build an absolute path to a template file.

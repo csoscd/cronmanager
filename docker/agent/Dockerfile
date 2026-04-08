@@ -33,6 +33,11 @@ RUN composer install \
 # ── Stage 2: runtime image ────────────────────────────────────────────────────
 FROM cs1711/cs_cronmanageragent:latest
 
+# Receive the application version from the CI build pipeline and expose it as
+# an environment variable so the agent can report it via the /health endpoint.
+ARG APP_VERSION=unknown
+ENV APP_VERSION=${APP_VERSION}
+
 LABEL org.opencontainers.image.title="Cronmanager Agent" \
       org.opencontainers.image.description="Cronmanager host agent – manages crontabs, records execution results, exposes HMAC-secured HTTP API" \
       org.opencontainers.image.authors="Christian Schulz <technik@meinetechnikwelt.rocks>" \

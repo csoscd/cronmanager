@@ -154,9 +154,12 @@ try {
 
     $router->addRoute('GET', '/health', function (array $params) use ($logger): void {
         $logger->info('Health check requested');
+        $versionFile = __DIR__ . '/VERSION';
         jsonResponse(200, [
-            'status'    => 'ok',
-            'timestamp' => date('c'),
+            'status'            => 'ok',
+            'version'           => is_readable($versionFile) ? trim((string) file_get_contents($versionFile)) : 'unknown',
+            'container_version' => getenv('APP_VERSION') ?: 'unknown',
+            'timestamp'         => date('c'),
         ]);
     });
 

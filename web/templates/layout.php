@@ -187,5 +187,16 @@ function cmToggleTheme() {
     localStorage.setItem('cm-theme', isDark ? 'light' : 'dark');
 }
 </script>
+
+<!-- -------------------------------------------------------------------- -->
+<!-- Footer                                                                 -->
+<!-- -------------------------------------------------------------------- -->
+<footer class="mt-8 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-end gap-x-6 gap-y-1
+                text-xs text-gray-400 dark:text-gray-500">
+        <span>Web: <?= htmlspecialchars((string) ($webVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?>, Container: <?= htmlspecialchars((string) ($webContainerVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?></span>
+        <span>Agent: <?= htmlspecialchars((string) ($agentVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?>, Container: <?= htmlspecialchars((string) ($agentContainerVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?></span>
+    </div>
+</footer>
 </body>
 </html>

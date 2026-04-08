@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.5.3] – branch: `version-info`
+
+### Added
+
+- **Version footer** – A slim footer strip on every page shows two pieces of information for each component (web and agent): the **app version** (from a `VERSION` file deployed alongside the source, e.g. `2.5.3`) and the **container version** (from the `APP_VERSION` env var baked into the Docker image at build time, `unknown` when running outside Docker). Example: `Web: 2.5.3, Container: 2.5.3 | Agent: 2.5.3, Container: 2.5.3`.
+- **`VERSION` files** – `web/VERSION` and `agent/VERSION` are added to the repository and contain the current release version. These are deployed by `deploy.sh` and read at runtime so direct (non-Docker) deployments also display the correct app version.
+- **`APP_VERSION` build argument** – Both `docker/web/Dockerfile` and `docker/agent/Dockerfile` accept an `APP_VERSION` build argument (defaulting to `unknown`) and expose it as the `APP_VERSION` environment variable for the container version label.
+- **CI: build-arg injection** – `.github/workflows/docker-release.yml` passes `APP_VERSION=${{ steps.meta.outputs.version }}` to the Docker buildx step so every released image carries the correct semver container version.
+- **Agent `/health` version fields** – The `GET /health` response now includes `"version"` (from `VERSION` file) and `"container_version"` (from `APP_VERSION` env). The web UI fetches these on the first page load and caches them in the session for 5 minutes.
+
+---
+
 ## [2.5.2] – branch: `error_navigation`
 
 ### Added

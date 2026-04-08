@@ -36,6 +36,11 @@ RUN composer install \
 # ── Stage 2: runtime image ────────────────────────────────────────────────────
 FROM cs1711/cs_php-nginx-fpm:latest-alpine
 
+# Receive the application version from the CI build pipeline and expose it as
+# an environment variable so the web UI can display it in the footer.
+ARG APP_VERSION=unknown
+ENV APP_VERSION=${APP_VERSION}
+
 LABEL org.opencontainers.image.title="Cronmanager Web" \
       org.opencontainers.image.description="Cronmanager web UI – PHP-FPM + Nginx, config from environment variables" \
       org.opencontainers.image.authors="Christian Schulz <technik@meinetechnikwelt.rocks>" \

@@ -467,5 +467,5 @@ Use this checklist when deploying a new instance or reviewing after changes.
 
 ---
 
-*Analysis performed: 2026-03-18; last updated: 2026-03-30*
+*Analysis performed: 2026-03-18; last updated: 2026-04-08 (v2.5.0)*
 *Analyst: Christian Schulz <technik@meinetechnikwelt.rocks>*

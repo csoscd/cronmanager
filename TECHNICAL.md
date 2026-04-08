@@ -112,6 +112,9 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │   ├── sql/
 │   │   ├── schema.sql         ← full schema (run on first deploy)
 │   │   └── migrations/        ← incremental SQL migrations
+│   │       ├── 001_…sql
+│   │       ├── …
+│   │       └── 006_maintenance_windows.sql
 │   ├── systemd/
 │   │   └── cronmanager-agent.service
 │   └── src/
@@ -122,6 +125,7 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │       ├── Cron/CrontabManager.php
 │       ├── Notification/MailNotifier.php
 │       ├── Ssh/SshConfigParser.php
+│       ├── Repository/MaintenanceWindowRepository.php
 │       └── Endpoints/
 │           ├── CronListEndpoint.php
 │           ├── CronGetEndpoint.php
@@ -145,7 +149,13 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │           ├── MaintenanceStuckEndpoint.php
 │           ├── MaintenanceResolveEndpoint.php
 │           ├── MaintenanceDeleteExecutionEndpoint.php
-│           └── MaintenanceHistoryCleanupEndpoint.php
+│           ├── MaintenanceHistoryCleanupEndpoint.php
+│           ├── MaintenanceWindowListEndpoint.php
+│           ├── MaintenanceWindowGetEndpoint.php
+│           ├── MaintenanceWindowCreateEndpoint.php
+│           ├── MaintenanceWindowUpdateEndpoint.php
+│           ├── MaintenanceWindowDeleteEndpoint.php
+│           └── MaintenanceWindowConflictEndpoint.php
 │
 └── web/                       ← web application source
     ├── index.php              ← front controller
@@ -169,8 +179,11 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
     │   │   ├── import.php
     │   │   └── monitor.php
     │   ├── users/list.php
-│   └── maintenance/
-│       └── index.php
+    │   ├── maintenance/
+    │   │   └── index.php
+    │   └── targets/
+    │       ├── list.php
+    │       └── form.php
     └── src/
         ├── Bootstrap.php
         ├── Database/Connection.php
@@ -184,7 +197,8 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
         ├── Auth/
         │   ├── LocalAuthProvider.php
         │   └── OidcAuthProvider.php
-        ├── Repository/UserPreferenceRepository.php
+        ├── Repository/
+        │   └── UserPreferenceRepository.php
         └── Controller/
             ├── BaseController.php
             ├── AuthController.php
@@ -195,7 +209,8 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
             ├── SwimlaneController.php
             ├── ExportController.php
             ├── UserController.php
-            └── MaintenanceController.php
+            ├── MaintenanceController.php
+            └── TargetsController.php
 ```
 
 ---
@@ -358,6 +373,11 @@ complete crontab file from the current database state for the affected Linux use
 The wrapper handles HTTP `409 Conflict` from `POST /execution/start` silently: it logs
 a notice and exits 0 without running the command. This is the mechanism behind singleton
 mode (see below).
+
+The wrapper also handles HTTP `423 Locked` from `POST /execution/start`: this indicates
+the job's target is currently inside a maintenance window and `run_in_maintenance = 0`.
+The wrapper records exit code `−4`, sets `during_maintenance = 1` in the finish call, and
+exits 0. No failure alert is sent for maintenance-skipped executions.
 
 The wrapper logs to stderr (which is delivered by cron as a mail to the Linux user if
 cron mail is configured). It does not abort if the agent is unreachable — the command
@@ -839,6 +859,122 @@ For remote targets the crontab line wraps the command in an SSH call:
 
 ---
 
+### GET /maintenance/windows
+
+List all maintenance windows, optionally filtered by target.
+
+**Query parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `target` | string | Filter by target name |
+
+**Response:**
+```json
+[
+    {
+        "id": 1,
+        "target": "iom",
+        "cron_schedule": "50 3 * * *",
+        "duration_minutes": 60,
+        "description": "Nightly backup window",
+        "active": true,
+        "created_at": "2026-04-05T00:00:00+00:00"
+    }
+]
+```
+
+---
+
+### GET /maintenance/windows/{id}
+
+Retrieve a single maintenance window by ID.
+
+**Response:** Single window object (same structure as above).
+
+---
+
+### POST /maintenance/windows
+
+Create a new maintenance window.
+
+**Request body:**
+```json
+{
+    "target":           "iom",
+    "cron_schedule":    "50 3 * * *",
+    "duration_minutes": 60,
+    "description":      "Nightly backup window",
+    "active":           1
+}
+```
+
+**Response:**
+```json
+{ "id": 1 }
+```
+
+---
+
+### PUT /maintenance/windows/{id}
+
+Update an existing maintenance window. Body is the same as POST.
+
+**Response:**
+```json
+{ "id": 1 }
+```
+
+---
+
+### DELETE /maintenance/windows/{id}
+
+Delete a maintenance window.
+
+**Response:** HTTP 204 No Content.
+
+---
+
+### GET /maintenance/windows/conflict
+
+Check how many of a job's upcoming run times fall inside active maintenance windows for a target.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `schedule` | string | required | 5-field cron expression of the job to check |
+| `target` | string | required | Target name (`local` or SSH alias) |
+| `look_ahead` | int | `10` | Number of upcoming runs to examine |
+
+**Response:**
+```json
+{
+    "has_conflict": true,
+    "conflicts": [
+        {
+            "run_time":     "2026-04-08T04:00:00+00:00",
+            "window_id":    1,
+            "window_start": "2026-04-08T03:50:00+00:00",
+            "window_end":   "2026-04-08T04:50:00+00:00"
+        }
+    ]
+}
+```
+
+The web UI requests `look_ahead = 50` and considers a schedule **red** (will never execute) when `conflicts.length / look_ahead ≥ 0.90`, and **amber** (some runs affected) for any lower non-zero ratio.
+
+---
+
+### POST /execution/start (maintenance behaviour)
+
+When `POST /execution/start` is called for a job/target pair that is currently inside an active maintenance window:
+
+- If the job has `run_in_maintenance = 0` (default): the endpoint returns **HTTP 423 Locked**. The cron wrapper records exit code `−4` and `during_maintenance = 1` in the execution log, then exits 0.
+- If the job has `run_in_maintenance = 1`: the endpoint creates the execution row normally (HTTP 201) with `during_maintenance = 1` so the UI can label the run accordingly.
+
+---
+
 ## Web Application
 
 ### Entry point (`web/index.php`)
@@ -907,6 +1043,7 @@ for security-sensitive checks such as navigation visibility.
 | `ExportController` | `GET /export`, `GET /export/download` | view |
 | `UserController` | `GET /users`, `POST /users/{id}/role`, `POST /users/{id}/delete` | admin |
 | `MaintenanceController` | `GET /maintenance`, `POST /maintenance/crontab/resync`, `POST /maintenance/executions/{id}/finish`, `DELETE /maintenance/executions/{id}`, `POST /maintenance/executions/bulk`, `POST /maintenance/history/cleanup` | admin |
+| `TargetsController` | `GET /targets`, `POST /targets`, `GET /targets/{id}/edit`, `POST /targets/{id}`, `DELETE /targets/{id}` | admin |
 
 ### HostAgentClient
 
@@ -1035,6 +1172,7 @@ is stored in `$_SESSION['lang']`. Fallback is English if a key is missing.
 | `execution_limit_seconds` | INT UNSIGNED NULL | Maximum allowed runtime; NULL = no limit |
 | `auto_kill_on_limit` | TINYINT(1) | `1` = auto-kill when limit is exceeded |
 | `singleton` | TINYINT(1) | `1` = skip new execution if a previous instance is still running |
+| `run_in_maintenance` | TINYINT(1) | `1` = execute during maintenance window (failures reported normally); `0` = skip with exit code `−4` |
 | `execution_mode` | ENUM('local','remote') | Legacy; superseded by `job_targets` |
 | `ssh_host` | VARCHAR(255) NULL | Legacy; superseded by `job_targets` |
 | `created_at` | DATETIME | |
@@ -1073,12 +1211,27 @@ UNIQUE KEY: `(job_id, target)`
 | `cronjob_id` | INT UNSIGNED FK → `cronjobs.id` | CASCADE DELETE |
 | `started_at` | DATETIME | |
 | `finished_at` | DATETIME NULL | NULL while running |
-| `exit_code` | INT NULL | NULL while running; `-2` = killed by operator; `-3` = limit exceeded (still running) |
+| `exit_code` | INT NULL | NULL while running; `-2` = killed by operator; `-3` = limit exceeded (still running); `-4` = skipped due to maintenance window |
 | `output` | TEXT NULL | Truncated at 50,000 bytes |
 | `target` | VARCHAR(255) NULL | `"local"`, SSH alias, or NULL (pre-migration rows) |
 | `pid` | INT UNSIGNED NULL | Process PID for local executions; cleared on finish |
 | `pid_file` | VARCHAR(255) NULL | Remote PID file path for SSH executions; cleared on finish |
 | `notified_limit_exceeded` | TINYINT(1) | `1` = limit-exceeded notification already sent |
+| `during_maintenance` | TINYINT(1) | `1` = this execution occurred during a maintenance window |
+
+### `maintenance_windows`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INT PK | |
+| `target` | VARCHAR(255) | `"local"` or SSH host alias |
+| `cron_schedule` | VARCHAR(100) | 5-field cron expression for window start time |
+| `duration_minutes` | SMALLINT UNSIGNED | Window length in minutes (default: 60) |
+| `description` | VARCHAR(255) NULL | Human-readable label |
+| `active` | TINYINT(1) | `1` = evaluated, `0` = disabled |
+| `created_at` | DATETIME | |
+
+Added by migration `006_maintenance_windows.sql`.
 
 ### `schema_migrations`
 

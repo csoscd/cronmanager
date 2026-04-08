@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.5.0] – branch: `maintenance_window`
+
+### Added
+
+- **Maintenance windows** – Admins can now define scheduled maintenance windows per target (local host or SSH alias). During an active window the agent evaluates each incoming execution-start request against the window schedule and either skips the job or executes it silently depending on a new per-job flag.
+- **New `maintenance_windows` table** – Stores windows with a 5-field cron expression (window start), a duration in minutes, an optional description, and an `active` flag. Multiple windows can be defined for the same target (e.g. daily at 02:00 for 60 min and daily at 14:00 for 30 min).
+- **Per-job `run_in_maintenance` flag** – When `run_in_maintenance = 1` the job executes normally during a maintenance window but failure notifications are suppressed. When `run_in_maintenance = 0` (default) the execution is skipped: a record is inserted with `exit_code = -4` and the agent returns HTTP 423 so `cron-wrapper.sh` exits cleanly without running the command.
+- **Sentinel exit code −4** – `exit_code = -4` in `execution_log` means the execution was skipped due to a maintenance window. The execution detail and history views show a grey "Skipped (maintenance)" badge for these rows.
+- **`during_maintenance` flag on `execution_log`** – When a job with `run_in_maintenance = 1` runs inside a maintenance window this flag is set to `1`. The history view annotates these rows with a blue "Maintenance" badge and `ExecutionFinishEndpoint` skips all failure/limit-exceeded notifications for them.
+- **Maintenance-window conflict detection** – The cron-job create/edit form queries the agent for upcoming run-time conflicts with active maintenance windows for the selected targets. A yellow warning banner is shown when conflicts are detected and `run_in_maintenance` is not enabled.
+- **Cron-list warning badge** – Jobs that are active, do not have `run_in_maintenance` set, and target a host that has at least one active maintenance window defined, receive a yellow ⚠ badge in the job list. Hovering the badge explains that the job may be skipped during maintenance windows.
+- **Targets page** – A new admin-only "Targets" page (`/targets`) lists all known targets grouped by name and shows their maintenance windows with add/edit/delete actions.
+- **DB migration 006** – `agent/sql/migrations/006_maintenance_windows.sql` adds the new table and columns to existing installations.
+- **Agent REST endpoints** – Six new endpoints for maintenance-window management:
+  - `GET  /maintenance/windows` – list all windows (optional `?target=` filter)
+  - `GET  /maintenance/windows/{id}` – get a single window
+  - `POST /maintenance/windows` – create a window
+  - `PUT  /maintenance/windows/{id}` – update a window
+  - `DELETE /maintenance/windows/{id}` – delete a window
+  - `GET  /maintenance/windows/conflict?schedule=…&target=…` – check upcoming conflicts
+- **`cron-wrapper.sh` HTTP 423 handling** – The wrapper now exits cleanly on HTTP 423 (maintenance skip), mirroring the existing HTTP 409 (singleton skip) behaviour.
+
+---
+
 ## [2.4.1] – branch: `job_exec_fix`
 
 ### Fixed

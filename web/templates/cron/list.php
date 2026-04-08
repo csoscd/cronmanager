@@ -31,7 +31,9 @@ $filterUser   = isset($filterUser)   ? (string) $filterUser     : '';
 $filterTarget = isset($filterTarget) ? (string) $filterTarget   : '';
 $filterSearch = isset($filterSearch) ? (string) $filterSearch   : '';
 $filterResult = isset($filterResult) ? (string) $filterResult   : '';
-$isAdmin      = isset($isAdmin)      && (bool)  $isAdmin;
+$isAdmin               = isset($isAdmin)              && (bool)  $isAdmin;
+$targetsInMaintenance  = isset($targetsInMaintenance) && is_array($targetsInMaintenance)
+    ? $targetsInMaintenance : [];
 
 // Pagination
 $pageSize    = isset($pageSize)    ? (int) $pageSize    : 25;
@@ -318,9 +320,15 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                             $limitSeconds  = isset($job['execution_limit_seconds']) && $job['execution_limit_seconds'] !== null
                                 ? (int) $job['execution_limit_seconds'] : null;
 
+                            // Maintenance-window conflict: used per-target in the target column below.
+                            $runInMaint    = !empty($job['run_in_maintenance']);
+
                             // Exit code badge style
                             if ($exitCode === null) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">—</span>';
+                            } elseif ($exitCode === -4) {
+                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">'
+                                    . htmlspecialchars($t('cron_maintenance_skipped_badge'), ENT_QUOTES, 'UTF-8') . '</span>';
                             } elseif ($exitCode === 0) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">0</span>';
                             } elseif ($exitCode === -2) {
@@ -378,15 +386,26 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                                 <div class="flex flex-wrap gap-1">
                                     <?php foreach ($jobTargets as $tgt): ?>
                                         <?php $tgt = (string) $tgt; ?>
-                                        <?php if ($tgt === 'local'): ?>
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-                                                <?= htmlspecialchars($t('cron_local_badge'), ENT_QUOTES, 'UTF-8') ?>
-                                            </span>
-                                        <?php else: ?>
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-mono">
-                                                <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
-                                            </span>
-                                        <?php endif; ?>
+                                        <?php $tgtInMaint = $isActive && !$runInMaint && isset($targetsInMaintenance[$tgt]); ?>
+                                        <span class="inline-flex items-center gap-0.5">
+                                            <?php if ($tgt === 'local'): ?>
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                                    <?= htmlspecialchars($t('cron_local_badge'), ENT_QUOTES, 'UTF-8') ?>
+                                                </span>
+                                            <?php else: ?>
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-mono">
+                                                    <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
+                                                </span>
+                                            <?php endif; ?>
+                                            <?php if ($tgtInMaint): ?>
+                                                <span class="js-maint-badge inline-flex items-center px-1 py-0.5 rounded text-xs font-medium
+                                                             bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 cursor-help"
+                                                      data-maint-schedule="<?= htmlspecialchars((string) ($job['schedule'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                                      data-maint-target="<?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>"
+                                                      data-title-all="<?= htmlspecialchars($t('targets_conflict_badge_all'), ENT_QUOTES, 'UTF-8') ?>"
+                                                      title="<?= htmlspecialchars($t('targets_conflict_warning'), ENT_QUOTES, 'UTF-8') ?>">⚠</span>
+                                            <?php endif; ?>
+                                        </span>
                                     <?php endforeach; ?>
                                 </div>
                             </td>
@@ -540,3 +559,54 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
 
 </div>
 <?php endif; ?>
+
+<script>
+/**
+ * Async maintenance-conflict severity check for per-target badges.
+ *
+ * Finds all .js-maint-badge elements, groups by unique (schedule, target),
+ * fetches the conflict endpoint once per pair, then upgrades amber badges to
+ * red when ≥ 90 % of the look-ahead runs fall inside a maintenance window.
+ */
+(function () {
+    const LOOK_AHEAD = 50;
+    const RED_THRESHOLD = 0.9;
+
+    const badges = Array.from(document.querySelectorAll('.js-maint-badge'));
+    if (badges.length === 0) return;
+
+    // Group badges by unique "schedule|target" key
+    const pairs = {};
+    badges.forEach(function (el) {
+        const key = el.dataset.maintSchedule + '|' + el.dataset.maintTarget;
+        if (!pairs[key]) {
+            pairs[key] = { schedule: el.dataset.maintSchedule, target: el.dataset.maintTarget, elements: [] };
+        }
+        pairs[key].elements.push(el);
+    });
+
+    Object.values(pairs).forEach(function (pair) {
+        fetch(
+            '/maintenance/windows/conflict?' +
+            new URLSearchParams({ schedule: pair.schedule, target: pair.target, look_ahead: LOOK_AHEAD }),
+            { credentials: 'same-origin' }
+        )
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .catch(function () { return null; })
+        .then(function (data) {
+            if (!data || !data.conflicts) return;
+            const ratio = data.conflicts.length / LOOK_AHEAD;
+            const isRed = ratio >= RED_THRESHOLD;
+
+            pair.elements.forEach(function (el) {
+                if (isRed) {
+                    el.classList.remove('bg-amber-100', 'text-amber-700', 'dark:bg-amber-900/40', 'dark:text-amber-300');
+                    el.classList.add('bg-red-100', 'text-red-700', 'dark:bg-red-900/40', 'dark:text-red-300');
+                    el.textContent = '✕';
+                    if (el.dataset.titleAll) el.title = el.dataset.titleAll;
+                }
+            });
+        });
+    });
+})();
+</script>

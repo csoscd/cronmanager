@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS cronjobs (
     execution_limit_seconds  INT UNSIGNED NULL              COMMENT 'Maximum allowed runtime in seconds; NULL = no limit',
     auto_kill_on_limit       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = auto-kill when execution_limit_seconds is exceeded',
     singleton                TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = skip new execution if a previous instance is still running',
+    run_in_maintenance       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = execute during maintenance window (failures suppressed); 0 = skip (exit -4)',
     execution_mode    ENUM('local','remote') NOT NULL DEFAULT 'local'
                                                COMMENT 'local = run on this host, remote = execute via SSH',
     ssh_host          VARCHAR(255)            NULL     COMMENT 'SSH config host alias (from ~/.ssh/config); required when execution_mode=remote',
@@ -100,8 +101,32 @@ CREATE TABLE IF NOT EXISTS execution_log (
     pid_file                 VARCHAR(255) NULL       COMMENT 'Path to PID file on remote host (SSH targets); NULL for local jobs',
     notified_limit_exceeded  TINYINT(1) NOT NULL DEFAULT 0
                                                     COMMENT '1 = limit-exceeded notification already sent; prevents duplicate alerts',
+    during_maintenance       TINYINT(1) NOT NULL DEFAULT 0
+                                                    COMMENT '1 = this execution occurred during a maintenance window',
     CONSTRAINT fk_el_cronjob FOREIGN KEY (cronjob_id)
         REFERENCES cronjobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- maintenance_windows – scheduled maintenance periods per target
+--
+-- When the current time falls within an active maintenance window for a target
+-- the agent will either skip the job (exit_code = -4) or execute it silently
+-- depending on the per-job run_in_maintenance flag.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS maintenance_windows (
+    id               INT          AUTO_INCREMENT PRIMARY KEY,
+    target           VARCHAR(255) NOT NULL
+                                  COMMENT '"local" or SSH host alias from ~/.ssh/config',
+    cron_schedule    VARCHAR(100) NOT NULL
+                                  COMMENT 'Standard 5-field cron expression for window start',
+    duration_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60
+                                  COMMENT 'Length of the maintenance window in minutes',
+    description      VARCHAR(255)
+                                  COMMENT 'Human-readable description of this window',
+    active           TINYINT(1)   NOT NULL DEFAULT 1
+                                  COMMENT '1 = window is evaluated, 0 = disabled',
+    created_at       DATETIME     DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------

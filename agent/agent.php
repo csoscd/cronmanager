@@ -200,7 +200,9 @@ try {
     $mailNotifier     = new \Cronmanager\Agent\Notification\MailNotifier($logger, $config);
     $telegramNotifier = new \Cronmanager\Agent\Notification\TelegramNotifier($logger, $config);
 
-    $execStart     = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger);
+    $maintenanceWindowRepo = new \Cronmanager\Agent\Repository\MaintenanceWindowRepository($pdo, $logger);
+
+    $execStart     = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger, $maintenanceWindowRepo);
     $execFinish    = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier, $telegramNotifier);
     $execUpdatePid = new \Cronmanager\Agent\Endpoints\ExecutionUpdatePidEndpoint($pdo, $logger);
     $execKill      = new \Cronmanager\Agent\Endpoints\ExecutionKillEndpoint($pdo, $logger);
@@ -257,6 +259,24 @@ try {
     $router->addRoute('GET',    '/maintenance/executions/stuck',        [$maintenanceStuck,       'handle']);
     $router->addRoute('POST',   '/maintenance/executions/{id}/finish',  [$maintenanceResolve,     'handle']);
     $router->addRoute('DELETE', '/maintenance/executions/{id}',         [$maintenanceExecDel,     'handle']);
+
+    // -- Maintenance windows --------------------------------------------------
+    // /maintenance/windows/conflict must be registered before /maintenance/windows/{id}
+    // so the more-specific static segment is tried first.
+
+    $mwList     = new \Cronmanager\Agent\Endpoints\MaintenanceWindowListEndpoint($maintenanceWindowRepo, $logger);
+    $mwGet      = new \Cronmanager\Agent\Endpoints\MaintenanceWindowGetEndpoint($maintenanceWindowRepo, $logger);
+    $mwCreate   = new \Cronmanager\Agent\Endpoints\MaintenanceWindowCreateEndpoint($maintenanceWindowRepo, $logger);
+    $mwUpdate   = new \Cronmanager\Agent\Endpoints\MaintenanceWindowUpdateEndpoint($maintenanceWindowRepo, $logger);
+    $mwDelete   = new \Cronmanager\Agent\Endpoints\MaintenanceWindowDeleteEndpoint($maintenanceWindowRepo, $logger);
+    $mwConflict = new \Cronmanager\Agent\Endpoints\MaintenanceWindowConflictEndpoint($maintenanceWindowRepo, $logger);
+
+    $router->addRoute('GET',    '/maintenance/windows/conflict', [$mwConflict, 'handle']);
+    $router->addRoute('GET',    '/maintenance/windows',          [$mwList,     'handle']);
+    $router->addRoute('POST',   '/maintenance/windows',          [$mwCreate,   'handle']);
+    $router->addRoute('GET',    '/maintenance/windows/{id}',     [$mwGet,      'handle']);
+    $router->addRoute('PUT',    '/maintenance/windows/{id}',     [$mwUpdate,   'handle']);
+    $router->addRoute('DELETE', '/maintenance/windows/{id}',     [$mwDelete,   'handle']);
 
     // -------------------------------------------------------------------------
     // Dispatch

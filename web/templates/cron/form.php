@@ -48,8 +48,9 @@ $jobId         = ($isEdit && !$isCopy) ? (string) ($job['id'] ?? '') : '';
 $formAction    = ($isEdit && $jobId !== '') ? '/crons/' . rawurlencode($jobId) . '/edit' : '/crons';
 $isActiveVal   = $job !== null ? !empty($job['active']) : true;
 $isNotifyVal   = $job !== null ? !empty($job['notify_on_failure']) : true;
-$isAutoKillVal = $job !== null ? !empty($job['auto_kill_on_limit']) : false;
-$isSingletonVal = $job !== null ? !empty($job['singleton']) : false;
+$isAutoKillVal        = $job !== null ? !empty($job['auto_kill_on_limit']) : false;
+$isSingletonVal       = $job !== null ? !empty($job['singleton']) : false;
+$isRunInMaintVal      = $job !== null ? !empty($job['run_in_maintenance']) : false;
 $pageTitle     = $isEdit ? $t('cron_edit') : $t('cron_add');
 
 // Collect existing tag names for click-to-insert hints
@@ -321,6 +322,36 @@ foreach ($tags as $tag) {
                     </span>
                 </label>
 
+                <!-- Run in maintenance window -->
+                <label class="flex items-center gap-2 cursor-pointer" title="<?= htmlspecialchars($t('cron_run_in_maintenance_hint'), ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="checkbox" name="run_in_maintenance" value="1"
+                           id="run_in_maintenance"
+                           <?= $isRunInMaintVal ? 'checked' : '' ?>
+                           class="w-4 h-4 text-orange-500 border-gray-300 rounded
+                                  focus:ring-orange-400 cursor-pointer">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <?= htmlspecialchars($t('cron_run_in_maintenance'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                </label>
+
+                <!-- Maintenance-window conflict warning – yellow: some runs skipped -->
+                <div id="maintenance-conflict-some" class="hidden mt-1 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-300">
+                    <svg class="inline-block w-4 h-4 mr-1 -mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    </svg>
+                    <?= htmlspecialchars($t('targets_conflict_warning_some'), ENT_QUOTES, 'UTF-8') ?>
+                    <span id="maintenance-conflict-details-some" class="block mt-1 text-xs"></span>
+                </div>
+
+                <!-- Maintenance-window conflict warning – red: no runs will execute -->
+                <div id="maintenance-conflict-all" class="hidden mt-1 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-sm text-red-800 dark:text-red-400">
+                    <svg class="inline-block w-4 h-4 mr-1 -mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <?= htmlspecialchars($t('targets_conflict_warning_all'), ENT_QUOTES, 'UTF-8') ?>
+                    <span id="maintenance-conflict-details-all" class="block mt-1 text-xs"></span>
+                </div>
+
             </div>
 
             <!-- Action buttons -->
@@ -475,6 +506,127 @@ function updateTargetCheckboxes(user) {
     // Fetch immediately on page load when editing an existing job
     if (input.value.trim() !== '') {
         fetchTranslation(input.value);
+    }
+})();
+
+/**
+ * Maintenance-window conflict detection.
+ *
+ * Checks upcoming runs against active maintenance windows for each selected
+ * target.  Two visual states are possible (when run_in_maintenance is off):
+ *
+ *   Yellow  – some upcoming runs conflict (job still runs outside the window).
+ *   Red     – ALL checked upcoming runs conflict (job effectively never runs).
+ *
+ * The look-ahead is 50 runs.  When ≥90 % conflict the red banner is shown.
+ */
+(function() {
+    const LOOK_AHEAD = 50;
+
+    const scheduleInput    = document.getElementById('schedule');
+    const warnSome         = document.getElementById('maintenance-conflict-some');
+    const warnAll          = document.getElementById('maintenance-conflict-all');
+    const detailsSome      = document.getElementById('maintenance-conflict-details-some');
+    const detailsAll       = document.getElementById('maintenance-conflict-details-all');
+    const runInMaintBox    = document.getElementById('run_in_maintenance');
+    const targetsContainer = document.getElementById('targets-container');
+
+    if (!scheduleInput || !warnSome || !warnAll) return;
+
+    let debounceTimer = null;
+
+    function hideAll() {
+        warnSome.classList.add('hidden');
+        warnAll.classList.add('hidden');
+        if (detailsSome) detailsSome.textContent = '';
+        if (detailsAll)  detailsAll.textContent  = '';
+    }
+
+    function getSelectedTargets() {
+        if (!targetsContainer) return [];
+        return Array.from(targetsContainer.querySelectorAll('input[name="targets[]"]:checked'))
+            .map(function(cb) { return cb.value; });
+    }
+
+    function formatDetails(conflicts) {
+        if (!conflicts || conflicts.length === 0) return '';
+        const times = conflicts.slice(0, 3).map(function(c) {
+            return c.run_time.replace('T', ' ').substring(0, 16);
+        });
+        return 'Affected runs: ' + times.join(', ') + (conflicts.length > 3 ? ' …' : '');
+    }
+
+    function checkConflicts() {
+        const schedule = scheduleInput.value.trim();
+        const targets  = getSelectedTargets();
+
+        if (schedule === '' || targets.length === 0 || (runInMaintBox && runInMaintBox.checked)) {
+            hideAll();
+            return;
+        }
+
+        Promise.all(targets.map(function(target) {
+            return fetch(
+                '/maintenance/windows/conflict?' +
+                new URLSearchParams({ schedule: schedule, target: target, look_ahead: LOOK_AHEAD }),
+                { credentials: 'same-origin' }
+            )
+            .then(function(res) { return res.ok ? res.json() : null; })
+            .catch(function() { return null; });
+        }))
+        .then(function(results) {
+            // Aggregate all conflicts across all selected targets
+            let totalConflicts = 0;
+            const allConflictTimes = [];
+
+            results.forEach(function(r) {
+                if (r && r.conflicts) {
+                    totalConflicts += r.conflicts.length;
+                    r.conflicts.forEach(function(c) { allConflictTimes.push(c); });
+                }
+            });
+
+            const hasConflict = totalConflicts > 0;
+
+            // "All" = ≥90 % of look-ahead runs conflict for at least one target → red
+            const allConflict = results.some(function(r) {
+                return r && r.conflicts && r.conflicts.length / LOOK_AHEAD >= 0.9;
+            });
+
+            hideAll();
+
+            if (!hasConflict) return;
+
+            if (allConflict) {
+                warnAll.classList.remove('hidden');
+                if (detailsAll) detailsAll.textContent = formatDetails(allConflictTimes);
+            } else {
+                warnSome.classList.remove('hidden');
+                if (detailsSome) detailsSome.textContent = formatDetails(allConflictTimes);
+            }
+        });
+    }
+
+    function debouncedCheck() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(checkConflicts, 500);
+    }
+
+    scheduleInput.addEventListener('input', debouncedCheck);
+
+    if (targetsContainer) {
+        targetsContainer.addEventListener('change', debouncedCheck);
+    }
+
+    if (runInMaintBox) {
+        runInMaintBox.addEventListener('change', function() {
+            if (this.checked) { hideAll(); } else { checkConflicts(); }
+        });
+    }
+
+    // Run immediately on edit/copy forms that already have a schedule value
+    if (scheduleInput.value.trim() !== '') {
+        checkConflicts();
     }
 })();
 </script>

@@ -59,7 +59,8 @@ class DashboardController extends BaseController
         // ------------------------------------------------------------------
         try {
             $jobs           = $agent->get('/crons')['data']                                    ?? [];
-            $recentFailures = $agent->get('/history', ['limit' => 10, 'status' => 'failed'])['data'] ?? [];
+            // Fetch more than needed so that filtering maintenance skips still leaves enough entries
+            $recentFailures = $agent->get('/history', ['limit' => 50, 'status' => 'failed'])['data'] ?? [];
             $tags           = $agent->get('/tags')['data']                                    ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('DashboardController: agent request failed', [
@@ -89,8 +90,15 @@ class DashboardController extends BaseController
 
         $inactiveJobs = $totalJobs - $activeJobs;
 
-        // Filter failures within the last 24 hours from the already-fetched list
-        $failedLast24h = 0;
+        // Exclude maintenance-skipped executions (exit_code -4) – these are not real failures.
+        $recentFailures = array_values(array_filter(
+            $recentFailures,
+            static fn(array $e): bool => (int) ($e['exit_code'] ?? 0) !== -4
+        ));
+
+        // Cap list at 10 after filtering and count failures within last 24 hours
+        $recentFailures = array_slice($recentFailures, 0, 10);
+        $failedLast24h  = 0;
         foreach ($recentFailures as $entry) {
             $startedAt = strtotime((string) ($entry['started_at'] ?? '')) ?: 0;
             if ($startedAt >= $oneDayAgo) {

@@ -37,10 +37,11 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 11. [Multi-Host Execution](#multi-host-execution)
 12. [Crontab Import](#crontab-import)
 13. [Maintenance](#maintenance)
-14. [Export](#export)
-15. [User Management](#user-management)
-16. [Updating](#updating)
-17. [Troubleshooting](#troubleshooting)
+14. [Maintenance Windows](#maintenance-windows)
+15. [Export](#export)
+16. [User Management](#user-management)
+17. [Updating](#updating)
+18. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -63,6 +64,7 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Export** | Download a ready-to-use crontab file or JSON for all managed jobs |
 | **Email alerts** | Receive an email when a job exits with a non-zero status or exceeds its execution limit |
 | **Telegram alerts** | Receive a Telegram message for the same events via the Bot API |
+| **Maintenance Windows** | Define per-target scheduled maintenance windows; jobs are either skipped (exit code −4) or executed silently depending on the per-job setting. Conflict icons (⚠ amber / ✕ red) appear in the job list and detail view |
 | **Maintenance** | Crontab sync, stuck-execution cleanup, and history bulk-delete |
 | **Local & SSO auth** | Username/password accounts or OAuth 2.0 / OpenID Connect (OIDC) via Authentik |
 | **Role-based access** | Admin (full access) and Viewer (read-only) roles |
@@ -194,7 +196,7 @@ All persistent data lives in **Docker-managed named volumes** (`db-data`, `agent
 | Tag | Built from | Use for |
 |---|---|---|
 | `latest` | `main` branch (on every release) | Production — always stable |
-| `2.4.0`, `2.3.1`, … | Git tag on `main` | Pinning to a specific release |
+| `2.5.0`, `2.4.0`, … | Git tag on `main` | Pinning to a specific release |
 | `dev` | Latest development branch push | Testing unreleased features |
 
 > **Warning:** The `:dev` tag is overwritten on every push to any active development
@@ -203,8 +205,8 @@ All persistent data lives in **Docker-managed named volumes** (`db-data`, `agent
 
 To use a specific version, replace `:latest` in `docker-compose-full.yml`:
 ```yaml
-image: cs1711/cronmanager-agent:2.4.0
-image: cs1711/cronmanager-web:2.4.0
+image: cs1711/cronmanager-agent:2.5.0
+image: cs1711/cronmanager-web:2.5.0
 ```
 No host directory mounts are needed.  Optional host-path alternatives are available as
 commented-out lines in `docker-compose-full.yml`.
@@ -1054,6 +1056,44 @@ The lookback threshold is adjustable with an inline hour selector without leavin
 ### History Cleanup
 
 Bulk-deletes finished execution records older than a configurable number of days (default: 90). Only records with a non-NULL `finished_at` are eligible; running executions are never deleted. Use this to reclaim database space on long-running installations.
+
+---
+
+## Maintenance Windows
+
+Maintenance windows let you mark scheduled time slots as off-limits for job execution on a per-target basis.
+They are managed via **Targets** in the navigation bar (admin only).
+
+### Defining a maintenance window
+
+Each window has:
+
+| Field | Description |
+|---|---|
+| **Target** | `local` or an SSH host alias — the target this window applies to |
+| **Schedule** | Standard 5-field cron expression for when the window **starts** |
+| **Duration** | Length of the window in minutes (default: 60) |
+| **Description** | Optional human-readable label |
+| **Active** | Whether this window is currently evaluated |
+
+### Per-job behaviour (`run_in_maintenance` flag)
+
+| Setting | Behaviour |
+|---|---|
+| Off (default) | The job is **skipped**. The cron wrapper reports exit code `−4` and the execution is recorded as `during_maintenance = 1` |
+| On | The job **runs**. Failures are still reported normally |
+
+### Conflict detection
+
+The job list and job detail pages perform an asynchronous conflict check per target:
+
+- The next **50** upcoming run times for the job/target pair are fetched from the agent
+- If **90 % or more** of those runs fall inside a maintenance window, the target badge turns **red ✕** ("will not be executed")
+- Otherwise, if any conflict exists, the badge is **amber ⚠** ("some runs may fall in a maintenance window")
+
+### Dashboard filtering
+
+Executions skipped because of a maintenance window (exit code `−4`) are excluded from the "recent failures" list on the dashboard. They are still visible in the Timeline and on the detail page.
 
 ---
 

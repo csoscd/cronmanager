@@ -38,8 +38,9 @@ $lastRun       = (string) ($job['last_run']        ?? '');
 $limitSeconds  = isset($job['execution_limit_seconds']) && $job['execution_limit_seconds'] !== null
     ? (int) $job['execution_limit_seconds']
     : null;
-$autoKill      = !empty($job['auto_kill_on_limit']);
-$singleton     = !empty($job['singleton']);
+$autoKill          = !empty($job['auto_kill_on_limit']);
+$singleton         = !empty($job['singleton']);
+$runInMaintenance  = !empty($job['run_in_maintenance']);
 ?>
 
 <!-- ======================================================================
@@ -294,6 +295,22 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
             </dd>
         </div>
 
+        <!-- Run in maintenance window -->
+        <div>
+            <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
+                <?= htmlspecialchars($t('cron_run_in_maintenance'), ENT_QUOTES, 'UTF-8') ?>
+            </dt>
+            <dd class="text-sm text-gray-600 dark:text-gray-300">
+                <?php if ($runInMaintenance): ?>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+                        <?= htmlspecialchars($t('cron_run_in_maintenance'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                <?php else: ?>
+                    —
+                <?php endif; ?>
+            </dd>
+        </div>
+
         <!-- Targets -->
         <div>
             <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
@@ -302,18 +319,50 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
             <dd class="text-sm flex flex-wrap gap-1">
                 <?php foreach ($jobTargets as $tgt): ?>
                     <?php $tgt = (string) $tgt; ?>
-                    <?php if ($tgt === 'local'): ?>
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                            <?= htmlspecialchars($t('cron_local_badge'), ENT_QUOTES, 'UTF-8') ?>
-                        </span>
-                    <?php else: ?>
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-mono">
-                            <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
-                        </span>
-                    <?php endif; ?>
+                    <span class="inline-flex items-center gap-0.5">
+                        <?php if ($tgt === 'local'): ?>
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                <?= htmlspecialchars($t('cron_local_badge'), ENT_QUOTES, 'UTF-8') ?>
+                            </span>
+                        <?php else: ?>
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-mono">
+                                <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
+                            </span>
+                        <?php endif; ?>
+                        <?php if (!$runInMaintenance && $active): ?>
+                            <span class="js-maint-badge hidden inline-flex items-center px-1 py-0.5 rounded text-xs font-medium
+                                         bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 cursor-help"
+                                  data-maint-schedule="<?= htmlspecialchars($sched, ENT_QUOTES, 'UTF-8') ?>"
+                                  data-maint-target="<?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>"
+                                  data-title-all="<?= htmlspecialchars($t('targets_conflict_badge_all'), ENT_QUOTES, 'UTF-8') ?>"
+                                  title="<?= htmlspecialchars($t('targets_conflict_warning'), ENT_QUOTES, 'UTF-8') ?>">⚠</span>
+                        <?php endif; ?>
+                    </span>
                 <?php endforeach; ?>
             </dd>
         </div>
+
+        <?php if (!$runInMaintenance && $active): ?>
+        <!-- Maintenance conflict severity banner (populated by JS) -->
+        <div id="detail-maint-conflict" class="hidden col-span-full mt-1">
+            <div id="detail-maint-some"
+                 class="hidden flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm
+                        text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                </svg>
+                <span><?= htmlspecialchars($t('targets_conflict_warning_some'), ENT_QUOTES, 'UTF-8') ?></span>
+            </div>
+            <div id="detail-maint-all"
+                 class="hidden flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm
+                        text-red-800 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300">
+                <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span><?= htmlspecialchars($t('targets_conflict_warning_all'), ENT_QUOTES, 'UTF-8') ?></span>
+            </div>
+        </div>
+        <?php endif; ?>
 
     </div>
 </div>
@@ -373,20 +422,30 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                             $duration     = isset($entry['duration_seconds'])
                                 ? round((float) $entry['duration_seconds'], 1) . 's'
                                 : '–';
-                            $entryTarget  = (string) ($entry['target'] ?? '');
-                            $output       = (string) ($entry['output'] ?? '');
-                            $outputId     = 'hist-output-' . $idx;
-                            $outputTrunc  = mb_strlen($output) > 200
+                            $entryTarget       = (string) ($entry['target'] ?? '');
+                            $output            = (string) ($entry['output'] ?? '');
+                            $outputId          = 'hist-output-' . $idx;
+                            $outputTrunc       = mb_strlen($output) > 200
                                 ? mb_substr($output, 0, 200) . '…'
                                 : $output;
+                            $duringMaintenance = !empty($entry['during_maintenance']);
 
                             // Exit code badge
                             if ($isRunning) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">'
                                     . htmlspecialchars($t('status_running'), ENT_QUOTES, 'UTF-8')
                                     . '</span>';
+                            } elseif ($exitCode !== null && (int) $exitCode === -4) {
+                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">'
+                                    . htmlspecialchars($t('cron_maintenance_skipped_badge'), ENT_QUOTES, 'UTF-8')
+                                    . '</span>';
                             } elseif ($exitCode !== null && (int) $exitCode === 0) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">0</span>';
+                                if ($duringMaintenance) {
+                                    $exitBadge .= ' <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">'
+                                        . htmlspecialchars($t('cron_during_maintenance_badge'), ENT_QUOTES, 'UTF-8')
+                                        . '</span>';
+                                }
                             } elseif ($exitCode !== null && (int) $exitCode === -2) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">'
                                     . htmlspecialchars($t('cron_kill_running'), ENT_QUOTES, 'UTF-8')
@@ -394,6 +453,11 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                             } else {
                                 $safeCode  = htmlspecialchars((string) $exitCode, ENT_QUOTES, 'UTF-8');
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">' . $safeCode . '</span>';
+                                if ($duringMaintenance) {
+                                    $exitBadge .= ' <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">'
+                                        . htmlspecialchars($t('cron_during_maintenance_badge'), ENT_QUOTES, 'UTF-8')
+                                        . '</span>';
+                                }
                             }
                         ?>
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 align-top">
@@ -585,4 +649,71 @@ document.addEventListener('keydown', function (e) {
         if (modal) modal.classList.add('hidden');
     }
 });
+
+/**
+ * Async maintenance-conflict severity check for the detail page.
+ * Fetches conflict data per target, shows per-target badge icons and the
+ * severity banner (amber = some runs skip, red = all/most runs skip).
+ */
+(function () {
+    const LOOK_AHEAD    = 50;
+    const RED_THRESHOLD = 0.9;
+
+    const badges = Array.from(document.querySelectorAll('.js-maint-badge'));
+    if (badges.length === 0) return;
+
+    const bannerWrap = document.getElementById('detail-maint-conflict');
+    const bannerSome = document.getElementById('detail-maint-some');
+    const bannerAll  = document.getElementById('detail-maint-all');
+
+    let anyConflict = false;
+    let anyRed      = false;
+    let pending      = badges.length;
+
+    function updateBanner() {
+        if (pending > 0) return;
+        if (!bannerWrap) return;
+        if (!anyConflict) return;
+        bannerWrap.classList.remove('hidden');
+        if (anyRed) {
+            if (bannerAll)  bannerAll.classList.remove('hidden');
+            if (bannerSome) bannerSome.classList.add('hidden');
+        } else {
+            if (bannerSome) bannerSome.classList.remove('hidden');
+            if (bannerAll)  bannerAll.classList.add('hidden');
+        }
+    }
+
+    badges.forEach(function (el) {
+        fetch(
+            '/maintenance/windows/conflict?' +
+            new URLSearchParams({
+                schedule:    el.dataset.maintSchedule,
+                target:      el.dataset.maintTarget,
+                look_ahead:  LOOK_AHEAD,
+            }),
+            { credentials: 'same-origin' }
+        )
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .catch(function () { return null; })
+        .then(function (data) {
+            pending--;
+            if (data && data.conflicts && data.conflicts.length > 0) {
+                el.classList.remove('hidden');
+                anyConflict = true;
+                const ratio = data.conflicts.length / LOOK_AHEAD;
+                if (ratio >= RED_THRESHOLD) {
+                    anyRed = true;
+                    el.classList.remove('bg-amber-100', 'text-amber-700', 'dark:bg-amber-900/40', 'dark:text-amber-300');
+                    el.classList.add('bg-red-100', 'text-red-700', 'dark:bg-red-900/40', 'dark:text-red-300');
+                    el.textContent = '✕';
+                    if (el.dataset.titleAll) el.title = el.dataset.titleAll;
+                }
+            } else {
+                pending = Math.max(0, pending);
+            }
+            updateBanner();
+        });
+    });
+})();
 </script>

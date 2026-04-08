@@ -156,6 +156,9 @@ $byUser        = (array) ($stats['byUser']      ?? []);
                                 <?= htmlspecialchars($t('cron_linux_user'), ENT_QUOTES, 'UTF-8') ?>
                             </th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <?= htmlspecialchars($t('cron_targets'), ENT_QUOTES, 'UTF-8') ?>
+                            </th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <?= htmlspecialchars($t('exit_code'), ENT_QUOTES, 'UTF-8') ?>
                             </th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -169,20 +172,28 @@ $byUser        = (array) ($stats['byUser']      ?? []);
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         <?php foreach ($recentFailures as $entry): ?>
                             <?php
-                                $jobId      = (string) ($entry['job_id']     ?? '');
-                                $descRaw    = (string) ($entry['job_description'] ?? $entry['description'] ?? '');
-                                $desc       = $descRaw !== '' ? $descRaw : "Job #{$jobId}";
-                                $user       = (string) ($entry['linux_user'] ?? '');
-                                $exitCode   = isset($entry['exit_code']) ? (int) $entry['exit_code'] : null;
-                                $startedAt  = (string) ($entry['started_at']  ?? '');
-                                $duration   = isset($entry['duration_seconds'])
+                                $jobId       = (string) ($entry['job_id']     ?? '');
+                                $descRaw     = (string) ($entry['job_description'] ?? $entry['description'] ?? '');
+                                $desc        = $descRaw !== '' ? $descRaw : "Job #{$jobId}";
+                                $user        = (string) ($entry['linux_user'] ?? '');
+                                $exitCode    = isset($entry['exit_code']) ? (int) $entry['exit_code'] : null;
+                                $startedAt   = (string) ($entry['started_at']  ?? '');
+                                $entryTarget = (string) ($entry['target'] ?? '');
+                                $duration    = isset($entry['duration_seconds'])
                                     ? round((float) $entry['duration_seconds'], 1) . 's'
                                     : '–';
+                                // Deep-link to Timeline pre-filtered for this specific job/target/status
+                                $timelineParams = array_filter([
+                                    'job_id' => $jobId,
+                                    'target' => $entryTarget,
+                                    'status' => 'failed',
+                                ], static fn(string $v): bool => $v !== '');
+                                $timelineUrl = '/timeline?' . http_build_query($timelineParams);
                             ?>
                             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                                 <td class="px-4 py-3 text-sm">
                                     <?php if ($jobId !== ''): ?>
-                                        <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>"
+                                        <a href="<?= htmlspecialchars($timelineUrl, ENT_QUOTES, 'UTF-8') ?>"
                                            class="text-blue-600 hover:underline font-medium">
                                             <?= htmlspecialchars($desc, ENT_QUOTES, 'UTF-8') ?>
                                         </a>
@@ -192,6 +203,15 @@ $byUser        = (array) ($stats['byUser']      ?? []);
                                 </td>
                                 <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                                     <?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?>
+                                </td>
+                                <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                                    <?php if ($entryTarget !== ''): ?>
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                                            <?= htmlspecialchars($entryTarget, ENT_QUOTES, 'UTF-8') ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="text-gray-300 dark:text-gray-600">—</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="px-4 py-3 text-sm">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">

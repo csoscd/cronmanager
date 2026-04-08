@@ -77,11 +77,18 @@ final class NotificationTestEndpoint
     /**
      * Send a test notification.
      *
-     * @param array<string, string> $params   Path parameters (unused).
-     * @param array<string, mixed>  $body     Parsed JSON request body.
+     * @param array<string, string> $params Path parameters (unused).
      */
-    public function handle(array $params, array $body): void
+    public function handle(array $params): void
     {
+        $raw  = (string) file_get_contents('php://input');
+        $body = json_decode($raw, true) ?? [];
+
+        // Also support application/x-www-form-urlencoded (sent by the web UI)
+        if (empty($body)) {
+            parse_str($raw, $body);
+        }
+
         $channel = strtolower(trim((string) ($body['channel'] ?? '')));
 
         if (!in_array($channel, ['mail', 'telegram'], true)) {

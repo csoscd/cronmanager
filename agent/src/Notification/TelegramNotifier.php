@@ -228,7 +228,7 @@ final class TelegramNotifier
         }
 
         $now  = date('Y-m-d H:i:s');
-        $text = "&#x2709; <b>Cronmanager &ndash; Test Notification</b>\n\n"
+        $text = "\u{2709} <b>Cronmanager \u{2013} Test Notification</b>\n\n"
               . "This is a test message sent from the <b>Cronmanager Maintenance</b> page.\n"
               . "If you received it, your Telegram configuration is working correctly.\n\n"
               . "<b>Sent at:</b> " . htmlspecialchars($now, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -300,15 +300,15 @@ final class TelegramNotifier
 
         // Determine heading and emoji based on exit-code sentinel
         [$emoji, $title] = match (true) {
-            $exitCode === -2 => ['&#x1F6AB;', 'Job Auto-Killed (Limit Exceeded)'],
-            $exitCode === -3 => ['&#x23F0;',  'Job Execution Limit Exceeded'],
-            default          => ['&#x26A0;',  'Job Failure Alert'],
+            $exitCode === -2 => ["\u{1F6AB}", 'Job Auto-Killed (Limit Exceeded)'],
+            $exitCode === -3 => ["\u{23F0}",  'Job Execution Limit Exceeded'],
+            default          => ["\u{26A0}",  'Job Failure Alert'],
         };
 
         // Exit-code line: show N/A for limit-exceeded alerts where the job is
         // still running and has no real exit code yet.
         $exitCodeDisplay = $exitCode === -3
-            ? '<i>N/A &#x2013; job still running</i>'
+            ? "<i>N/A \u{2013} job still running</i>"
             : sprintf('<b>%s</b>', $e((string) $exitCode));
 
         // Timestamp label: use "Notified At" for still-running jobs.
@@ -320,7 +320,7 @@ final class TelegramNotifier
             : "\n\n<b>Output:</b> <i>(none)</i>";
 
         $message = sprintf(
-            "%s <b>Cronmanager &#x2013; %s</b>\n\n"
+            "%s <b>Cronmanager \u{2013} %s</b>\n\n"
             . "<b>Job ID:</b> %s\n"
             . "<b>Description:</b> %s\n"
             . "<b>User:</b> %s\n"

@@ -243,6 +243,11 @@ try {
     $export = new \Cronmanager\Agent\Endpoints\ExportEndpoint($pdo, $logger);
     $router->addRoute('GET', '/export', [$export, 'handle']);
 
+    // -- Notification test ----------------------------------------------------
+
+    $notificationTest = new \Cronmanager\Agent\Endpoints\NotificationTestEndpoint($mailNotifier, $telegramNotifier, $logger, $config);
+    $router->addRoute('POST', '/maintenance/notification/test', [$notificationTest, 'handle']);
+
     // -- Maintenance ----------------------------------------------------------
     // More-specific paths (/maintenance/crontab/resync, /maintenance/executions/…)
     // must be registered before /maintenance/executions/{id} so the router

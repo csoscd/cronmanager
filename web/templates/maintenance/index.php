@@ -6,16 +6,16 @@ declare(strict_types=1);
  * Cronmanager – Maintenance page template
  *
  * Variables injected by MaintenanceController::index():
- *   int                $hours            Stuck-execution threshold
- *   array              $stuckExecutions  List of stuck execution rows
- *   string|null        $stuckError       Error message if agent unreachable
- *   int|null           $flashSyncOk      Jobs synced (post-resync flash)
- *   bool               $flashSyncErr     Resync error (post-resync flash)
- *   bool               $flashResolved    Execution was marked finished
- *   bool               $flashExecDel     Execution record was deleted
- *   int|null           $flashCleaned     History records deleted (flash)
- *   int|null           $flashOnceRemoved Stale once-entries removed (flash)
- *   string             $csrf_token       CSRF token
+ *   int                $hours               Stuck-execution threshold
+ *   array              $stuckExecutions     List of stuck execution rows
+ *   string|null        $stuckError          Error message if agent unreachable
+ *   int|null           $flashSyncOk         Jobs synced (post-resync flash)
+ *   bool               $flashSyncErr        Resync error (post-resync flash)
+ *   bool               $flashResolved       Execution was marked finished
+ *   bool               $flashExecDel        Execution record was deleted
+ *   int|null           $flashCleaned        History records deleted (flash)
+ *   int|null           $flashOnceRemoved    Stale once-entries removed (flash)
+ *   string             $csrf_token          CSRF token
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
  * @license GNU General Public License version 3 or later
@@ -94,6 +94,7 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
             ) ?>
         </div>
     <?php endif; ?>
+
 
     <!-- ══════════════════════════════════════════════════════════════════════
          1. CRONTAB SYNC
@@ -318,7 +319,53 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
     </section>
 
     <!-- ══════════════════════════════════════════════════════════════════════
-         4. RUN NOW CLEANUP
+         4. NOTIFICATION TEST
+         ══════════════════════════════════════════════════════════════════════ -->
+    <section class="cm-card rounded-xl p-6 space-y-4">
+
+        <div>
+            <h2 class="text-lg font-semibold" style="color:var(--cm-text)">
+                <?= htmlspecialchars($t('maintenance_notify_title'), ENT_QUOTES, 'UTF-8') ?>
+            </h2>
+            <p class="mt-1 text-sm" style="color:var(--cm-text-muted)">
+                <?= htmlspecialchars($t('maintenance_notify_desc'), ENT_QUOTES, 'UTF-8') ?>
+            </p>
+        </div>
+
+        <div class="flex flex-wrap gap-4">
+
+            <!-- Test E-Mail -->
+            <div class="flex flex-col gap-1.5">
+                <button type="button"
+                        id="notify-test-mail"
+                        data-channel="mail"
+                        data-csrf="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>"
+                        class="notify-test-btn inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition"
+                        style="background:rgba(59,130,246,.1);color:var(--cm-primary);border:1px solid rgba(59,130,246,.2)">
+                    <?= htmlspecialchars($t('maintenance_notify_mail_btn'), ENT_QUOTES, 'UTF-8') ?>
+                </button>
+                <div id="notify-result-mail" class="hidden text-xs rounded px-2 py-1 max-w-xs"></div>
+            </div>
+
+            <!-- Test Telegram -->
+            <div class="flex flex-col gap-1.5">
+                <button type="button"
+                        id="notify-test-telegram"
+                        data-channel="telegram"
+                        data-csrf="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>"
+                        class="notify-test-btn inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition"
+                        style="background:rgba(59,130,246,.1);color:var(--cm-primary);border:1px solid rgba(59,130,246,.2)">
+                    <?= htmlspecialchars($t('maintenance_notify_telegram_btn'), ENT_QUOTES, 'UTF-8') ?>
+                </button>
+                <div id="notify-result-telegram" class="hidden text-xs rounded px-2 py-1 max-w-xs"></div>
+            </div>
+
+        </div>
+
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         5. RUN NOW CLEANUP
          ══════════════════════════════════════════════════════════════════════ -->
     <section class="cm-card rounded-xl p-6 space-y-4">
 
@@ -429,4 +476,87 @@ function confirmCleanup(form) {
 function confirmOnceCleanup() {
     return confirm(<?= json_encode($t('maintenance_once_confirm')) ?>);
 }
+
+// ── Notification test (AJAX) ───────────────────────────────────────────────────
+
+(function () {
+    const i18n = {
+        ok:        <?= json_encode($t('maintenance_notify_ok')) ?>,
+        disabled:  <?= json_encode($t('maintenance_notify_disabled')) ?>,
+        error:     <?= json_encode($t('maintenance_notify_error')) ?>,
+        agentErr:  <?= json_encode($t('maintenance_notify_agent_err')) ?>,
+        sending:   '…',
+    };
+
+    function channelLabel(channel) {
+        return channel === 'mail' ? 'E-Mail' : 'Telegram';
+    }
+
+    function showResult(channel, style, text) {
+        const el = document.getElementById('notify-result-' + channel);
+        if (!el) return;
+        el.textContent = text;
+        el.className   = 'text-xs rounded px-2 py-1 max-w-xs';
+        el.style.cssText = style;
+        el.classList.remove('hidden');
+    }
+
+    document.querySelectorAll('.notify-test-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const channel = btn.dataset.channel;
+            const csrf    = btn.dataset.csrf;
+            const label   = channelLabel(channel);
+
+            // Disable button and show spinner text
+            btn.disabled    = true;
+            btn.textContent = i18n.sending;
+
+            const resultEl = document.getElementById('notify-result-' + channel);
+            if (resultEl) resultEl.classList.add('hidden');
+
+            fetch('/maintenance/notification/test', {
+                method:      'POST',
+                credentials: 'same-origin',
+                headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body:        '_csrf=' + encodeURIComponent(csrf) + '&channel=' + encodeURIComponent(channel),
+            })
+            .then(function (res) { return res.json(); })
+            .catch(function () { return null; })
+            .then(function (data) {
+                btn.disabled    = false;
+                btn.textContent = btn.dataset.channel === 'mail'
+                    ? <?= json_encode($t('maintenance_notify_mail_btn')) ?>
+                    : <?= json_encode($t('maintenance_notify_telegram_btn')) ?>;
+
+                if (!data) {
+                    showResult(channel,
+                        'background:rgba(239,68,68,.1);color:#dc2626;border:1px solid rgba(239,68,68,.2)',
+                        i18n.agentErr);
+                    return;
+                }
+
+                if (data.success) {
+                    showResult(channel,
+                        'background:rgba(34,197,94,.12);color:#16a34a;border:1px solid rgba(34,197,94,.25)',
+                        i18n.ok.replace('{channel}', label));
+                    return;
+                }
+
+                if (data.reason === 'disabled') {
+                    showResult(channel,
+                        'background:rgba(245,158,11,.1);color:#d97706;border:1px solid rgba(245,158,11,.25)',
+                        i18n.disabled.replace('{channel}', label));
+                    return;
+                }
+
+                // send_failed – show base message + error detail
+                const base   = i18n.error.replace('{channel}', label);
+                const detail = data.message ? ' — ' + data.message : '';
+                showResult(channel,
+                    'background:rgba(239,68,68,.1);color:#dc2626;border:1px solid rgba(239,68,68,.2)',
+                    base + detail);
+            });
+        });
+    });
+}());
 </script>

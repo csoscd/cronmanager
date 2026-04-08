@@ -201,6 +201,99 @@ final class MailNotifier
     }
 
     // -------------------------------------------------------------------------
+    // Test API
+    // -------------------------------------------------------------------------
+
+    /**
+     * Send a test e-mail through the configured SMTP server.
+     *
+     * Unlike sendFailureAlert() this method is always attempted (the caller is
+     * responsible for checking mail.enabled) and returns a structured result
+     * instead of a plain bool so that error details can be surfaced to the UI.
+     *
+     * @return array{success: true}|array{success: false, message: string}
+     */
+    public function sendTest(): array
+    {
+        $host        = (string) $this->config->get('mail.host',         'smtp.example.com');
+        $port        = (int)    $this->config->get('mail.port',         587);
+        $username    = (string) $this->config->get('mail.username',     '');
+        $password    = (string) $this->config->get('mail.password',     '');
+        $from        = (string) $this->config->get('mail.from',         '');
+        $fromName    = (string) $this->config->get('mail.from_name',    'Cronmanager');
+        $to          = (string) $this->config->get('mail.to',           '');
+        $encryption  = strtolower((string) $this->config->get('mail.encryption',   'tls'));
+        $smtpTimeout = (int)    $this->config->get('mail.smtp_timeout', 15);
+
+        $now = date('Y-m-d H:i:s');
+
+        $plainBody = implode("\n", [
+            'CRONMANAGER – TEST NOTIFICATION',
+            str_repeat('=', 60),
+            '',
+            'This is a test message sent from the Cronmanager Maintenance',
+            'page. If you received it, your e-mail configuration is working.',
+            '',
+            'Sent at: ' . $now,
+            str_repeat('=', 60),
+            'This message was generated automatically by Cronmanager.',
+        ]);
+
+        $htmlBody = <<<HTML
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>Cronmanager – Test Notification</title>
+<style>
+body{font-family:Arial,sans-serif;font-size:14px;color:#333;background:#f4f4f4;margin:0;padding:20px}
+.container{background:#fff;border-radius:6px;padding:24px 32px;max-width:600px;margin:0 auto;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+h1{color:#2563eb;font-size:20px;margin-top:0}
+.footer{font-size:11px;color:#999;margin-top:20px}
+</style></head><body>
+<div class="container">
+<h1>&#x2709; Cronmanager &ndash; Test Notification</h1>
+<p>This is a test message sent from the <strong>Cronmanager Maintenance</strong> page.</p>
+<p>If you received it, your e-mail configuration is working correctly.</p>
+<p style="color:#666;font-size:13px">Sent at: {$now}</p>
+<p class="footer">This message was generated automatically by Cronmanager.</p>
+</div></body></html>
+HTML;
+
+        try {
+            $mail = new PHPMailer(exceptions: true);
+
+            $mail->isSMTP();
+            $mail->Host       = $host;
+            $mail->Port       = $port;
+            $mail->SMTPAuth   = true;
+            $mail->Username   = $username;
+            $mail->Password   = $password;
+            $mail->Timeout    = $smtpTimeout;
+            $mail->SMTPSecure = ($encryption === 'ssl')
+                ? PHPMailer::ENCRYPTION_SMTPS
+                : PHPMailer::ENCRYPTION_STARTTLS;
+
+            $mail->CharSet = PHPMailer::CHARSET_UTF8;
+            $mail->setFrom($from, $fromName);
+            $mail->addAddress($to);
+            $mail->Subject = '[Cronmanager] Test Notification';
+            $mail->Body    = $htmlBody;
+            $mail->AltBody = $plainBody;
+
+            $mail->send();
+
+            $this->logger->info('MailNotifier: test notification sent', ['to' => $to]);
+
+            return ['success' => true];
+
+        } catch (MailerException $e) {
+            $this->logger->warning('MailNotifier: test notification failed', [
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Private helpers – individual HTML table rows
     // -------------------------------------------------------------------------
 

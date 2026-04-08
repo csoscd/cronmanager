@@ -76,6 +76,7 @@ jobs:
           file:       ${{ matrix.dockerfile }}
           push:       true
           tags:       cs1711/${{ matrix.image }}:dev
+          build-args: APP_VERSION=dev-${{ github.ref_name }}@${{ github.sha }}
           labels: |
             org.opencontainers.image.title=${{ matrix.image }}
             org.opencontainers.image.description=Development build – not for production use

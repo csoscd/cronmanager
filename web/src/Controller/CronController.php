@@ -118,6 +118,25 @@ class CronController extends BaseController
             return;
         }
 
+        // Build a set of target names that have at least one active maintenance
+        // window.  Used in the list template to warn about jobs that will always
+        // be skipped (active, run_in_maintenance=false, target in maintenance).
+        $targetsInMaintenance = [];
+        try {
+            $allWindows = $agent->getMaintenanceWindows();
+            foreach ($allWindows as $window) {
+                if (!empty($window['active'])) {
+                    $t = (string) ($window['target'] ?? '');
+                    if ($t !== '') {
+                        $targetsInMaintenance[$t] = true;
+                    }
+                }
+            }
+        } catch (\RuntimeException) {
+            // Non-fatal: maintenance window data is advisory only
+            $targetsInMaintenance = [];
+        }
+
         // Apply free-text search filter (description + command, case-insensitive substring)
         if ($filterSearch !== '') {
             $needle = mb_strtolower($filterSearch);
@@ -187,20 +206,21 @@ class CronController extends BaseController
         unset($job);
 
         $this->render('cron/list.php', $this->translator()->t('crons_title'), [
-            'jobs'          => $pagedJobs,
-            'tags'          => $tags,
-            'filterTag'     => $filterTag,
-            'filterUser'    => $filterUser,
-            'filterTarget'  => $filterTarget,
-            'filterSearch'  => $filterSearch,
-            'filterResult'  => $filterResult,
-            'users'         => $users,
-            'allTargets'    => $allTargets,
-            'isAdmin'       => SessionManager::hasRole('admin'),
-            'pageSize'      => $pageSize,
-            'currentPage'   => $currentPage,
-            'totalJobs'     => $totalJobs,
-            'totalPages'    => $totalPages,
+            'jobs'                  => $pagedJobs,
+            'tags'                  => $tags,
+            'filterTag'             => $filterTag,
+            'filterUser'            => $filterUser,
+            'filterTarget'          => $filterTarget,
+            'filterSearch'          => $filterSearch,
+            'filterResult'          => $filterResult,
+            'users'                 => $users,
+            'allTargets'            => $allTargets,
+            'isAdmin'               => SessionManager::hasRole('admin'),
+            'pageSize'              => $pageSize,
+            'currentPage'           => $currentPage,
+            'totalJobs'             => $totalJobs,
+            'totalPages'            => $totalPages,
+            'targetsInMaintenance'  => $targetsInMaintenance,
         ], '/crons');
     }
 
@@ -1054,6 +1074,7 @@ class CronController extends BaseController
             'execution_limit_seconds'  => $executionLimitSeconds,
             'auto_kill_on_limit'       => isset($post['auto_kill_on_limit']),
             'singleton'                => isset($post['singleton']),
+            'run_in_maintenance'       => isset($post['run_in_maintenance']),
             'targets'                  => $targets,
         ];
     }

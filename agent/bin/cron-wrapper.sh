@@ -283,6 +283,13 @@ if [[ "${_HTTP_CODE}" == "409" ]]; then
     exit 0
 fi
 
+# 423 Locked = target is in a maintenance window → execution was recorded as
+# skipped by the agent (exit_code = -4); exit cleanly without running the job.
+if [[ "${_HTTP_CODE}" == "423" ]]; then
+    log_info "Job ${JOB_ID}: skipped – target is in a maintenance window (execution recorded as skipped)"
+    exit 0
+fi
+
 if [[ -z "$EXECUTION_ID" || "$EXECUTION_ID" == "0" ]]; then
     log_warn "Job ${JOB_ID}: no valid execution_id received (http_code=${_HTTP_CODE}) – continuing anyway"
     EXECUTION_ID="0"

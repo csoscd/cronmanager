@@ -37,6 +37,7 @@ use Cronmanager\Web\Controller\SetupController;
 use Cronmanager\Web\Controller\SwimlaneController;
 use Cronmanager\Web\Controller\TimelineController;
 use Cronmanager\Web\Controller\MaintenanceController;
+use Cronmanager\Web\Controller\TargetController;
 use Cronmanager\Web\Controller\UserController;
 use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Request;
@@ -174,6 +175,7 @@ try {
     $exportCtrl       = new ExportController($config, $logger);
     $userCtrl         = new UserController($config, $logger);
     $maintenanceCtrl  = new MaintenanceController($config, $logger);
+    $targetCtrl       = new TargetController($config, $logger);
 
     $router->addProtectedRoute('GET',  '/',                    fn(array $p) => (new Response())->redirect('/dashboard'));
     $router->addProtectedRoute('GET',  '/dashboard',           [$dashboardCtrl, 'index']);
@@ -203,6 +205,18 @@ try {
     $router->addProtectedRoute('GET',  '/users',               [$userCtrl, 'index'],      'admin');
     $router->addProtectedRoute('POST', '/users/{id}/role',     [$userCtrl, 'updateRole'], 'admin');
     $router->addProtectedRoute('POST', '/users/{id}/delete',   [$userCtrl, 'destroy'],    'admin');
+
+    // Targets / Maintenance Windows – admin only
+    // Conflict check is GET with query params (no auth body needed, but still admin).
+    // /targets/windows/{id}/edit and /targets/windows/{id}/delete must be
+    // registered before /targets/{target}/windows (static vs dynamic segment).
+    $router->addProtectedRoute('GET',  '/maintenance/windows/conflict',         [$targetCtrl, 'conflictCheck'], 'view');
+    $router->addProtectedRoute('GET',  '/targets',                              [$targetCtrl, 'index'],        'admin');
+    $router->addProtectedRoute('GET',  '/targets/{target}/windows/new',         [$targetCtrl, 'newWindow'],    'admin');
+    $router->addProtectedRoute('POST', '/targets/{target}/windows',             [$targetCtrl, 'storeWindow'],  'admin');
+    $router->addProtectedRoute('GET',  '/targets/windows/{id}/edit',            [$targetCtrl, 'editWindow'],   'admin');
+    $router->addProtectedRoute('POST', '/targets/windows/{id}/edit',            [$targetCtrl, 'updateWindow'], 'admin');
+    $router->addProtectedRoute('POST', '/targets/windows/{id}/delete',          [$targetCtrl, 'deleteWindow'], 'admin');
 
     // Maintenance – admin only; more-specific paths registered before /{id} sub-routes
     $router->addProtectedRoute('GET',  '/maintenance',                              [$maintenanceCtrl, 'index'],           'admin');

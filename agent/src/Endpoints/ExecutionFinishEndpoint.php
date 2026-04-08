@@ -233,7 +233,10 @@ final class ExecutionFinishEndpoint
         // 5. Send failure / limit-exceeded notification
         // ------------------------------------------------------------------
 
-        // Skip notification dispatch entirely when auto-kill already handled it.
+        // Skip notification dispatch entirely when auto-kill already handled it
+        // or when the execution ran during a maintenance window.
+        $duringMaintenance = $this->isDuringMaintenance($executionId);
+
         if ($alreadyFinished) {
             jsonResponse(200, [
                 'execution_id' => $executionId,
@@ -245,6 +248,24 @@ final class ExecutionFinishEndpoint
         }
 
         $notified = false;
+
+        // Suppress all failure notifications when the job ran inside a
+        // maintenance window (during_maintenance = 1 set at execution start).
+        if ($duringMaintenance) {
+            $this->logger->info('ExecutionFinishEndpoint: notification suppressed – execution ran during maintenance window', [
+                'execution_id' => $executionId,
+                'job_id'       => $jobId,
+                'exit_code'    => $exitCode,
+            ]);
+
+            jsonResponse(200, [
+                'execution_id' => $executionId,
+                'job_id'       => $jobId,
+                'exit_code'    => $exitCode,
+                'notified'     => false,
+            ]);
+            return;
+        }
 
         try {
             $job = $this->fetchJob($jobId);
@@ -634,6 +655,27 @@ final class ExecutionFinishEndpoint
         ]);
 
         return true;
+    }
+
+    /**
+     * Return true when the execution was recorded as running during a
+     * maintenance window (during_maintenance = 1).
+     *
+     * @param int $executionId Execution log ID.
+     *
+     * @return bool
+     *
+     * @throws PDOException On database errors.
+     */
+    private function isDuringMaintenance(int $executionId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT during_maintenance FROM execution_log WHERE id = :id LIMIT 1'
+        );
+        $stmt->execute([':id' => $executionId]);
+        $value = $stmt->fetchColumn();
+
+        return $value !== false && (bool) $value;
     }
 
     /**

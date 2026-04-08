@@ -35,6 +35,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Repository\MaintenanceWindowRepository;
 use Monolog\Logger;
 use PDO;
 use PDOException;
@@ -57,12 +58,14 @@ final class ExecutionStartEndpoint
     /**
      * ExecutionStartEndpoint constructor.
      *
-     * @param PDO    $pdo    Active PDO database connection.
-     * @param Logger $logger Monolog logger instance.
+     * @param PDO                         $pdo    Active PDO database connection.
+     * @param Logger                      $logger Monolog logger instance.
+     * @param MaintenanceWindowRepository $maintenanceRepo Maintenance window repository.
      */
     public function __construct(
-        private readonly PDO    $pdo,
-        private readonly Logger $logger,
+        private readonly PDO                         $pdo,
+        private readonly Logger                      $logger,
+        private readonly MaintenanceWindowRepository $maintenanceRepo,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -163,17 +166,64 @@ final class ExecutionStartEndpoint
             }
 
             // ------------------------------------------------------------------
-            // 5. Insert the execution log row
+            // 5. Maintenance-window guard
+            // ------------------------------------------------------------------
+
+            $effectiveTarget  = $target ?? 'local';
+            $inMaintenance    = $this->maintenanceRepo->isTargetInMaintenance($effectiveTarget);
+            $runInMaintenance = $this->getRunInMaintenance($jobId);
+            $duringMaintenance = $inMaintenance ? 1 : 0;
+
+            if ($inMaintenance && !$runInMaintenance) {
+                // Record a skipped execution so the history is complete, then
+                // return HTTP 423 (Locked) so cron-wrapper knows to exit cleanly.
+                $nowUtc = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s');
+
+                $stmt = $this->pdo->prepare(
+                    'INSERT INTO execution_log
+                        (cronjob_id, started_at, finished_at, exit_code, output, target, during_maintenance)
+                     VALUES (:cronjob_id, :started_at, :finished_at, :exit_code, :output, :target, 1)'
+                );
+                $stmt->execute([
+                    ':cronjob_id' => $jobId,
+                    ':started_at' => $nowUtc,
+                    ':finished_at' => $nowUtc,
+                    ':exit_code'  => -4,
+                    ':output'     => 'Skipped: target is in a maintenance window.',
+                    ':target'     => $target,
+                ]);
+
+                $skippedId = (int) $this->pdo->lastInsertId();
+
+                $this->logger->info('ExecutionStartEndpoint: job skipped – target in maintenance window', [
+                    'job_id'       => $jobId,
+                    'target'       => $effectiveTarget,
+                    'execution_id' => $skippedId,
+                ]);
+
+                jsonResponse(423, [
+                    'error'        => 'Locked',
+                    'message'      => 'Target is in a maintenance window. Execution skipped.',
+                    'execution_id' => $skippedId,
+                    'code'         => 423,
+                ]);
+                return;
+            }
+
+            // ------------------------------------------------------------------
+            // 6. Insert the execution log row
             // ------------------------------------------------------------------
 
             $stmt = $this->pdo->prepare(
-                'INSERT INTO execution_log (cronjob_id, started_at, finished_at, exit_code, output, target)
-                 VALUES (:cronjob_id, :started_at, NULL, NULL, NULL, :target)'
+                'INSERT INTO execution_log
+                    (cronjob_id, started_at, finished_at, exit_code, output, target, during_maintenance)
+                 VALUES (:cronjob_id, :started_at, NULL, NULL, NULL, :target, :during_maintenance)'
             );
             $stmt->execute([
-                ':cronjob_id' => $jobId,
-                ':started_at' => $startedAt,
-                ':target'     => $target,
+                ':cronjob_id'         => $jobId,
+                ':started_at'         => $startedAt,
+                ':target'             => $target,
+                ':during_maintenance' => $duringMaintenance,
             ]);
 
             $executionId = (int) $this->pdo->lastInsertId();
@@ -200,7 +250,7 @@ final class ExecutionStartEndpoint
         }
 
         // ------------------------------------------------------------------
-        // 5. Return the new execution_id to the caller
+        // 7. Return the new execution_id to the caller
         // ------------------------------------------------------------------
 
         jsonResponse(201, [
@@ -274,6 +324,27 @@ final class ExecutionStartEndpoint
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
 
         return $row !== false && (bool) $row['singleton'];
+    }
+
+    /**
+     * Return true when the job has run_in_maintenance = 1.
+     *
+     * When true the job executes during a maintenance window but failure
+     * notifications are suppressed.
+     *
+     * @param int $jobId The job ID to check.
+     *
+     * @return bool
+     *
+     * @throws PDOException On database errors.
+     */
+    private function getRunInMaintenance(int $jobId): bool
+    {
+        $stmt = $this->pdo->prepare('SELECT run_in_maintenance FROM cronjobs WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => $jobId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        return $row !== false && (bool) $row['run_in_maintenance'];
     }
 
     /**

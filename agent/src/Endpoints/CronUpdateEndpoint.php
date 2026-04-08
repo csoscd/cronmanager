@@ -169,6 +169,7 @@ final class CronUpdateEndpoint
                      execution_limit_seconds = :execution_limit_seconds,
                      auto_kill_on_limit = :auto_kill_on_limit,
                      singleton = :singleton,
+                     run_in_maintenance = :run_in_maintenance,
                      execution_mode = :execution_mode,
                      ssh_host = :ssh_host
                  WHERE id = :id'
@@ -181,8 +182,9 @@ final class CronUpdateEndpoint
                 ':active'                  => (int) $isActive,
                 ':notify_on_failure'       => (int) $merged['notify_on_failure'],
                 ':execution_limit_seconds' => $merged['execution_limit_seconds'],
-                ':auto_kill_on_limit'      => (int) ($merged['auto_kill_on_limit'] ?? false),
-                ':singleton'               => (int) ($merged['singleton'] ?? false),
+                ':auto_kill_on_limit'      => (int) ($merged['auto_kill_on_limit']   ?? false),
+                ':singleton'               => (int) ($merged['singleton']             ?? false),
+                ':run_in_maintenance'      => (int) ($merged['run_in_maintenance']    ?? false),
                 ':execution_mode'          => $executionMode,
                 ':ssh_host'                => $sshHost,
                 ':id'                      => $jobId,
@@ -297,6 +299,9 @@ final class CronUpdateEndpoint
             'singleton'                => array_key_exists('singleton', $body)
                 ? (bool) $body['singleton']
                 : (bool) ($existing['singleton'] ?? false),
+            'run_in_maintenance'       => array_key_exists('run_in_maintenance', $body)
+                ? (bool) $body['run_in_maintenance']
+                : (bool) ($existing['run_in_maintenance'] ?? false),
             'targets'                  => $mergedTargets,
             'tags'                     => array_key_exists('tags', $body) ? $body['tags'] : $existingTags,
         ];
@@ -376,6 +381,11 @@ final class CronUpdateEndpoint
         // singleton
         if (isset($data['singleton']) && !is_bool($data['singleton'])) {
             $errors['singleton'] = 'Must be a boolean.';
+        }
+
+        // run_in_maintenance
+        if (isset($data['run_in_maintenance']) && !is_bool($data['run_in_maintenance'])) {
+            $errors['run_in_maintenance'] = 'Must be a boolean.';
         }
 
         // targets
@@ -562,6 +572,7 @@ final class CronUpdateEndpoint
                 j.execution_limit_seconds,
                 j.auto_kill_on_limit,
                 j.singleton,
+                j.run_in_maintenance,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -614,8 +625,9 @@ final class CronUpdateEndpoint
             'execution_limit_seconds'  => isset($row['execution_limit_seconds']) && $row['execution_limit_seconds'] !== null
                 ? (int) $row['execution_limit_seconds']
                 : null,
-            'auto_kill_on_limit'       => (bool) ($row['auto_kill_on_limit'] ?? false),
-            'singleton'                => (bool) ($row['singleton'] ?? false),
+            'auto_kill_on_limit'       => (bool) ($row['auto_kill_on_limit']   ?? false),
+            'singleton'                => (bool) ($row['singleton']           ?? false),
+            'run_in_maintenance'       => (bool) ($row['run_in_maintenance']  ?? false),
             'targets'                  => $targets,
             'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),
             'ssh_host'                 => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,

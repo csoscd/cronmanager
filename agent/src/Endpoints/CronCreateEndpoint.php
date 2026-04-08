@@ -133,8 +133,9 @@ final class CronCreateEndpoint
         $executionLimitSeconds = isset($body['execution_limit_seconds']) && is_int($body['execution_limit_seconds']) && $body['execution_limit_seconds'] > 0
             ? $body['execution_limit_seconds']
             : null;
-        $autoKillOnLimit      = isset($body['auto_kill_on_limit']) ? (bool) $body['auto_kill_on_limit'] : false;
-        $singleton            = isset($body['singleton'])          ? (bool) $body['singleton']          : false;
+        $autoKillOnLimit      = isset($body['auto_kill_on_limit'])   ? (bool) $body['auto_kill_on_limit']   : false;
+        $singleton            = isset($body['singleton'])            ? (bool) $body['singleton']            : false;
+        $runInMaintenance     = isset($body['run_in_maintenance'])   ? (bool) $body['run_in_maintenance']   : false;
         $targets              = $this->normaliseTargets($body['targets'] ?? ['local']);
         $tags                 = isset($body['tags']) && is_array($body['tags']) ? $body['tags'] : [];
 
@@ -159,10 +160,12 @@ final class CronCreateEndpoint
             $stmt = $this->pdo->prepare(
                 'INSERT INTO cronjobs
                     (linux_user, schedule, command, description, active, notify_on_failure,
-                     execution_limit_seconds, auto_kill_on_limit, singleton, execution_mode, ssh_host)
+                     execution_limit_seconds, auto_kill_on_limit, singleton, run_in_maintenance,
+                     execution_mode, ssh_host)
                  VALUES
                     (:linux_user, :schedule, :command, :description, :active, :notify_on_failure,
-                     :execution_limit_seconds, :auto_kill_on_limit, :singleton, :execution_mode, :ssh_host)'
+                     :execution_limit_seconds, :auto_kill_on_limit, :singleton, :run_in_maintenance,
+                     :execution_mode, :ssh_host)'
             );
             $stmt->execute([
                 ':linux_user'             => $linuxUser,
@@ -174,6 +177,7 @@ final class CronCreateEndpoint
                 ':execution_limit_seconds'=> $executionLimitSeconds,
                 ':auto_kill_on_limit'     => (int) $autoKillOnLimit,
                 ':singleton'              => (int) $singleton,
+                ':run_in_maintenance'     => (int) $runInMaintenance,
                 ':execution_mode'         => $executionMode,
                 ':ssh_host'               => $sshHost,
             ]);
@@ -302,6 +306,11 @@ final class CronCreateEndpoint
         // singleton: optional bool
         if (isset($body['singleton']) && !is_bool($body['singleton'])) {
             $errors['singleton'] = 'Must be a boolean.';
+        }
+
+        // run_in_maintenance: optional bool
+        if (isset($body['run_in_maintenance']) && !is_bool($body['run_in_maintenance'])) {
+            $errors['run_in_maintenance'] = 'Must be a boolean.';
         }
 
         // targets: optional array, at least one non-empty string, each max 255 chars
@@ -499,6 +508,7 @@ final class CronCreateEndpoint
                 j.execution_limit_seconds,
                 j.auto_kill_on_limit,
                 j.singleton,
+                j.run_in_maintenance,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -537,8 +547,9 @@ final class CronCreateEndpoint
             'execution_limit_seconds'  => isset($row['execution_limit_seconds']) && $row['execution_limit_seconds'] !== null
                 ? (int) $row['execution_limit_seconds']
                 : null,
-            'auto_kill_on_limit'       => (bool)   ($row['auto_kill_on_limit'] ?? false),
-            'singleton'                => (bool)   ($row['singleton']        ?? false),
+            'auto_kill_on_limit'       => (bool)   ($row['auto_kill_on_limit']    ?? false),
+            'singleton'                => (bool)   ($row['singleton']           ?? false),
+            'run_in_maintenance'       => (bool)   ($row['run_in_maintenance']  ?? false),
             'targets'                  => $targets,
             // Legacy fields kept for backward compatibility
             'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),

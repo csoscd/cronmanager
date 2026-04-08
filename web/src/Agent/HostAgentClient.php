@@ -210,6 +210,102 @@ class HostAgentClient
         return $this->handleResponse('DELETE', $path, $response);
     }
 
+    // =========================================================================
+    // Maintenance windows
+    // =========================================================================
+
+    /**
+     * Return all maintenance windows, optionally filtered by target.
+     *
+     * @param string|null $target Filter by exact target name; NULL returns all.
+     *
+     * @return array<int, array<string, mixed>>
+     *
+     * @throws \RuntimeException
+     */
+    public function getMaintenanceWindows(?string $target = null): array
+    {
+        $query = $target !== null ? ['target' => $target] : [];
+        return $this->get('/maintenance/windows', $query);
+    }
+
+    /**
+     * Return a single maintenance window.
+     *
+     * @param int $id Window ID.
+     *
+     * @return array<string, mixed>
+     *
+     * @throws \RuntimeException
+     */
+    public function getMaintenanceWindow(int $id): array
+    {
+        return $this->get(sprintf('/maintenance/windows/%d', $id));
+    }
+
+    /**
+     * Create a new maintenance window.
+     *
+     * @param array<string, mixed> $data Window data.
+     *
+     * @return array<string, mixed>
+     *
+     * @throws \RuntimeException
+     */
+    public function createMaintenanceWindow(array $data): array
+    {
+        return $this->post('/maintenance/windows', $data);
+    }
+
+    /**
+     * Update an existing maintenance window.
+     *
+     * @param int                  $id   Window ID.
+     * @param array<string, mixed> $data Updated window data.
+     *
+     * @return array<string, mixed>
+     *
+     * @throws \RuntimeException
+     */
+    public function updateMaintenanceWindow(int $id, array $data): array
+    {
+        return $this->put(sprintf('/maintenance/windows/%d', $id), $data);
+    }
+
+    /**
+     * Delete a maintenance window.
+     *
+     * @param int $id Window ID.
+     *
+     * @return array<string, mixed>
+     *
+     * @throws \RuntimeException
+     */
+    public function deleteMaintenanceWindow(int $id): array
+    {
+        return $this->delete(sprintf('/maintenance/windows/%d', $id));
+    }
+
+    /**
+     * Check whether a cron schedule has conflicts with maintenance windows.
+     *
+     * @param string $schedule   5-field cron expression.
+     * @param string $target     Target name.
+     * @param int    $lookAhead  Number of upcoming runs to check (default 10).
+     *
+     * @return array{has_conflict: bool, conflicts: array<int, array<string, mixed>>}
+     *
+     * @throws \RuntimeException
+     */
+    public function checkMaintenanceConflict(string $schedule, string $target, int $lookAhead = 10): array
+    {
+        return $this->get('/maintenance/windows/conflict', [
+            'schedule'    => $schedule,
+            'target'      => $target,
+            'look_ahead'  => $lookAhead,
+        ]);
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------

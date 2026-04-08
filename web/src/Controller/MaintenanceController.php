@@ -80,23 +80,19 @@ final class MaintenanceController extends BaseController
         $flashBulkResolved  = isset($_GET['bulk_resolved'])  ? (int) $_GET['bulk_resolved']  : null;
         $flashBulkDeleted   = isset($_GET['bulk_deleted'])   ? (int) $_GET['bulk_deleted']   : null;
         $flashOnceRemoved   = isset($_GET['once_removed'])   ? (int) $_GET['once_removed']   : null;
-        $flashNotifyTest    = isset($_GET['notify_test'])    ? (string) $_GET['notify_test'] : null;
-        $flashNotifyChannel = isset($_GET['notify_channel']) ? (string) $_GET['notify_channel'] : null;
 
         $this->render('maintenance/index.php', $this->translator()->t('maintenance_title'), [
-            'hours'              => $hours,
-            'stuckExecutions'    => $stuckExecutions,
-            'stuckError'         => $stuckError,
-            'flashSyncOk'        => $flashSyncOk,
-            'flashSyncErr'       => $flashSyncErr,
-            'flashResolved'      => $flashResolved,
-            'flashExecDel'       => $flashExecDel,
-            'flashCleaned'       => $flashCleaned,
-            'flashBulkResolved'  => $flashBulkResolved,
-            'flashBulkDeleted'   => $flashBulkDeleted,
-            'flashOnceRemoved'   => $flashOnceRemoved,
-            'flashNotifyTest'    => $flashNotifyTest,
-            'flashNotifyChannel' => $flashNotifyChannel,
+            'hours'             => $hours,
+            'stuckExecutions'   => $stuckExecutions,
+            'stuckError'        => $stuckError,
+            'flashSyncOk'       => $flashSyncOk,
+            'flashSyncErr'      => $flashSyncErr,
+            'flashResolved'     => $flashResolved,
+            'flashExecDel'      => $flashExecDel,
+            'flashCleaned'      => $flashCleaned,
+            'flashBulkResolved' => $flashBulkResolved,
+            'flashBulkDeleted'  => $flashBulkDeleted,
+            'flashOnceRemoved'  => $flashOnceRemoved,
         ], '/maintenance');
     }
 
@@ -271,10 +267,12 @@ final class MaintenanceController extends BaseController
      */
     public function testNotification(array $params = []): void
     {
+        header('Content-Type: application/json; charset=utf-8');
+
         $channel = strtolower(trim((string) ($_POST['channel'] ?? '')));
 
         if (!in_array($channel, ['mail', 'telegram'], true)) {
-            (new Response())->redirect('/maintenance');
+            echo json_encode(['success' => false, 'reason' => 'invalid_channel']);
             return;
         }
 
@@ -283,22 +281,19 @@ final class MaintenanceController extends BaseController
                 'channel' => $channel,
             ]);
 
-            if (($result['success'] ?? false) === true) {
-                $status = 'ok';
-            } elseif (($result['reason'] ?? '') === 'disabled') {
-                $status = 'disabled';
-            } else {
-                $status = 'error';
-            }
+            echo json_encode($result);
+
         } catch (\RuntimeException $e) {
             $this->logger->error('MaintenanceController: testNotification agent error', [
                 'channel' => $channel,
                 'error'   => $e->getMessage(),
             ]);
-            $status = 'agent_err';
+            echo json_encode([
+                'success' => false,
+                'reason'  => 'agent_err',
+                'message' => $e->getMessage(),
+            ]);
         }
-
-        (new Response())->redirect('/maintenance?notify_test=' . $status . '&notify_channel=' . urlencode($channel));
     }
 
     // -------------------------------------------------------------------------

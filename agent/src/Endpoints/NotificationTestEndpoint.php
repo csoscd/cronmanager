@@ -91,19 +91,6 @@ final class NotificationTestEndpoint
         }
 
         // ------------------------------------------------------------------
-        // Synthetic test payload – clearly labelled as a test message
-        // ------------------------------------------------------------------
-
-        $now        = date('Y-m-d H:i:s');
-        $jobId      = 0;
-        $desc       = 'Cronmanager Test Notification';
-        $linuxUser  = 'cronmanager';
-        $schedule   = '* * * * *';
-        $exitCode   = 1;
-        $output     = 'This is a test notification sent from the Cronmanager Maintenance page. '
-                    . 'If you received this message your notification configuration is working correctly.';
-
-        // ------------------------------------------------------------------
         // Dispatch to the appropriate channel
         // ------------------------------------------------------------------
 
@@ -116,9 +103,7 @@ final class NotificationTestEndpoint
                 return;
             }
 
-            $sent = $this->mailNotifier->sendFailureAlert(
-                $jobId, $desc, $linuxUser, $schedule, $exitCode, $output, $now, $now
-            );
+            $result = $this->mailNotifier->sendTest();
 
         } else {
             $enabled = (bool) $this->config->get('telegram.enabled', false);
@@ -129,12 +114,10 @@ final class NotificationTestEndpoint
                 return;
             }
 
-            $sent = $this->telegramNotifier->sendFailureAlert(
-                $jobId, $desc, $linuxUser, $schedule, $exitCode, $output, $now, $now
-            );
+            $result = $this->telegramNotifier->sendTest();
         }
 
-        if ($sent) {
+        if ($result['success']) {
             $this->logger->info('NotificationTestEndpoint: test notification sent', [
                 'channel' => $channel,
             ]);
@@ -142,8 +125,13 @@ final class NotificationTestEndpoint
         } else {
             $this->logger->warning('NotificationTestEndpoint: test notification failed to send', [
                 'channel' => $channel,
+                'message' => $result['message'] ?? '',
             ]);
-            echo json_encode(['success' => false, 'reason' => 'send_failed']);
+            echo json_encode([
+                'success' => false,
+                'reason'  => 'send_failed',
+                'message' => $result['message'] ?? 'Unknown error',
+            ]);
         }
     }
 }

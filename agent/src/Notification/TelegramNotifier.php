@@ -205,6 +205,62 @@ final class TelegramNotifier
     }
 
     // -------------------------------------------------------------------------
+    // Test API
+    // -------------------------------------------------------------------------
+
+    /**
+     * Send a test message through the configured Telegram bot.
+     *
+     * Unlike sendFailureAlert() this method is always attempted (the caller is
+     * responsible for checking telegram.enabled) and returns a structured result
+     * so that error details can be surfaced to the UI.
+     *
+     * @return array{success: true}|array{success: false, message: string}
+     */
+    public function sendTest(): array
+    {
+        $botToken = (string) $this->config->get('telegram.bot_token', '');
+        $chatId   = (string) $this->config->get('telegram.chat_id',   '');
+        $timeout  = (int)    $this->config->get('telegram.timeout',   15);
+
+        if ($botToken === '' || $chatId === '') {
+            return ['success' => false, 'message' => 'bot_token or chat_id is not configured in the agent config.'];
+        }
+
+        $now  = date('Y-m-d H:i:s');
+        $text = "&#x2709; <b>Cronmanager &ndash; Test Notification</b>\n\n"
+              . "This is a test message sent from the <b>Cronmanager Maintenance</b> page.\n"
+              . "If you received it, your Telegram configuration is working correctly.\n\n"
+              . "<b>Sent at:</b> " . htmlspecialchars($now, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        try {
+            $client = new Client(['timeout' => $timeout]);
+
+            $client->post(
+                self::API_BASE . $botToken . '/sendMessage',
+                [
+                    'json' => [
+                        'chat_id'    => $chatId,
+                        'text'       => $text,
+                        'parse_mode' => 'HTML',
+                    ],
+                ]
+            );
+
+            $this->logger->info('TelegramNotifier: test notification sent');
+
+            return ['success' => true];
+
+        } catch (GuzzleException $e) {
+            $this->logger->warning('TelegramNotifier: test notification failed', [
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
 

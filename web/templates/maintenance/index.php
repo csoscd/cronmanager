@@ -15,8 +15,6 @@ declare(strict_types=1);
  *   bool               $flashExecDel        Execution record was deleted
  *   int|null           $flashCleaned        History records deleted (flash)
  *   int|null           $flashOnceRemoved    Stale once-entries removed (flash)
- *   string|null        $flashNotifyTest     Notification test result: ok|disabled|error|agent_err
- *   string|null        $flashNotifyChannel  Channel tested: mail|telegram
  *   string             $csrf_token          CSRF token
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
@@ -97,19 +95,6 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
         </div>
     <?php endif; ?>
 
-    <?php if ($flashNotifyTest !== null && $flashNotifyChannel !== null):
-        $channelLabel = $flashNotifyChannel === 'mail' ? 'E-Mail' : 'Telegram';
-        [$bgStyle, $msgKey] = match ($flashNotifyTest) {
-            'ok'        => ['background:rgba(34,197,94,.12);color:#16a34a;border:1px solid rgba(34,197,94,.25)',  'maintenance_notify_ok'],
-            'disabled'  => ['background:rgba(245,158,11,.1);color:#d97706;border:1px solid rgba(245,158,11,.25)', 'maintenance_notify_disabled'],
-            'agent_err' => ['background:rgba(239,68,68,.1);color:#dc2626;border:1px solid rgba(239,68,68,.2)',    'maintenance_notify_agent_err'],
-            default     => ['background:rgba(239,68,68,.1);color:#dc2626;border:1px solid rgba(239,68,68,.2)',    'maintenance_notify_error'],
-        };
-    ?>
-        <div class="rounded-lg px-4 py-3 text-sm font-medium" style="<?= $bgStyle ?>">
-            <?= htmlspecialchars($t($msgKey, ['channel' => $channelLabel]), ENT_QUOTES, 'UTF-8') ?>
-        </div>
-    <?php endif; ?>
 
     <!-- ══════════════════════════════════════════════════════════════════════
          1. CRONTAB SYNC
@@ -347,28 +332,34 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
             </p>
         </div>
 
-        <div class="flex flex-wrap gap-3">
+        <div class="flex flex-wrap gap-4">
+
             <!-- Test E-Mail -->
-            <form method="POST" action="/maintenance/notification/test">
-                <input type="hidden" name="_csrf"    value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
-                <input type="hidden" name="channel"  value="mail">
-                <button type="submit"
-                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition"
+            <div class="flex flex-col gap-1.5">
+                <button type="button"
+                        id="notify-test-mail"
+                        data-channel="mail"
+                        data-csrf="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>"
+                        class="notify-test-btn inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition"
                         style="background:rgba(59,130,246,.1);color:var(--cm-primary);border:1px solid rgba(59,130,246,.2)">
                     <?= htmlspecialchars($t('maintenance_notify_mail_btn'), ENT_QUOTES, 'UTF-8') ?>
                 </button>
-            </form>
+                <div id="notify-result-mail" class="hidden text-xs rounded px-2 py-1 max-w-xs"></div>
+            </div>
 
             <!-- Test Telegram -->
-            <form method="POST" action="/maintenance/notification/test">
-                <input type="hidden" name="_csrf"    value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
-                <input type="hidden" name="channel"  value="telegram">
-                <button type="submit"
-                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition"
+            <div class="flex flex-col gap-1.5">
+                <button type="button"
+                        id="notify-test-telegram"
+                        data-channel="telegram"
+                        data-csrf="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>"
+                        class="notify-test-btn inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition"
                         style="background:rgba(59,130,246,.1);color:var(--cm-primary);border:1px solid rgba(59,130,246,.2)">
                     <?= htmlspecialchars($t('maintenance_notify_telegram_btn'), ENT_QUOTES, 'UTF-8') ?>
                 </button>
-            </form>
+                <div id="notify-result-telegram" class="hidden text-xs rounded px-2 py-1 max-w-xs"></div>
+            </div>
+
         </div>
 
     </section>
@@ -485,4 +476,87 @@ function confirmCleanup(form) {
 function confirmOnceCleanup() {
     return confirm(<?= json_encode($t('maintenance_once_confirm')) ?>);
 }
+
+// ── Notification test (AJAX) ───────────────────────────────────────────────────
+
+(function () {
+    const i18n = {
+        ok:        <?= json_encode($t('maintenance_notify_ok')) ?>,
+        disabled:  <?= json_encode($t('maintenance_notify_disabled')) ?>,
+        error:     <?= json_encode($t('maintenance_notify_error')) ?>,
+        agentErr:  <?= json_encode($t('maintenance_notify_agent_err')) ?>,
+        sending:   '…',
+    };
+
+    function channelLabel(channel) {
+        return channel === 'mail' ? 'E-Mail' : 'Telegram';
+    }
+
+    function showResult(channel, style, text) {
+        const el = document.getElementById('notify-result-' + channel);
+        if (!el) return;
+        el.textContent = text;
+        el.className   = 'text-xs rounded px-2 py-1 max-w-xs';
+        el.style.cssText = style;
+        el.classList.remove('hidden');
+    }
+
+    document.querySelectorAll('.notify-test-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const channel = btn.dataset.channel;
+            const csrf    = btn.dataset.csrf;
+            const label   = channelLabel(channel);
+
+            // Disable button and show spinner text
+            btn.disabled    = true;
+            btn.textContent = i18n.sending;
+
+            const resultEl = document.getElementById('notify-result-' + channel);
+            if (resultEl) resultEl.classList.add('hidden');
+
+            fetch('/maintenance/notification/test', {
+                method:      'POST',
+                credentials: 'same-origin',
+                headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body:        '_csrf=' + encodeURIComponent(csrf) + '&channel=' + encodeURIComponent(channel),
+            })
+            .then(function (res) { return res.json(); })
+            .catch(function () { return null; })
+            .then(function (data) {
+                btn.disabled    = false;
+                btn.textContent = btn.dataset.channel === 'mail'
+                    ? <?= json_encode($t('maintenance_notify_mail_btn')) ?>
+                    : <?= json_encode($t('maintenance_notify_telegram_btn')) ?>;
+
+                if (!data) {
+                    showResult(channel,
+                        'background:rgba(239,68,68,.1);color:#dc2626;border:1px solid rgba(239,68,68,.2)',
+                        i18n.agentErr);
+                    return;
+                }
+
+                if (data.success) {
+                    showResult(channel,
+                        'background:rgba(34,197,94,.12);color:#16a34a;border:1px solid rgba(34,197,94,.25)',
+                        i18n.ok.replace('{channel}', label));
+                    return;
+                }
+
+                if (data.reason === 'disabled') {
+                    showResult(channel,
+                        'background:rgba(245,158,11,.1);color:#d97706;border:1px solid rgba(245,158,11,.25)',
+                        i18n.disabled.replace('{channel}', label));
+                    return;
+                }
+
+                // send_failed – show base message + error detail
+                const base   = i18n.error.replace('{channel}', label);
+                const detail = data.message ? ' — ' + data.message : '';
+                showResult(channel,
+                    'background:rgba(239,68,68,.1);color:#dc2626;border:1px solid rgba(239,68,68,.2)',
+                    base + detail);
+            });
+        });
+    });
+}());
 </script>

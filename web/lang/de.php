@@ -378,6 +378,15 @@ return [
     'maintenance_once_success'           => 'Run-Now-Bereinigung abgeschlossen: {count} veralteter Eintrag/Einträge entfernt.',
     'maintenance_once_none'              => 'Keine veralteten Run-Now-Einträge gefunden.',
 
+    'maintenance_notify_title'           => 'Benachrichtigungstest',
+    'maintenance_notify_desc'            => 'Sendet eine Testnachricht über den konfigurierten Benachrichtigungskanal, um zu prüfen ob E-Mail- und/oder Telegram-Benachrichtigungen korrekt funktionieren.',
+    'maintenance_notify_mail_btn'        => 'Test-E-Mail senden',
+    'maintenance_notify_telegram_btn'    => 'Test-Telegramnachricht senden',
+    'maintenance_notify_ok'             => 'Test-{channel}-Benachrichtigung erfolgreich gesendet.',
+    'maintenance_notify_disabled'        => 'Der {channel}-Benachrichtigungskanal ist in der Agentenkonfiguration deaktiviert.',
+    'maintenance_notify_error'           => 'Der {channel}-Benachrichtigungskanal ist aktiviert, aber die Testnachricht konnte nicht gesendet werden. Details im Agenten-Log.',
+    'maintenance_notify_agent_err'       => 'Der Agent konnte für den Benachrichtigungstest nicht erreicht werden.',
+
     // -------------------------------------------------------------------------
     // Targets / Maintenance Windows
     // -------------------------------------------------------------------------

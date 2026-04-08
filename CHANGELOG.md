@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.5.1] – branch: `39-testfunction-for-notification-e-mail-and-telegram`
+
+### Added
+
+- **Notification test** – A new "Notification Test" section on the Maintenance page lets admins send a test message through the configured E-Mail or Telegram channel with a single button click. The page shows a clear success, disabled, or error banner depending on the outcome, so misconfigured notification settings are caught before a real job failure occurs.
+- **Agent endpoint `POST /maintenance/notification/test`** – Accepts `{ "channel": "mail" | "telegram" }`, checks whether the channel is enabled in the agent config, and dispatches a synthetic test message through the existing `MailNotifier` / `TelegramNotifier` infrastructure. Returns `{ "success": true }`, `{ "success": false, "reason": "disabled" }`, or `{ "success": false, "reason": "send_failed" }`.
+
+---
+
 ## [2.5.0] – branch: `maintenance_window`
 
 ### Added

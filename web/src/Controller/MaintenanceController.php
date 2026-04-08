@@ -15,6 +15,7 @@ declare(strict_types=1);
  *   POST /maintenance/executions/{id}/delete   – delete execution record
  *   POST /maintenance/history/cleanup          – delete old history records
  *   POST /maintenance/once/cleanup             – remove stale Run Now crontab entries
+ *   POST /maintenance/notification/test        – send a test notification (mail or telegram)
  *
  * All mutating actions redirect back to GET /maintenance with a result
  * indicator in the query string so the page can show a one-shot banner
@@ -79,19 +80,23 @@ final class MaintenanceController extends BaseController
         $flashBulkResolved  = isset($_GET['bulk_resolved'])  ? (int) $_GET['bulk_resolved']  : null;
         $flashBulkDeleted   = isset($_GET['bulk_deleted'])   ? (int) $_GET['bulk_deleted']   : null;
         $flashOnceRemoved   = isset($_GET['once_removed'])   ? (int) $_GET['once_removed']   : null;
+        $flashNotifyTest    = isset($_GET['notify_test'])    ? (string) $_GET['notify_test'] : null;
+        $flashNotifyChannel = isset($_GET['notify_channel']) ? (string) $_GET['notify_channel'] : null;
 
         $this->render('maintenance/index.php', $this->translator()->t('maintenance_title'), [
-            'hours'             => $hours,
-            'stuckExecutions'   => $stuckExecutions,
-            'stuckError'        => $stuckError,
-            'flashSyncOk'       => $flashSyncOk,
-            'flashSyncErr'      => $flashSyncErr,
-            'flashResolved'     => $flashResolved,
-            'flashExecDel'      => $flashExecDel,
-            'flashCleaned'      => $flashCleaned,
-            'flashBulkResolved' => $flashBulkResolved,
-            'flashBulkDeleted'  => $flashBulkDeleted,
-            'flashOnceRemoved'  => $flashOnceRemoved,
+            'hours'              => $hours,
+            'stuckExecutions'    => $stuckExecutions,
+            'stuckError'         => $stuckError,
+            'flashSyncOk'        => $flashSyncOk,
+            'flashSyncErr'       => $flashSyncErr,
+            'flashResolved'      => $flashResolved,
+            'flashExecDel'       => $flashExecDel,
+            'flashCleaned'       => $flashCleaned,
+            'flashBulkResolved'  => $flashBulkResolved,
+            'flashBulkDeleted'   => $flashBulkDeleted,
+            'flashOnceRemoved'   => $flashOnceRemoved,
+            'flashNotifyTest'    => $flashNotifyTest,
+            'flashNotifyChannel' => $flashNotifyChannel,
         ], '/maintenance');
     }
 
@@ -240,6 +245,60 @@ final class MaintenanceController extends BaseController
             ]);
             (new Response())->redirect('/maintenance');
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /maintenance/notification/test
+    // -------------------------------------------------------------------------
+
+    /**
+     * Send a test notification through the specified channel.
+     *
+     * Expected POST fields:
+     *   channel  (string)  'mail' or 'telegram'
+     *
+     * Redirects back to GET /maintenance with a query parameter indicating
+     * the outcome:
+     *   notify_test=ok          – message sent successfully
+     *   notify_test=disabled    – channel is disabled in agent config
+     *   notify_test=error       – channel enabled but send attempt failed
+     *   notify_test=agent_err   – agent could not be reached
+     *
+     * The channel name is preserved as notify_channel=mail|telegram so the
+     * flash banner can mention which channel was tested.
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     */
+    public function testNotification(array $params = []): void
+    {
+        $channel = strtolower(trim((string) ($_POST['channel'] ?? '')));
+
+        if (!in_array($channel, ['mail', 'telegram'], true)) {
+            (new Response())->redirect('/maintenance');
+            return;
+        }
+
+        try {
+            $result = $this->agentClient()->post('/maintenance/notification/test', [
+                'channel' => $channel,
+            ]);
+
+            if (($result['success'] ?? false) === true) {
+                $status = 'ok';
+            } elseif (($result['reason'] ?? '') === 'disabled') {
+                $status = 'disabled';
+            } else {
+                $status = 'error';
+            }
+        } catch (\RuntimeException $e) {
+            $this->logger->error('MaintenanceController: testNotification agent error', [
+                'channel' => $channel,
+                'error'   => $e->getMessage(),
+            ]);
+            $status = 'agent_err';
+        }
+
+        (new Response())->redirect('/maintenance?notify_test=' . $status . '&notify_channel=' . urlencode($channel));
     }
 
     // -------------------------------------------------------------------------

@@ -6,16 +6,18 @@ declare(strict_types=1);
  * Cronmanager – Maintenance page template
  *
  * Variables injected by MaintenanceController::index():
- *   int                $hours            Stuck-execution threshold
- *   array              $stuckExecutions  List of stuck execution rows
- *   string|null        $stuckError       Error message if agent unreachable
- *   int|null           $flashSyncOk      Jobs synced (post-resync flash)
- *   bool               $flashSyncErr     Resync error (post-resync flash)
- *   bool               $flashResolved    Execution was marked finished
- *   bool               $flashExecDel     Execution record was deleted
- *   int|null           $flashCleaned     History records deleted (flash)
- *   int|null           $flashOnceRemoved Stale once-entries removed (flash)
- *   string             $csrf_token       CSRF token
+ *   int                $hours               Stuck-execution threshold
+ *   array              $stuckExecutions     List of stuck execution rows
+ *   string|null        $stuckError          Error message if agent unreachable
+ *   int|null           $flashSyncOk         Jobs synced (post-resync flash)
+ *   bool               $flashSyncErr        Resync error (post-resync flash)
+ *   bool               $flashResolved       Execution was marked finished
+ *   bool               $flashExecDel        Execution record was deleted
+ *   int|null           $flashCleaned        History records deleted (flash)
+ *   int|null           $flashOnceRemoved    Stale once-entries removed (flash)
+ *   string|null        $flashNotifyTest     Notification test result: ok|disabled|error|agent_err
+ *   string|null        $flashNotifyChannel  Channel tested: mail|telegram
+ *   string             $csrf_token          CSRF token
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
  * @license GNU General Public License version 3 or later
@@ -92,6 +94,20 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
                     : $t('maintenance_once_none'),
                 ENT_QUOTES, 'UTF-8'
             ) ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($flashNotifyTest !== null && $flashNotifyChannel !== null):
+        $channelLabel = $flashNotifyChannel === 'mail' ? 'E-Mail' : 'Telegram';
+        [$bgStyle, $msgKey] = match ($flashNotifyTest) {
+            'ok'        => ['background:rgba(34,197,94,.12);color:#16a34a;border:1px solid rgba(34,197,94,.25)',  'maintenance_notify_ok'],
+            'disabled'  => ['background:rgba(245,158,11,.1);color:#d97706;border:1px solid rgba(245,158,11,.25)', 'maintenance_notify_disabled'],
+            'agent_err' => ['background:rgba(239,68,68,.1);color:#dc2626;border:1px solid rgba(239,68,68,.2)',    'maintenance_notify_agent_err'],
+            default     => ['background:rgba(239,68,68,.1);color:#dc2626;border:1px solid rgba(239,68,68,.2)',    'maintenance_notify_error'],
+        };
+    ?>
+        <div class="rounded-lg px-4 py-3 text-sm font-medium" style="<?= $bgStyle ?>">
+            <?= htmlspecialchars($t($msgKey, ['channel' => $channelLabel]), ENT_QUOTES, 'UTF-8') ?>
         </div>
     <?php endif; ?>
 
@@ -318,7 +334,47 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
     </section>
 
     <!-- ══════════════════════════════════════════════════════════════════════
-         4. RUN NOW CLEANUP
+         4. NOTIFICATION TEST
+         ══════════════════════════════════════════════════════════════════════ -->
+    <section class="cm-card rounded-xl p-6 space-y-4">
+
+        <div>
+            <h2 class="text-lg font-semibold" style="color:var(--cm-text)">
+                <?= htmlspecialchars($t('maintenance_notify_title'), ENT_QUOTES, 'UTF-8') ?>
+            </h2>
+            <p class="mt-1 text-sm" style="color:var(--cm-text-muted)">
+                <?= htmlspecialchars($t('maintenance_notify_desc'), ENT_QUOTES, 'UTF-8') ?>
+            </p>
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+            <!-- Test E-Mail -->
+            <form method="POST" action="/maintenance/notification/test">
+                <input type="hidden" name="_csrf"    value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" name="channel"  value="mail">
+                <button type="submit"
+                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition"
+                        style="background:rgba(59,130,246,.1);color:var(--cm-primary);border:1px solid rgba(59,130,246,.2)">
+                    <?= htmlspecialchars($t('maintenance_notify_mail_btn'), ENT_QUOTES, 'UTF-8') ?>
+                </button>
+            </form>
+
+            <!-- Test Telegram -->
+            <form method="POST" action="/maintenance/notification/test">
+                <input type="hidden" name="_csrf"    value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" name="channel"  value="telegram">
+                <button type="submit"
+                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition"
+                        style="background:rgba(59,130,246,.1);color:var(--cm-primary);border:1px solid rgba(59,130,246,.2)">
+                    <?= htmlspecialchars($t('maintenance_notify_telegram_btn'), ENT_QUOTES, 'UTF-8') ?>
+                </button>
+            </form>
+        </div>
+
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         5. RUN NOW CLEANUP
          ══════════════════════════════════════════════════════════════════════ -->
     <section class="cm-card rounded-xl p-6 space-y-4">
 

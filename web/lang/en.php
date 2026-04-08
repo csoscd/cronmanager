@@ -378,6 +378,15 @@ return [
     'maintenance_once_success'           => 'Run Now cleanup complete: {count} stale entry(s) removed.',
     'maintenance_once_none'              => 'No stale Run Now entries found.',
 
+    'maintenance_notify_title'           => 'Notification Test',
+    'maintenance_notify_desc'            => 'Send a test message through the configured notification channel to verify that email and/or Telegram alerts are working correctly.',
+    'maintenance_notify_mail_btn'        => 'Send Test E-Mail',
+    'maintenance_notify_telegram_btn'    => 'Send Test Telegram Message',
+    'maintenance_notify_ok'              => 'Test {channel} notification sent successfully.',
+    'maintenance_notify_disabled'        => 'The {channel} notification channel is disabled in the agent configuration.',
+    'maintenance_notify_error'           => 'The {channel} notification channel is enabled but the test message could not be sent. Check the agent log for details.',
+    'maintenance_notify_agent_err'       => 'Could not reach the agent to send the test notification.',
+
     // -------------------------------------------------------------------------
     // Targets / Maintenance Windows
     // -------------------------------------------------------------------------

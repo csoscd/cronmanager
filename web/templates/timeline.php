@@ -15,7 +15,7 @@ declare(strict_types=1);
  *   int    $total      – total number of matching records (for pagination)
  *   int    $limit      – records per page
  *   int    $offset     – current page offset
- *   array  $filters    – active filter values: tag, user, target, status, from, to
+ *   array  $filters    – active filter values: search, job_id, tag, user, target, status, from, to
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
  * @license GNU General Public License version 3 or later
@@ -33,16 +33,18 @@ $limit      = isset($limit)  ? max(1, (int) $limit)      : 50;
 $offset     = isset($offset) ? max(0, (int) $offset)     : 0;
 $filters    = isset($filters) && is_array($filters) ? $filters : [];
 
+$activeSearch = (string) ($filters['search'] ?? '');
+$activeJobId  = (string) ($filters['job_id'] ?? '');
 $activeStatus = (string) ($filters['status'] ?? '');
 $activeTag    = (string) ($filters['tag']    ?? '');
 $activeUser   = (string) ($filters['user']   ?? '');
 $activeTarget = (string) ($filters['target'] ?? '');
 $activeFrom   = (string) ($filters['from']   ?? '');
 $activeTo     = (string) ($filters['to']     ?? '');
-$activeResult = (string) ($filters['result'] ?? '');
 
-$hasActiveFilter = $activeTag !== '' || $activeUser !== '' || $activeTarget !== ''
-    || $activeStatus !== '' || $activeFrom !== '' || $activeTo !== '' || $activeResult !== '';
+$hasActiveFilter = $activeSearch !== '' || $activeJobId !== '' || $activeTag !== ''
+    || $activeUser !== '' || $activeTarget !== '' || $activeStatus !== ''
+    || $activeFrom !== '' || $activeTo !== '';
 
 // Pagination helpers
 $prevOffset  = max(0, $offset - $limit);
@@ -59,11 +61,12 @@ $showTo      = min($offset + $limit, $total);
  */
 $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
     $params = array_filter([
+        'search' => $filters['search'] ?? '',
+        'job_id' => $filters['job_id'] ?? '',
         'tag'    => $filters['tag']    ?? '',
         'user'   => $filters['user']   ?? '',
         'target' => $filters['target'] ?? '',
         'status' => $filters['status'] ?? '',
-        'result' => $filters['result'] ?? '',
         'from'   => $filters['from']   ?? '',
         'to'     => $filters['to']     ?? '',
         'limit'  => (string) $limit,
@@ -89,48 +92,23 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
 <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-6">
     <form method="GET" action="/timeline" class="flex flex-wrap items-end gap-3">
 
-        <!-- Status filter -->
-        <div class="flex-1 min-w-32">
-            <label for="filter-status" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                <?= htmlspecialchars($t('filter_status'), ENT_QUOTES, 'UTF-8') ?>
-            </label>
-            <select id="filter-status" name="status"
-                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
-                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                           focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value=""><?= htmlspecialchars($t('filter_status_all'), ENT_QUOTES, 'UTF-8') ?></option>
-                <option value="success"<?= $activeStatus === 'success' ? ' selected' : '' ?>>
-                    <?= htmlspecialchars($t('filter_status_success'), ENT_QUOTES, 'UTF-8') ?>
-                </option>
-                <option value="failed"<?= $activeStatus === 'failed' ? ' selected' : '' ?>>
-                    <?= htmlspecialchars($t('filter_status_failed'), ENT_QUOTES, 'UTF-8') ?>
-                </option>
-                <option value="running"<?= $activeStatus === 'running' ? ' selected' : '' ?>>
-                    <?= htmlspecialchars($t('filter_status_running'), ENT_QUOTES, 'UTF-8') ?>
-                </option>
-            </select>
-        </div>
+        <!-- If a job_id deep-link is active, preserve it as a hidden field so
+             subsequent filter changes and pagination retain the scope. -->
+        <?php if ($activeJobId !== ''): ?>
+            <input type="hidden" name="job_id" value="<?= htmlspecialchars($activeJobId, ENT_QUOTES, 'UTF-8') ?>">
+        <?php endif; ?>
 
-        <!-- Last result filter -->
-        <div class="flex-1 min-w-32">
-            <label for="filter-result" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                <?= htmlspecialchars($t('filter_result'), ENT_QUOTES, 'UTF-8') ?>
+        <!-- Search field -->
+        <div class="flex-1 min-w-40">
+            <label for="filter-search" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                <?= htmlspecialchars($t('filter_search'), ENT_QUOTES, 'UTF-8') ?>
             </label>
-            <select id="filter-result" name="result"
-                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
-                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                           focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value=""><?= htmlspecialchars($t('filter_result_all'), ENT_QUOTES, 'UTF-8') ?></option>
-                <option value="ok"<?= $activeResult === 'ok' ? ' selected' : '' ?>>
-                    <?= htmlspecialchars($t('filter_result_ok'), ENT_QUOTES, 'UTF-8') ?>
-                </option>
-                <option value="failed"<?= $activeResult === 'failed' ? ' selected' : '' ?>>
-                    <?= htmlspecialchars($t('filter_result_failed'), ENT_QUOTES, 'UTF-8') ?>
-                </option>
-                <option value="not_run"<?= $activeResult === 'not_run' ? ' selected' : '' ?>>
-                    <?= htmlspecialchars($t('filter_result_not_run'), ENT_QUOTES, 'UTF-8') ?>
-                </option>
-            </select>
+            <input type="text" id="filter-search" name="search"
+                   value="<?= htmlspecialchars($activeSearch, ENT_QUOTES, 'UTF-8') ?>"
+                   placeholder="<?= htmlspecialchars($t('filter_search_placeholder'), ENT_QUOTES, 'UTF-8') ?>"
+                   class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                          bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                          focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
 
         <!-- Tag filter -->
@@ -194,6 +172,28 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
             </select>
         </div>
         <?php endif; ?>
+
+        <!-- Status filter -->
+        <div class="flex-1 min-w-32">
+            <label for="filter-status" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                <?= htmlspecialchars($t('filter_status'), ENT_QUOTES, 'UTF-8') ?>
+            </label>
+            <select id="filter-status" name="status"
+                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                           focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value=""><?= htmlspecialchars($t('filter_status_all'), ENT_QUOTES, 'UTF-8') ?></option>
+                <option value="success"<?= $activeStatus === 'success' ? ' selected' : '' ?>>
+                    <?= htmlspecialchars($t('filter_status_success'), ENT_QUOTES, 'UTF-8') ?>
+                </option>
+                <option value="failed"<?= $activeStatus === 'failed' ? ' selected' : '' ?>>
+                    <?= htmlspecialchars($t('filter_status_failed'), ENT_QUOTES, 'UTF-8') ?>
+                </option>
+                <option value="running"<?= $activeStatus === 'running' ? ' selected' : '' ?>>
+                    <?= htmlspecialchars($t('filter_status_running'), ENT_QUOTES, 'UTF-8') ?>
+                </option>
+            </select>
+        </div>
 
         <!-- From date -->
         <div class="flex-1 min-w-32">
@@ -324,8 +324,9 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
                                 : '–';
                             $entryTarget = (string) ($entry['target'] ?? '');
                             $output      = (string) ($entry['output'] ?? '');
-                            $outputTrunc = mb_strlen($output) > 120
-                                ? mb_substr($output, 0, 120) . '…'
+                            $isTruncated = mb_strlen($output) > 200;
+                            $outputTrunc = $isTruncated
+                                ? mb_substr($output, 0, 200) . '…'
                                 : $output;
 
                             // Status badge
@@ -389,9 +390,21 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
                             </td>
                             <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-xs">
                                 <?php if ($output !== ''): ?>
-                                    <span class="font-mono text-xs break-all">
+                                    <span id="tl-output-<?= $idx ?>-short"
+                                          class="font-mono text-xs break-all">
                                         <?= htmlspecialchars($outputTrunc, ENT_QUOTES, 'UTF-8') ?>
                                     </span>
+                                    <?php if ($isTruncated): ?>
+                                        <span id="tl-output-<?= $idx ?>-full"
+                                              class="font-mono text-xs break-all hidden">
+                                            <?= htmlspecialchars($output, ENT_QUOTES, 'UTF-8') ?>
+                                        </span>
+                                        <button type="button"
+                                                onclick="tlToggleOutput('tl-output-<?= $idx ?>')"
+                                                class="ml-1 text-xs text-blue-600 hover:underline focus:outline-none">
+                                            show more
+                                        </button>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <span class="text-gray-300 dark:text-gray-600">—</span>
                                 <?php endif; ?>
@@ -431,3 +444,28 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
         </div>
     </div>
 <?php endif; ?>
+
+<script>
+/**
+ * Toggle between truncated and full output for a timeline row.
+ *
+ * @param {string} id Base element id (without -short / -full suffix).
+ */
+function tlToggleOutput(id) {
+    const shortEl = document.getElementById(id + '-short');
+    const fullEl  = document.getElementById(id + '-full');
+    const btn     = event.target;
+
+    if (!shortEl || !fullEl) return;
+
+    if (fullEl.classList.contains('hidden')) {
+        shortEl.classList.add('hidden');
+        fullEl.classList.remove('hidden');
+        btn.textContent = 'show less';
+    } else {
+        fullEl.classList.add('hidden');
+        shortEl.classList.remove('hidden');
+        btn.textContent = 'show more';
+    }
+}
+</script>

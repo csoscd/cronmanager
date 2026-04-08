@@ -34,6 +34,8 @@ class TimelineController extends BaseController
      * Display a paginated, filterable execution history timeline.
      *
      * Supported GET parameters:
+     *   ?search=  – free-text search on job description / command
+     *   ?job_id=  – filter by specific job ID (deep-link from dashboard; not cookie-persisted)
      *   ?tag=     – filter by tag name
      *   ?user=    – filter by linux_user
      *   ?target=  – filter by execution target
@@ -57,11 +59,16 @@ class TimelineController extends BaseController
         // filterParam() reads from GET first, falls back to a persistent cookie,
         // and saves the resolved value back to the cookie for next time.
         // ------------------------------------------------------------------
+        $filterSearch = $this->filterParam('search', 'cronmgr_tl_search');
+        // job_id is a one-time deep-link parameter (e.g. from the dashboard) and
+        // is intentionally not cookie-persisted so it does not pollute later visits.
+        $filterJobId  = isset($_GET['job_id']) && ctype_digit((string) $_GET['job_id'])
+            ? (string) $_GET['job_id']
+            : '';
         $filterTag    = $this->filterParam('tag',    'cronmgr_tl_tag');
         $filterUser   = $this->filterParam('user',   'cronmgr_tl_user');
         $filterTarget = $this->filterParam('target', 'cronmgr_tl_target');
         $filterStatus = $this->filterParam('status', 'cronmgr_tl_status');
-        $filterResult = $this->filterParam('result', 'cronmgr_tl_result');
         $filterFrom   = $this->filterParam('from',   'cronmgr_tl_from');
         $filterTo     = $this->filterParam('to',     'cronmgr_tl_to');
 
@@ -75,11 +82,12 @@ class TimelineController extends BaseController
 
         // Build agent query params – only include non-empty filters
         $query = ['limit' => $limit, 'offset' => $offset];
+        if ($filterSearch !== '') { $query['search'] = $filterSearch; }
+        if ($filterJobId  !== '') { $query['job_id'] = $filterJobId; }
         if ($filterTag    !== '') { $query['tag']    = $filterTag; }
         if ($filterUser   !== '') { $query['user']   = $filterUser; }
         if ($filterTarget !== '') { $query['target'] = $filterTarget; }
         if ($filterStatus !== '') { $query['status'] = $filterStatus; }
-        if ($filterResult !== '') { $query['result'] = $filterResult; }
         if ($filterFrom   !== '') { $query['from']   = $filterFrom; }
         if ($filterTo     !== '') { $query['to']     = $filterTo; }
 
@@ -139,11 +147,12 @@ class TimelineController extends BaseController
 
         // Active filter values passed to the template for pre-filling the form
         $filters = [
+            'search' => $filterSearch,
+            'job_id' => $filterJobId,
             'tag'    => $filterTag,
             'user'   => $filterUser,
             'target' => $filterTarget,
             'status' => $filterStatus,
-            'result' => $filterResult,
             'from'   => $filterFrom,
             'to'     => $filterTo,
         ];

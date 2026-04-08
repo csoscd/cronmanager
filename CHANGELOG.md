@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.5.2] – branch: `error_navigation`
+
+### Added
+
+- **Job search on Timeline** – A free-text search field (first filter in the bar) lets users filter the execution history by job description or command. The query is forwarded to the agent as `?search=<term>`, where it matches against `j.description LIKE %…%` or `j.command LIKE %…%`.
+- **Deep-link from Dashboard failures to Timeline** – Clicking a failed job in the "Recent Failures" table on the Dashboard now navigates directly to the Timeline pre-filtered by `job_id`, `target`, and `status=failed`. This makes the specific failed execution immediately visible regardless of how many successful runs have occurred since.
+- **Target column on Dashboard failures table** – The "Recent Failures" table now shows which execution target the failure occurred on, matching the information that is carried in the Timeline deep-link URL.
+- **`search` parameter on agent `GET /history`** – The history endpoint now accepts `?search=<term>` and applies a `LIKE` condition on `j.description` and `j.command`.
+- **`job_id` filter in TimelineController** – The timeline controller reads `?job_id=` from the query string (integer only, not cookie-persisted) and forwards it to the agent. Pagination preserves the `job_id` via a hidden form field.
+
+### Changed
+
+- **Filter bar order standardised** – Both the Cron Jobs list and the Timeline now use the same left-to-right order: **Search → Tag → User → Target → [page-specific filters] → Per page**. On the Timeline the page-specific filter is Status; on the Cron Jobs list it is Last Result.
+- **"Last Result" filter removed from Timeline** – The `result` filter on the Timeline page was redundant with the `status` filter (both produced identical SQL). It has been removed from the template, controller, and agent endpoint to avoid user confusion.
+
+---
+
 ## [2.5.1] – branch: `39-testfunction-for-notification-e-mail-and-telegram`
 
 ### Added

@@ -16,6 +16,7 @@ declare(strict_types=1);
  *   - tag     (string)         Filter by tag name – only jobs carrying this tag.
  *   - user    (string)         Filter by linux_user of the owning job.
  *   - status  (string)         One of: "failed", "success", "running".
+ *   - search  (string)         Full-text LIKE filter on job description and command.
  *   - limit   (int, 1–500)     Max number of rows to return (default 50).
  *   - offset  (int, ≥ 0)       Pagination offset (default 0).
  *   - from    (YYYY-MM-DD)     Only executions started on or after this date.
@@ -76,9 +77,6 @@ final class HistoryEndpoint
     /** Allowed values for the ?status query parameter. */
     private const VALID_STATUSES = ['failed', 'success', 'running'];
 
-    /** Allowed values for the ?result query parameter. */
-    private const VALID_RESULTS = ['ok', 'failed', 'not_run'];
-
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -122,7 +120,7 @@ final class HistoryEndpoint
         $user   = isset($_GET['user'])   && $_GET['user']   !== '' ? (string) $_GET['user']   : null;
         $target = isset($_GET['target']) && $_GET['target'] !== '' ? (string) $_GET['target'] : null;
         $status = isset($_GET['status']) && $_GET['status'] !== '' ? (string) $_GET['status'] : null;
-        $result = isset($_GET['result']) && $_GET['result'] !== '' ? (string) $_GET['result'] : null;
+        $search = isset($_GET['search']) && $_GET['search'] !== '' ? (string) $_GET['search'] : null;
         $limit  = $this->parseLimit($_GET['limit']   ?? null);
         $offset = $this->parseOffset($_GET['offset'] ?? null);
         $from   = $this->parseDate($_GET['from'] ?? null);
@@ -135,19 +133,6 @@ final class HistoryEndpoint
                 'message' => sprintf(
                     'Parameter "status" must be one of: %s.',
                     implode(', ', self::VALID_STATUSES)
-                ),
-                'code'    => 400,
-            ]);
-            return;
-        }
-
-        // Validate result value
-        if ($result !== null && !in_array($result, self::VALID_RESULTS, true)) {
-            jsonResponse(400, [
-                'error'   => 'Bad Request',
-                'message' => sprintf(
-                    'Parameter "result" must be one of: %s.',
-                    implode(', ', self::VALID_RESULTS)
                 ),
                 'code'    => 400,
             ]);
@@ -217,13 +202,10 @@ final class HistoryEndpoint
             $conditions[] = 'el.finished_at IS NOT NULL AND el.exit_code != 0';
         }
 
-        // result filter: ok = exit_code 0, failed = exit_code != 0, not_run = still running
-        if ($result === 'ok') {
-            $conditions[] = 'el.finished_at IS NOT NULL AND el.exit_code = 0';
-        } elseif ($result === 'failed') {
-            $conditions[] = 'el.finished_at IS NOT NULL AND el.exit_code != 0';
-        } elseif ($result === 'not_run') {
-            $conditions[] = 'el.finished_at IS NULL';
+        if ($search !== null) {
+            // Match against both description and command (case-insensitive LIKE)
+            $conditions[]              = '(j.description LIKE :search OR j.command LIKE :search)';
+            $queryParams[':search']    = '%' . $search . '%';
         }
 
         if ($from !== null) {

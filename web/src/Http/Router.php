@@ -170,6 +170,20 @@ class Router
                 // Authentication check
                 if (!SessionManager::isAuthenticated()) {
                     $this->logger->info('Unauthenticated access, redirecting to /login', ['path' => $path]);
+
+                    // Preserve the originally requested URL so the user is
+                    // returned there after a successful re-login.  Only GET
+                    // requests are saved – POST would re-submit a form, which
+                    // is never safe to replay after a login redirect.
+                    // /logout is excluded to avoid a redirect loop.
+                    if ($method === 'GET' && $path !== '/logout') {
+                        $uri = $path;
+                        if (!empty($_SERVER['QUERY_STRING'])) {
+                            $uri .= '?' . $_SERVER['QUERY_STRING'];
+                        }
+                        SessionManager::set('_login_redirect', $uri);
+                    }
+
                     (new Response())->redirect('/login');
                     return;
                 }

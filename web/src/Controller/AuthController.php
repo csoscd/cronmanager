@@ -168,7 +168,15 @@ class AuthController
             'ip'       => $ip,
         ]);
 
-        $response->redirect('/dashboard');
+        // Redirect to the page the user originally requested (if any),
+        // falling back to the dashboard.  Accept only on-site paths
+        // (must start with '/') to prevent open-redirect attacks.
+        $redirect = SessionManager::flash('_login_redirect');
+        $target   = (is_string($redirect) && str_starts_with($redirect, '/'))
+            ? $redirect
+            : '/dashboard';
+
+        $response->redirect($target);
     }
 
     /**
@@ -255,7 +263,13 @@ class AuthController
             'ip'       => $_SERVER['REMOTE_ADDR'] ?? '',
         ]);
 
-        $response->redirect('/dashboard');
+        // Redirect to the page the user originally requested (if any).
+        $redirect = SessionManager::flash('_login_redirect');
+        $target   = (is_string($redirect) && str_starts_with($redirect, '/'))
+            ? $redirect
+            : '/dashboard';
+
+        $response->redirect($target);
     }
 
     /**

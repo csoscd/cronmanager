@@ -52,6 +52,9 @@ class SessionManager
      */
     private const KEY_RATE = '_cronmanager_rate';
 
+    /** @var string Session key for the last-activity timestamp (idle timeout). */
+    private const KEY_LAST_ACTIVITY = '_cronmanager_last_activity';
+
     /** @var int Maximum failed login attempts before the IP is locked */
     private const RATE_MAX_ATTEMPTS = 5;
 
@@ -68,8 +71,16 @@ class SessionManager
      * Must be called once per request, before any output is sent.
      *
      * Configuration keys used:
-     *   session.name     – session cookie name (default: cronmanager_sess)
-     *   session.lifetime – cookie lifetime in seconds (default: 3600)
+     *   session.name         – session cookie name (default: cronmanager_sess)
+     *   session.lifetime     – cookie max-age in seconds (default: 3600)
+     *   session.idle_timeout – server-side idle expiry in seconds
+     *                          (default: same as lifetime)
+     *
+     * The PHP ini session.gc_maxlifetime is set to idle_timeout so that server
+     * data and cookie lifetime stay in sync.  An additional last-activity
+     * timestamp written to the session is checked on every request so that
+     * long-lived cookies are invalidated server-side when the user has been
+     * idle for longer than idle_timeout seconds.
      *
      * @param Config $config Noodlehaus configuration instance.
      *
@@ -84,8 +95,12 @@ class SessionManager
             return;
         }
 
-        $name     = (string) $config->get('session.name',     'cronmanager_sess');
-        $lifetime = (int)    $config->get('session.lifetime', 3600);
+        $name        = (string) $config->get('session.name',         'cronmanager_sess');
+        $lifetime    = (int)    $config->get('session.lifetime',     3600);
+        $idleTimeout = (int)    $config->get('session.idle_timeout', $lifetime);
+
+        // Align PHP's server-side GC window with the configured idle timeout
+        ini_set('session.gc_maxlifetime', (string) $idleTimeout);
 
         session_name($name);
 
@@ -100,6 +115,21 @@ class SessionManager
         if (!session_start()) {
             throw new RuntimeException('Failed to start PHP session.');
         }
+
+        // Server-side idle-timeout check: if the session contains a previous
+        // activity timestamp and the idle window has elapsed, destroy the session
+        // so that the user is treated as unauthenticated on this request.
+        if (isset($_SESSION[self::KEY_LAST_ACTIVITY])) {
+            if ((time() - (int) $_SESSION[self::KEY_LAST_ACTIVITY]) > $idleTimeout) {
+                // Session has gone idle – wipe it so isAuthenticated() returns false
+                session_unset();
+                session_destroy();
+                session_start();
+            }
+        }
+
+        // Refresh the last-activity timestamp on every request
+        $_SESSION[self::KEY_LAST_ACTIVITY] = time();
     }
 
     // -------------------------------------------------------------------------

@@ -179,6 +179,9 @@ final class CronGetEndpoint
                 j.auto_kill_on_limit,
                 j.singleton,
                 j.run_in_maintenance,
+                j.retention_days,
+                j.retry_count,
+                j.retry_delay_minutes,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -254,6 +257,11 @@ final class CronGetEndpoint
             'auto_kill_on_limit'       => (bool) ($row['auto_kill_on_limit']   ?? false),
             'singleton'                => (bool) ($row['singleton']           ?? false),
             'run_in_maintenance'       => (bool) ($row['run_in_maintenance']  ?? false),
+            'retention_days'           => isset($row['retention_days']) && $row['retention_days'] !== null
+                ? (int) $row['retention_days']
+                : null,
+            'retry_count'              => (int) ($row['retry_count']          ?? 0),
+            'retry_delay_minutes'      => max(1, (int) ($row['retry_delay_minutes'] ?? 1)),
             'targets'                  => $targets,
             // Legacy fields kept so old wrapper invocations (no target arg) still work
             'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),

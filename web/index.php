@@ -226,6 +226,7 @@ try {
     $router->addProtectedRoute('POST', '/maintenance/executions/{id}/delete',       [$maintenanceCtrl, 'deleteExecution'], 'admin');
     $router->addProtectedRoute('POST', '/maintenance/history/cleanup',              [$maintenanceCtrl, 'cleanHistory'],    'admin');
     $router->addProtectedRoute('POST', '/maintenance/once/cleanup',                 [$maintenanceCtrl, 'onceCleanup'],     'admin');
+    $router->addProtectedRoute('POST', '/maintenance/logs/prune',                   [$maintenanceCtrl, 'pruneLogs'],       'admin');
     $router->addProtectedRoute('POST', '/maintenance/notification/test',            [$maintenanceCtrl, 'testNotification'],'admin');
 
     // -------------------------------------------------------------------------

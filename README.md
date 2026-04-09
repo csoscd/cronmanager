@@ -257,7 +257,8 @@ commented-out lines in `docker-compose-full.yml`.
 | `LOG_PATH` | `/var/www/log/cronmanager-web.log` | Log file path |
 | `LOG_LEVEL` | `info` | Monolog level |
 | `LOG_MAX_DAYS` | `30` | Log retention in days |
-| `SESSION_LIFETIME` | `3600` | PHP session lifetime in seconds |
+| `SESSION_LIFETIME` | `3600` | Session cookie max-age in seconds |
+| `SESSION_IDLE_TIMEOUT` | `3600` | Server-side idle expiry in seconds (user is logged out after this many seconds of inactivity) |
 | `SESSION_NAME` | `cronmanager_sess` | PHP session cookie name |
 | `I18N_LANGUAGE` | `en` | Default UI language (`en` or `de`) |
 | `OIDC_ENABLED` | `false` | Enable OIDC / SSO login |
@@ -859,7 +860,8 @@ provider — the account will be re-created on the next login.
 | `logging.path` | `/var/www/log/cronmanager-web.log` | Log file path |
 | `logging.level` | `info` | `debug`, `info`, `warning`, `error`, `critical` |
 | `logging.max_days` | `30` | Log file retention in days |
-| `session.lifetime` | `3600` | Session timeout in seconds |
+| `session.lifetime` | `3600` | Session cookie max-age in seconds |
+| `session.idle_timeout` | `3600` | Server-side idle expiry in seconds |
 | `session.name` | `cronmanager_sess` | Session cookie name |
 | `i18n.default_language` | `en` | Default language (`en` or `de`) |
 | `auth.oidc_enabled` | `false` | Enable OIDC SSO |

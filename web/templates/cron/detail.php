@@ -311,6 +311,34 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
             </dd>
         </div>
 
+        <!-- Log retention -->
+        <div>
+            <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
+                <?= htmlspecialchars($t('cron_retention_days'), ENT_QUOTES, 'UTF-8') ?>
+            </dt>
+            <dd class="text-sm text-gray-600 dark:text-gray-300">
+                <?php $retentionDays = isset($job['retention_days']) && $job['retention_days'] !== null ? (int) $job['retention_days'] : null; ?>
+                <?= $retentionDays !== null
+                    ? htmlspecialchars($retentionDays . ' ' . $t('cron_retention_days_unit'), ENT_QUOTES, 'UTF-8')
+                    : '—' ?>
+            </dd>
+        </div>
+
+        <!-- Auto-retry -->
+        <div>
+            <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
+                <?= htmlspecialchars($t('cron_retry'), ENT_QUOTES, 'UTF-8') ?>
+            </dt>
+            <dd class="text-sm text-gray-600 dark:text-gray-300">
+                <?php $retryCount = (int) ($job['retry_count'] ?? 0); $retryDelay = (int) ($job['retry_delay_minutes'] ?? 1); ?>
+                <?php if ($retryCount > 0): ?>
+                    <?= htmlspecialchars($retryCount . '× / ' . $retryDelay . ' ' . $t('cron_retry_delay_unit'), ENT_QUOTES, 'UTF-8') ?>
+                <?php else: ?>
+                    —
+                <?php endif; ?>
+            </dd>
+        </div>
+
         <!-- Targets -->
         <div>
             <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
@@ -429,6 +457,8 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                                 ? mb_substr($output, 0, 200) . '…'
                                 : $output;
                             $duringMaintenance = !empty($entry['during_maintenance']);
+                            $retryAttempt = (int) ($entry['retry_attempt'] ?? 0);
+                            $retryTotal   = (int) ($job['retry_count'] ?? 0);
 
                             // Exit code badge
                             if ($isRunning) {
@@ -483,6 +513,11 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                             </td>
                             <td class="px-4 py-3 text-sm">
                                 <?= $exitBadge ?>
+                                <?php if ($retryAttempt > 0): ?>
+                                    <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                                        <?= htmlspecialchars($t('cron_retry_badge', ['attempt' => $retryAttempt, 'total' => $retryTotal]), ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                <?php endif; ?>
                             </td>
                             <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-sm">
                                 <?php if ($output !== ''): ?>

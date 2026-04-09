@@ -41,6 +41,11 @@ CREATE TABLE IF NOT EXISTS cronjobs (
     auto_kill_on_limit       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = auto-kill when execution_limit_seconds is exceeded',
     singleton                TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = skip new execution if a previous instance is still running',
     run_in_maintenance       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = execute during maintenance window (failures suppressed); 0 = skip (exit -4)',
+    retention_days           SMALLINT UNSIGNED NULL          COMMENT 'Keep execution logs for this many days; NULL = keep forever',
+    retry_count              TINYINT UNSIGNED  NOT NULL DEFAULT 0
+                                                            COMMENT 'Max number of automatic retry attempts on failure; 0 = no retry',
+    retry_delay_minutes      SMALLINT UNSIGNED NOT NULL DEFAULT 1
+                                                            COMMENT 'Minutes to wait between retry attempts (minimum 1)',
     execution_mode    ENUM('local','remote') NOT NULL DEFAULT 'local'
                                                COMMENT 'local = run on this host, remote = execute via SSH',
     ssh_host          VARCHAR(255)            NULL     COMMENT 'SSH config host alias (from ~/.ssh/config); required when execution_mode=remote',
@@ -103,6 +108,9 @@ CREATE TABLE IF NOT EXISTS execution_log (
                                                     COMMENT '1 = limit-exceeded notification already sent; prevents duplicate alerts',
     during_maintenance       TINYINT(1) NOT NULL DEFAULT 0
                                                     COMMENT '1 = this execution occurred during a maintenance window',
+    retry_attempt            TINYINT UNSIGNED NOT NULL DEFAULT 0
+                                                    COMMENT '0 = original execution, 1 = first retry, etc.',
+    retry_root_execution_id  INT NULL            COMMENT 'Links all retries back to the first (attempt 0) execution; NULL for originals',
     CONSTRAINT fk_el_cronjob FOREIGN KEY (cronjob_id)
         REFERENCES cronjobs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -127,6 +135,28 @@ CREATE TABLE IF NOT EXISTS maintenance_windows (
     active           TINYINT(1)   NOT NULL DEFAULT 1
                                   COMMENT '1 = window is evaluated, 0 = disabled',
     created_at       DATETIME     DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- job_retry_state – transient table for pending retries
+--
+-- A row is written by ExecutionFinishEndpoint when a retry is scheduled and
+-- deleted by ExecutionStartEndpoint when the retry actually starts.
+-- Stale rows (missed fires) are pruned by prune-logs.php (nightly) and by
+-- the manual /maintenance/logs/prune endpoint.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS job_retry_state (
+    job_id              INT          NOT NULL COMMENT 'References the cron job',
+    target              VARCHAR(255) NOT NULL COMMENT '"local" or SSH host alias',
+    next_retry_attempt  TINYINT UNSIGNED NOT NULL DEFAULT 1
+                                          COMMENT 'retry_attempt value to set on the next execution_log row',
+    root_execution_id   INT          NOT NULL COMMENT 'execution_log.id of the original (attempt 0) execution',
+    retry_delay_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 1
+                                          COMMENT 'Copy of job retry_delay_minutes at scheduling time, used for stale-cleanup threshold',
+    scheduled_at        DATETIME     NOT NULL COMMENT 'When the retry crontab entry was written; used to detect stale rows',
+    PRIMARY KEY (job_id, target),
+    CONSTRAINT fk_jrs_job FOREIGN KEY (job_id)
+        REFERENCES cronjobs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------

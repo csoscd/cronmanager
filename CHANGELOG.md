@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.6.0] – branch: `retention-restart`
+
+### Added
+
+- **Per-job log retention** – Each cron job now has an optional `retention_days` field. When set, execution log records older than that many days (with `finished_at` in the past) are automatically deleted during the nightly prune run. Jobs without a value inherit no automatic cleanup (unlimited history).
+- **Auto-retry on failure** – Each cron job can now be configured with `retry_count` (number of retry attempts, 0 = disabled) and `retry_delay_minutes` (wait before the next attempt). On a non-zero exit code the agent schedules a follow-up execution via the same one-shot crontab mechanism used by "Run Now". Retries are tracked in the new `job_retry_state` table (keyed on `job_id + target`) and the `retry_attempt` / `retry_root_execution_id` columns on `execution_log`.
+- **Failure notifications suppressed during retries** – When a retry is scheduled the failure notification is held back. The notification fires only when all retry attempts are exhausted and the final attempt also fails. The notification body includes `[Attempt N/total failed]` prefix to make the retry history visible.
+- **Retry badge in execution history** – The job detail page shows an indigo "Retry N/total" badge next to any execution row that is a retry attempt (`retry_attempt > 0`).
+- **Log retention + retry fields on job form** – The cron-job create/edit form has two new sections: "Log Retention" (optional number of days) and "Auto-retry on failure" (count + delay inputs with inline help text).
+- **Agent endpoint `POST /maintenance/logs/prune`** – Deletes execution log records that exceed per-job `retention_days` and removes stale `job_retry_state` entries whose `scheduled_at` is older than `retry_delay_minutes + 60` minutes.
+- **Nightly prune script `agent/bin/prune-logs.php`** – Runs at 02:00 daily (via root crontab entry added by `setup.sh`). Calls the same pruning logic as the maintenance endpoint.
+- **Manual prune trigger on Maintenance page** – A new "Log Retention Prune" section (section 5) on `/maintenance` lets admins trigger the prune immediately and shows the number of deleted log records and stale retry-state entries.
+- **DB migration 007** – `agent/sql/migrations/007_retention_and_retry.sql` adds `retention_days`, `retry_count`, `retry_delay_minutes` to `cronjobs`; adds `retry_attempt`, `retry_root_execution_id` to `execution_log`; and creates the new `job_retry_state` table with FK cascade on `cronjob_id`.
+- **Configurable session idle timeout** – A new `session.idle_timeout` JSON config key (default: same value as `session.lifetime`) controls the server-side inactivity window. PHP's `session.gc_maxlifetime` is set to this value automatically so cookie and server-side expiry stay in sync. If a user is inactive for longer than the configured window their session is invalidated on the next request regardless of the cookie's remaining lifetime.
+- **Redirect-to-original-page after re-login** – When an unauthenticated request hits a protected page the full URL (path + query string) is preserved in the session. After a successful local or OIDC login the user is returned to that page automatically. Only GET requests are saved (POST would unsafely replay a form). The stored path must start with `/` to prevent open-redirect attacks.
+
+### Changed
+
+- **`ExecutionFinishEndpoint`** – Now accepts a `CrontabManager` dependency and handles retry scheduling inline after determining exit code.
+- **`ExecutionStartEndpoint`** – Reads and consumes the `job_retry_state` row for the executing job+target and stamps `retry_attempt` / `retry_root_execution_id` into the new `execution_log` record.
+- **`CronListEndpoint` / `CronGetEndpoint` / `CronCreateEndpoint` / `CronUpdateEndpoint`** – All return and accept the three new job fields (`retention_days`, `retry_count`, `retry_delay_minutes`).
+- **Maintenance page numbering** – The former section 5 (Prune Logs) is now section 6; the new Log Retention Prune section is section 5.
+
+---
+
 ## [2.5.3] – branch: `version-info`
 
 ### Added

@@ -273,6 +273,69 @@ foreach ($tags as $tag) {
                 </p>
             </div>
 
+            <!-- Retention Policy -->
+            <div class="mb-4">
+                <label for="retention_days"
+                       class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <?= htmlspecialchars($t('cron_retention_days'), ENT_QUOTES, 'UTF-8') ?>
+                </label>
+                <div class="flex items-center gap-2">
+                    <input type="number" id="retention_days" name="retention_days"
+                           min="1" step="1"
+                           value="<?= htmlspecialchars($val('retention_days'), ENT_QUOTES, 'UTF-8') ?>"
+                           class="w-36 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                  focus:outline-none focus:ring-2 focus:ring-blue-500
+                                  focus:border-blue-500 transition"
+                           placeholder="e.g. 30">
+                    <span class="text-sm text-gray-500 dark:text-gray-400">
+                        <?= htmlspecialchars($t('cron_retention_days_unit'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                </div>
+                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    <?= htmlspecialchars($t('cron_retention_days_hint'), ENT_QUOTES, 'UTF-8') ?>
+                </p>
+            </div>
+
+            <!-- Auto-retry on failure -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <?= htmlspecialchars($t('cron_retry'), ENT_QUOTES, 'UTF-8') ?>
+                </label>
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <label for="retry_count" class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                            <?= htmlspecialchars($t('cron_retry_count'), ENT_QUOTES, 'UTF-8') ?>
+                        </label>
+                        <input type="number" id="retry_count" name="retry_count"
+                               min="0" max="10" step="1"
+                               value="<?= htmlspecialchars($val('retry_count', '0'), ENT_QUOTES, 'UTF-8') ?>"
+                               class="w-20 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                      bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                      focus:outline-none focus:ring-2 focus:ring-blue-500
+                                      focus:border-blue-500 transition">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label for="retry_delay_minutes" class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                            <?= htmlspecialchars($t('cron_retry_delay'), ENT_QUOTES, 'UTF-8') ?>
+                        </label>
+                        <input type="number" id="retry_delay_minutes" name="retry_delay_minutes"
+                               min="1" step="1"
+                               value="<?= htmlspecialchars($val('retry_delay_minutes', '1'), ENT_QUOTES, 'UTF-8') ?>"
+                               class="w-24 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                      bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                      focus:outline-none focus:ring-2 focus:ring-blue-500
+                                      focus:border-blue-500 transition">
+                        <span class="text-sm text-gray-500 dark:text-gray-400">
+                            <?= htmlspecialchars($t('cron_retry_delay_unit'), ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                    </div>
+                </div>
+                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    <?= htmlspecialchars($t('cron_retry_hint'), ENT_QUOTES, 'UTF-8') ?>
+                </p>
+            </div>
+
             <!-- Checkboxes row -->
             <div class="mb-6 flex flex-wrap gap-6">
 

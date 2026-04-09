@@ -1133,7 +1133,24 @@ else
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  17. SUMMARY
+#  17. LOG RETENTION PRUNER
+# ═════════════════════════════════════════════════════════════════════════════
+
+header "Step 17 – Log Retention Pruner"
+
+PRUNE_CRON_FILE="/etc/cron.d/cronmanager-prune-logs"
+PRUNE_CRON_ENTRY="0 2 * * * root /usr/bin/php ${AGENT_DIR}/bin/prune-logs.php >> /dev/null 2>&1"
+
+step "Installing log-retention pruner cron entry..."
+if target_exec "echo '${PRUNE_CRON_ENTRY}' > ${PRUNE_CRON_FILE} && chmod 0644 ${PRUNE_CRON_FILE}" 2>&1; then
+    ok "Cron entry written to ${PRUNE_CRON_FILE}."
+else
+    warn "Could not write cron entry to ${PRUNE_CRON_FILE}."
+    warn "Add manually: ${PRUNE_CRON_ENTRY}"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  18. SUMMARY
 # ═════════════════════════════════════════════════════════════════════════════
 
 header "Setup Complete"

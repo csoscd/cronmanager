@@ -48,6 +48,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Cron\CrontabManager;
 use Cronmanager\Agent\Notification\MailNotifier;
 use Cronmanager\Agent\Notification\TelegramNotifier;
 use Monolog\Logger;
@@ -80,12 +81,16 @@ final class ExecutionFinishEndpoint
      * @param Logger           $logger           Monolog logger instance.
      * @param MailNotifier     $mailNotifier     Mail notifier for failure alerts.
      * @param TelegramNotifier $telegramNotifier Telegram notifier for failure alerts.
+     * @param CrontabManager   $crontabManager   CrontabManager for scheduling retries.
+     * @param string           $wrapperScript    Absolute path to cron-wrapper.sh.
      */
     public function __construct(
         private readonly PDO              $pdo,
         private readonly Logger           $logger,
         private readonly MailNotifier     $mailNotifier,
         private readonly TelegramNotifier $telegramNotifier,
+        private readonly CrontabManager   $crontabManager,
+        private readonly string           $wrapperScript,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -267,6 +272,114 @@ final class ExecutionFinishEndpoint
             return;
         }
 
+        // ------------------------------------------------------------------
+        // 5a. Auto-retry on failure
+        //
+        // When the job failed (non-zero exit), check if more retries are
+        // configured and remaining.  If yes, schedule the next retry via a
+        // once-only crontab entry and write the retry state so the next
+        // ExecutionStartEndpoint call can link the execution back.
+        // Notification is suppressed until all retries are exhausted.
+        // ------------------------------------------------------------------
+
+        $retryScheduled = false;
+
+        if ($exitCode !== 0 && !$alreadyFinished) {
+            try {
+                $job = $this->fetchJob($jobId);
+
+                if ($job !== null) {
+                    $retryCount        = (int)  ($job['retry_count']         ?? 0);
+                    $retryDelayMinutes = max(1, (int) ($job['retry_delay_minutes'] ?? 1));
+
+                    // Fetch current attempt from the execution log
+                    $currentAttempt = $this->fetchRetryAttempt($executionId);
+
+                    if ($retryCount > 0 && $currentAttempt < $retryCount) {
+                        $nextAttempt = $currentAttempt + 1;
+
+                        // Determine root execution id (either this execution or its parent)
+                        $rootExecutionId = $this->fetchRetryRootExecutionId($executionId) ?? $executionId;
+
+                        // Determine the effective target for this execution
+                        $effectiveTarget = $target ?? 'local';
+
+                        // Compute the crontab schedule for retry_delay_minutes from now
+                        $tz       = new \DateTimeZone($this->resolveSystemTimezone());
+                        $fireAt   = new \DateTime('+' . $retryDelayMinutes . ' minutes', $tz);
+                        $schedule = sprintf(
+                            '%d %d %d %d *',
+                            (int) $fireAt->format('i'),
+                            (int) $fireAt->format('G'),
+                            (int) $fireAt->format('j'),
+                            (int) $fireAt->format('n'),
+                        );
+
+                        // Write pending retry state so ExecutionStartEndpoint can pick it up
+                        $this->pdo->prepare(
+                            'INSERT INTO job_retry_state
+                                (job_id, target, next_retry_attempt, root_execution_id,
+                                 retry_delay_minutes, scheduled_at)
+                             VALUES (:job_id, :target, :next_attempt, :root_id, :delay, :scheduled_at)
+                             ON DUPLICATE KEY UPDATE
+                                next_retry_attempt  = :next_attempt,
+                                root_execution_id   = :root_id,
+                                retry_delay_minutes = :delay,
+                                scheduled_at        = :scheduled_at'
+                        )->execute([
+                            ':job_id'       => $jobId,
+                            ':target'       => $effectiveTarget,
+                            ':next_attempt' => $nextAttempt,
+                            ':root_id'      => $rootExecutionId,
+                            ':delay'        => $retryDelayMinutes,
+                            ':scheduled_at' => (new \DateTime('now', $tz))->format('Y-m-d H:i:s'),
+                        ]);
+
+                        // Add once-only crontab entry
+                        $this->crontabManager->addOnceEntry(
+                            (string) $job['linux_user'],
+                            $jobId,
+                            $schedule,
+                            $this->wrapperScript,
+                            $effectiveTarget,
+                        );
+
+                        $retryScheduled = true;
+
+                        $this->logger->info('ExecutionFinishEndpoint: retry scheduled', [
+                            'execution_id'       => $executionId,
+                            'job_id'             => $jobId,
+                            'next_attempt'       => $nextAttempt,
+                            'retry_count'        => $retryCount,
+                            'delay_minutes'      => $retryDelayMinutes,
+                            'schedule'           => $schedule,
+                            'target'             => $effectiveTarget,
+                            'root_execution_id'  => $rootExecutionId,
+                        ]);
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Retry scheduling failure must not prevent the finish response
+                $this->logger->error('ExecutionFinishEndpoint: error scheduling retry', [
+                    'execution_id' => $executionId,
+                    'job_id'       => $jobId,
+                    'message'      => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // When job succeeded, clean up any leftover retry state for this (job, target)
+        // (e.g. if a retry eventually succeeded – no stale rows should remain)
+        if ($exitCode === 0 && $target !== null) {
+            try {
+                $this->pdo->prepare(
+                    'DELETE FROM job_retry_state WHERE job_id = :job_id AND target = :target'
+                )->execute([':job_id' => $jobId, ':target' => $target]);
+            } catch (\Throwable) {
+                // Best-effort, non-critical
+            }
+        }
+
         try {
             $job = $this->fetchJob($jobId);
 
@@ -277,15 +390,32 @@ final class ExecutionFinishEndpoint
                     : (string) $job['command'];
                 $startedAt = $this->fetchStartedAt($executionId);
 
-                // ---- Failure notification (non-zero exit code) ----
-                if ($exitCode !== 0) {
+                // ---- Failure notification ----
+                // When a retry is scheduled, suppress notification until all retries exhausted.
+                // When retryScheduled is false (no more retries or retry not configured),
+                // send notification for non-zero exit codes as usual.
+                if ($exitCode !== 0 && !$retryScheduled) {
+                    $retryCount      = (int) ($job['retry_count'] ?? 0);
+                    $currentAttempt  = $this->fetchRetryAttempt($executionId);
+
+                    // Add retry context to the output when this was a retry
+                    $notifyOutput = $output;
+                    if ($retryCount > 0 && $currentAttempt > 0) {
+                        $notifyOutput = sprintf(
+                            '[Attempt %d/%d failed]\n\n%s',
+                            $currentAttempt + 1,
+                            $retryCount + 1,
+                            $output,
+                        );
+                    }
+
                     $notified = $this->dispatchNotification(
                         jobId:       $jobId,
                         description: $label,
                         linuxUser:   (string) $job['linux_user'],
                         schedule:    (string) $job['schedule'],
                         exitCode:    $exitCode,
-                        output:      $output,
+                        output:      $notifyOutput,
                         startedAt:   $startedAt,
                         finishedAt:  $finishedAt
                     );
@@ -439,7 +569,7 @@ final class ExecutionFinishEndpoint
     {
         $stmt = $this->pdo->prepare(
             'SELECT id, linux_user, schedule, command, description, notify_on_failure,
-                    execution_limit_seconds
+                    execution_limit_seconds, retry_count, retry_delay_minutes
                FROM cronjobs
               WHERE id = :id
               LIMIT 1'
@@ -448,6 +578,76 @@ final class ExecutionFinishEndpoint
         $row = $stmt->fetch();
 
         return $row !== false ? (array) $row : null;
+    }
+
+    /**
+     * Fetch the retry_attempt value for an execution log row.
+     *
+     * @param int $executionId Execution log ID.
+     *
+     * @return int Retry attempt (0 = original run).
+     */
+    private function fetchRetryAttempt(int $executionId): int
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT retry_attempt FROM execution_log WHERE id = :id LIMIT 1'
+        );
+        $stmt->execute([':id' => $executionId]);
+        $value = $stmt->fetchColumn();
+
+        return $value !== false ? (int) $value : 0;
+    }
+
+    /**
+     * Fetch the retry_root_execution_id for an execution log row.
+     * Returns null when this is an original (non-retry) execution.
+     *
+     * @param int $executionId Execution log ID.
+     *
+     * @return int|null Root execution ID or null.
+     */
+    private function fetchRetryRootExecutionId(int $executionId): ?int
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT retry_root_execution_id FROM execution_log WHERE id = :id LIMIT 1'
+        );
+        $stmt->execute([':id' => $executionId]);
+        $value = $stmt->fetchColumn();
+
+        return ($value !== false && $value !== null) ? (int) $value : null;
+    }
+
+    /**
+     * Resolve the host system timezone (same logic as ExecuteNowEndpoint).
+     *
+     * @return string A valid timezone identifier.
+     */
+    private function resolveSystemTimezone(): string
+    {
+        $envTz = getenv('TZ');
+        if ($envTz !== false && $envTz !== '') {
+            return $envTz;
+        }
+
+        $link = @readlink('/etc/localtime');
+        if ($link !== false) {
+            $pos = strpos($link, 'zoneinfo/');
+            if ($pos !== false) {
+                $tz = substr($link, $pos + strlen('zoneinfo/'));
+                if ($tz !== '') {
+                    return $tz;
+                }
+            }
+        }
+
+        if (is_readable('/etc/timezone')) {
+            $tz = trim((string) file_get_contents('/etc/timezone'));
+            if ($tz !== '') {
+                return $tz;
+            }
+        }
+
+        return date_default_timezone_get();
     }
 
     /**

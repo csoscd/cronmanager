@@ -153,13 +153,13 @@ final class ExecutionStartEndpoint
             // 4. Singleton guard: reject if another instance is already running
             // ------------------------------------------------------------------
 
-            if ($this->isSingleton($jobId) && $this->hasRunningExecution($jobId)) {
-                $this->logger->info('ExecutionStartEndpoint: singleton job already running – skipping', [
+            if ($this->isSingleton($jobId) && ($this->hasRunningExecution($jobId) || $this->hasPendingRetry($jobId))) {
+                $this->logger->info('ExecutionStartEndpoint: singleton job is busy (running or retry pending) – skipping', [
                     'job_id' => $jobId,
                 ]);
                 jsonResponse(409, [
                     'error'   => 'Conflict',
-                    'message' => 'Singleton job already has a running execution.',
+                    'message' => 'Singleton job already has a running execution or a pending retry.',
                     'code'    => 409,
                 ]);
                 return;
@@ -402,6 +402,31 @@ final class ExecutionStartEndpoint
     {
         $stmt = $this->pdo->prepare(
             'SELECT 1 FROM execution_log WHERE cronjob_id = :id AND finished_at IS NULL LIMIT 1'
+        );
+        $stmt->execute([':id' => $jobId]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * Return true when a retry is pending for the given job in job_retry_state.
+     *
+     * For singleton jobs a pending retry must block the regular schedule from
+     * starting a new execution in the window between the failed execution
+     * (finished_at is set) and the scheduled retry firing.  Without this check
+     * the regular cron would bypass the singleton guard because the previous
+     * execution is already marked as finished.
+     *
+     * @param int $jobId The job ID to check.
+     *
+     * @return bool
+     *
+     * @throws PDOException On database errors.
+     */
+    private function hasPendingRetry(int $jobId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT 1 FROM job_retry_state WHERE job_id = :id LIMIT 1'
         );
         $stmt->execute([':id' => $jobId]);
 

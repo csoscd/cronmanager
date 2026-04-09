@@ -170,6 +170,9 @@ final class CronUpdateEndpoint
                      auto_kill_on_limit = :auto_kill_on_limit,
                      singleton = :singleton,
                      run_in_maintenance = :run_in_maintenance,
+                     retention_days = :retention_days,
+                     retry_count = :retry_count,
+                     retry_delay_minutes = :retry_delay_minutes,
                      execution_mode = :execution_mode,
                      ssh_host = :ssh_host
                  WHERE id = :id'
@@ -185,6 +188,9 @@ final class CronUpdateEndpoint
                 ':auto_kill_on_limit'      => (int) ($merged['auto_kill_on_limit']   ?? false),
                 ':singleton'               => (int) ($merged['singleton']             ?? false),
                 ':run_in_maintenance'      => (int) ($merged['run_in_maintenance']    ?? false),
+                ':retention_days'          => $merged['retention_days'],
+                ':retry_count'             => (int) ($merged['retry_count']            ?? 0),
+                ':retry_delay_minutes'     => max(1, (int) ($merged['retry_delay_minutes'] ?? 1)),
                 ':execution_mode'          => $executionMode,
                 ':ssh_host'                => $sshHost,
                 ':id'                      => $jobId,
@@ -302,6 +308,15 @@ final class CronUpdateEndpoint
             'run_in_maintenance'       => array_key_exists('run_in_maintenance', $body)
                 ? (bool) $body['run_in_maintenance']
                 : (bool) ($existing['run_in_maintenance'] ?? false),
+            'retention_days'           => array_key_exists('retention_days', $body)
+                ? (is_int($body['retention_days']) && $body['retention_days'] > 0 ? $body['retention_days'] : null)
+                : (isset($existing['retention_days']) && $existing['retention_days'] !== null ? (int) $existing['retention_days'] : null),
+            'retry_count'              => array_key_exists('retry_count', $body)
+                ? max(0, (int) $body['retry_count'])
+                : (int) ($existing['retry_count'] ?? 0),
+            'retry_delay_minutes'      => array_key_exists('retry_delay_minutes', $body)
+                ? max(1, (int) $body['retry_delay_minutes'])
+                : max(1, (int) ($existing['retry_delay_minutes'] ?? 1)),
             'targets'                  => $mergedTargets,
             'tags'                     => array_key_exists('tags', $body) ? $body['tags'] : $existingTags,
         ];
@@ -573,6 +588,9 @@ final class CronUpdateEndpoint
                 j.auto_kill_on_limit,
                 j.singleton,
                 j.run_in_maintenance,
+                j.retention_days,
+                j.retry_count,
+                j.retry_delay_minutes,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -628,6 +646,11 @@ final class CronUpdateEndpoint
             'auto_kill_on_limit'       => (bool) ($row['auto_kill_on_limit']   ?? false),
             'singleton'                => (bool) ($row['singleton']           ?? false),
             'run_in_maintenance'       => (bool) ($row['run_in_maintenance']  ?? false),
+            'retention_days'           => isset($row['retention_days']) && $row['retention_days'] !== null
+                ? (int) $row['retention_days']
+                : null,
+            'retry_count'              => (int) ($row['retry_count']          ?? 0),
+            'retry_delay_minutes'      => max(1, (int) ($row['retry_delay_minutes'] ?? 1)),
             'targets'                  => $targets,
             'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),
             'ssh_host'                 => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,

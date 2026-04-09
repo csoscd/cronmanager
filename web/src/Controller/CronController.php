@@ -1063,6 +1063,24 @@ class CronController extends BaseController
             ? (int) $rawLimit
             : null;
 
+        // retention_days: positive integer or null (keep forever)
+        $rawRetention = trim((string) ($post['retention_days'] ?? ''));
+        $retentionDays = ($rawRetention !== '' && ctype_digit($rawRetention) && (int) $rawRetention > 0)
+            ? (int) $rawRetention
+            : null;
+
+        // retry_count: non-negative integer, default 0
+        $rawRetryCount = trim((string) ($post['retry_count'] ?? ''));
+        $retryCount = ($rawRetryCount !== '' && ctype_digit($rawRetryCount))
+            ? (int) $rawRetryCount
+            : 0;
+
+        // retry_delay_minutes: positive integer, default 1
+        $rawRetryDelay = trim((string) ($post['retry_delay_minutes'] ?? ''));
+        $retryDelayMinutes = ($rawRetryDelay !== '' && ctype_digit($rawRetryDelay) && (int) $rawRetryDelay >= 1)
+            ? (int) $rawRetryDelay
+            : 1;
+
         return [
             'linux_user'               => trim((string) ($post['linux_user']   ?? '')),
             'schedule'                 => trim((string) ($post['schedule']     ?? '')),
@@ -1075,6 +1093,9 @@ class CronController extends BaseController
             'auto_kill_on_limit'       => isset($post['auto_kill_on_limit']),
             'singleton'                => isset($post['singleton']),
             'run_in_maintenance'       => isset($post['run_in_maintenance']),
+            'retention_days'           => $retentionDays,
+            'retry_count'              => $retryCount,
+            'retry_delay_minutes'      => $retryDelayMinutes,
             'targets'                  => $targets,
         ];
     }

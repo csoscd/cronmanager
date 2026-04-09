@@ -18,6 +18,7 @@
     },
     "session": {
         "lifetime": 3600,
+        "idle_timeout": 3600,
         "name": "cronmanager_sess"
     },
     "i18n": {

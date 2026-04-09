@@ -15,6 +15,8 @@ declare(strict_types=1);
  *   bool               $flashExecDel        Execution record was deleted
  *   int|null           $flashCleaned        History records deleted (flash)
  *   int|null           $flashOnceRemoved    Stale once-entries removed (flash)
+ *   array|null         $flashLogsPruned     ['logs'=>N,'retry_state'=>M] or null (post-prune flash)
+ *   bool               $flashLogsPruneErr   Log prune error flag
  *   string             $csrf_token          CSRF token
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
@@ -92,6 +94,23 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
                     : $t('maintenance_once_none'),
                 ENT_QUOTES, 'UTF-8'
             ) ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if (isset($flashLogsPruned) && $flashLogsPruned !== null): ?>
+        <div class="rounded-lg px-4 py-3 text-sm font-medium"
+             style="background:rgba(34,197,94,.12);color:#16a34a;border:1px solid rgba(34,197,94,.25)">
+            <?= htmlspecialchars($t('maintenance_prune_success', [
+                'logs'        => $flashLogsPruned['logs']        ?? 0,
+                'retry_state' => $flashLogsPruned['retry_state'] ?? 0,
+            ]), ENT_QUOTES, 'UTF-8') ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if (isset($flashLogsPruneErr) && $flashLogsPruneErr): ?>
+        <div class="rounded-lg px-4 py-3 text-sm font-medium"
+             style="background:rgba(239,68,68,.1);color:#dc2626;border:1px solid rgba(239,68,68,.2)">
+            <?= htmlspecialchars($t('maintenance_prune_error'), ENT_QUOTES, 'UTF-8') ?>
         </div>
     <?php endif; ?>
 
@@ -365,7 +384,33 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
     </section>
 
     <!-- ══════════════════════════════════════════════════════════════════════
-         5. RUN NOW CLEANUP
+         5. LOG RETENTION PRUNE
+         ══════════════════════════════════════════════════════════════════════ -->
+    <section class="cm-card rounded-xl p-6 space-y-4">
+
+        <div>
+            <h2 class="text-lg font-semibold" style="color:var(--cm-text)">
+                <?= htmlspecialchars($t('maintenance_prune_title'), ENT_QUOTES, 'UTF-8') ?>
+            </h2>
+            <p class="mt-1 text-sm" style="color:var(--cm-text-muted)">
+                <?= htmlspecialchars($t('maintenance_prune_desc'), ENT_QUOTES, 'UTF-8') ?>
+            </p>
+        </div>
+
+        <form method="POST" action="/maintenance/logs/prune"
+              onsubmit="return confirm(<?= htmlspecialchars(json_encode($t('maintenance_prune_confirm')), ENT_QUOTES, 'UTF-8') ?>)">
+            <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
+            <button type="submit"
+                    class="px-4 py-2 rounded-lg text-sm font-semibold transition"
+                    style="background:rgba(239,68,68,.08);color:#dc2626;border:1px solid rgba(239,68,68,.2)">
+                <?= htmlspecialchars($t('maintenance_prune_btn'), ENT_QUOTES, 'UTF-8') ?>
+            </button>
+        </form>
+
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         6. RUN NOW CLEANUP
          ══════════════════════════════════════════════════════════════════════ -->
     <section class="cm-card rounded-xl p-6 space-y-4">
 

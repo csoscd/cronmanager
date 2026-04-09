@@ -136,6 +136,15 @@ final class CronCreateEndpoint
         $autoKillOnLimit      = isset($body['auto_kill_on_limit'])   ? (bool) $body['auto_kill_on_limit']   : false;
         $singleton            = isset($body['singleton'])            ? (bool) $body['singleton']            : false;
         $runInMaintenance     = isset($body['run_in_maintenance'])   ? (bool) $body['run_in_maintenance']   : false;
+        $retentionDays        = isset($body['retention_days']) && is_int($body['retention_days']) && $body['retention_days'] > 0
+            ? $body['retention_days']
+            : null;
+        $retryCount           = isset($body['retry_count']) && is_int($body['retry_count']) && $body['retry_count'] >= 0
+            ? $body['retry_count']
+            : 0;
+        $retryDelayMinutes    = isset($body['retry_delay_minutes']) && is_int($body['retry_delay_minutes']) && $body['retry_delay_minutes'] >= 1
+            ? $body['retry_delay_minutes']
+            : 1;
         $targets              = $this->normaliseTargets($body['targets'] ?? ['local']);
         $tags                 = isset($body['tags']) && is_array($body['tags']) ? $body['tags'] : [];
 
@@ -161,10 +170,12 @@ final class CronCreateEndpoint
                 'INSERT INTO cronjobs
                     (linux_user, schedule, command, description, active, notify_on_failure,
                      execution_limit_seconds, auto_kill_on_limit, singleton, run_in_maintenance,
+                     retention_days, retry_count, retry_delay_minutes,
                      execution_mode, ssh_host)
                  VALUES
                     (:linux_user, :schedule, :command, :description, :active, :notify_on_failure,
                      :execution_limit_seconds, :auto_kill_on_limit, :singleton, :run_in_maintenance,
+                     :retention_days, :retry_count, :retry_delay_minutes,
                      :execution_mode, :ssh_host)'
             );
             $stmt->execute([
@@ -178,6 +189,9 @@ final class CronCreateEndpoint
                 ':auto_kill_on_limit'     => (int) $autoKillOnLimit,
                 ':singleton'              => (int) $singleton,
                 ':run_in_maintenance'     => (int) $runInMaintenance,
+                ':retention_days'         => $retentionDays,
+                ':retry_count'            => $retryCount,
+                ':retry_delay_minutes'    => $retryDelayMinutes,
                 ':execution_mode'         => $executionMode,
                 ':ssh_host'               => $sshHost,
             ]);
@@ -509,6 +523,9 @@ final class CronCreateEndpoint
                 j.auto_kill_on_limit,
                 j.singleton,
                 j.run_in_maintenance,
+                j.retention_days,
+                j.retry_count,
+                j.retry_delay_minutes,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -550,6 +567,11 @@ final class CronCreateEndpoint
             'auto_kill_on_limit'       => (bool)   ($row['auto_kill_on_limit']    ?? false),
             'singleton'                => (bool)   ($row['singleton']           ?? false),
             'run_in_maintenance'       => (bool)   ($row['run_in_maintenance']  ?? false),
+            'retention_days'           => isset($row['retention_days']) && $row['retention_days'] !== null
+                ? (int) $row['retention_days']
+                : null,
+            'retry_count'              => (int)    ($row['retry_count']          ?? 0),
+            'retry_delay_minutes'      => (int)    ($row['retry_delay_minutes']  ?? 1),
             'targets'                  => $targets,
             // Legacy fields kept for backward compatibility
             'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),

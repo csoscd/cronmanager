@@ -80,6 +80,10 @@ final class MaintenanceController extends BaseController
         $flashBulkResolved  = isset($_GET['bulk_resolved'])  ? (int) $_GET['bulk_resolved']  : null;
         $flashBulkDeleted   = isset($_GET['bulk_deleted'])   ? (int) $_GET['bulk_deleted']   : null;
         $flashOnceRemoved   = isset($_GET['once_removed'])   ? (int) $_GET['once_removed']   : null;
+        $flashLogsPruned    = isset($_GET['logs_pruned'])
+            ? ['logs' => (int) ($_GET['logs_pruned'] ?? 0), 'retry_state' => (int) ($_GET['retry_state_pruned'] ?? 0)]
+            : null;
+        $flashLogsPruneErr  = isset($_GET['prune_err']);
 
         $this->render('maintenance/index.php', $this->translator()->t('maintenance_title'), [
             'hours'             => $hours,
@@ -93,6 +97,8 @@ final class MaintenanceController extends BaseController
             'flashBulkResolved' => $flashBulkResolved,
             'flashBulkDeleted'  => $flashBulkDeleted,
             'flashOnceRemoved'  => $flashOnceRemoved,
+            'flashLogsPruned'   => $flashLogsPruned,
+            'flashLogsPruneErr' => $flashLogsPruneErr,
         ], '/maintenance');
     }
 
@@ -320,6 +326,32 @@ final class MaintenanceController extends BaseController
                 'error' => $e->getMessage(),
             ]);
             (new Response())->redirect('/maintenance');
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /maintenance/logs/prune
+    // -------------------------------------------------------------------------
+
+    /**
+     * Apply per-job log retention policies and remove stale retry-state entries.
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     */
+    public function pruneLogs(array $params = []): void
+    {
+        try {
+            $result       = $this->agentClient()->post('/maintenance/logs/prune');
+            $deletedLogs  = (int) ($result['deleted_logs']        ?? 0);
+            $deletedRetry = (int) ($result['deleted_retry_state'] ?? 0);
+            (new Response())->redirect(
+                '/maintenance?logs_pruned=' . $deletedLogs . '&retry_state_pruned=' . $deletedRetry
+            );
+        } catch (\RuntimeException $e) {
+            $this->logger->error('MaintenanceController: pruneLogs failed', [
+                'error' => $e->getMessage(),
+            ]);
+            (new Response())->redirect('/maintenance?prune_err=1');
         }
     }
 }

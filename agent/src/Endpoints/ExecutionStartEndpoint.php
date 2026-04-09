@@ -181,8 +181,9 @@ final class ExecutionStartEndpoint
 
                 $stmt = $this->pdo->prepare(
                     'INSERT INTO execution_log
-                        (cronjob_id, started_at, finished_at, exit_code, output, target, during_maintenance)
-                     VALUES (:cronjob_id, :started_at, :finished_at, :exit_code, :output, :target, 1)'
+                        (cronjob_id, started_at, finished_at, exit_code, output, target,
+                         during_maintenance, retry_attempt, retry_root_execution_id)
+                     VALUES (:cronjob_id, :started_at, :finished_at, :exit_code, :output, :target, 1, 0, NULL)'
                 );
                 $stmt->execute([
                     ':cronjob_id' => $jobId,
@@ -211,19 +212,59 @@ final class ExecutionStartEndpoint
             }
 
             // ------------------------------------------------------------------
-            // 6. Insert the execution log row
+            // 6. Check for a pending retry state for this (job, target)
+            //    If found, the new execution is a retry – pick up retry_attempt
+            //    and root_execution_id, then clear the state row.
+            // ------------------------------------------------------------------
+
+            $retryAttempt          = 0;
+            $retryRootExecutionId  = null;
+            $effectiveTargetForRetry = $target ?? 'local';
+
+            $retryStmt = $this->pdo->prepare(
+                'SELECT next_retry_attempt, root_execution_id
+                   FROM job_retry_state
+                  WHERE job_id = :job_id AND target = :target
+                  LIMIT 1'
+            );
+            $retryStmt->execute([':job_id' => $jobId, ':target' => $effectiveTargetForRetry]);
+            $retryRow = $retryStmt->fetch(\PDO::FETCH_ASSOC);
+
+            if ($retryRow !== false) {
+                $retryAttempt         = (int) $retryRow['next_retry_attempt'];
+                $retryRootExecutionId = (int) $retryRow['root_execution_id'];
+
+                // Remove the consumed retry-state row
+                $this->pdo->prepare(
+                    'DELETE FROM job_retry_state WHERE job_id = :job_id AND target = :target'
+                )->execute([':job_id' => $jobId, ':target' => $effectiveTargetForRetry]);
+
+                $this->logger->info('ExecutionStartEndpoint: starting retry execution', [
+                    'job_id'                 => $jobId,
+                    'target'                 => $effectiveTargetForRetry,
+                    'retry_attempt'          => $retryAttempt,
+                    'retry_root_execution_id'=> $retryRootExecutionId,
+                ]);
+            }
+
+            // ------------------------------------------------------------------
+            // 7. Insert the execution log row
             // ------------------------------------------------------------------
 
             $stmt = $this->pdo->prepare(
                 'INSERT INTO execution_log
-                    (cronjob_id, started_at, finished_at, exit_code, output, target, during_maintenance)
-                 VALUES (:cronjob_id, :started_at, NULL, NULL, NULL, :target, :during_maintenance)'
+                    (cronjob_id, started_at, finished_at, exit_code, output, target,
+                     during_maintenance, retry_attempt, retry_root_execution_id)
+                 VALUES (:cronjob_id, :started_at, NULL, NULL, NULL, :target,
+                     :during_maintenance, :retry_attempt, :retry_root_execution_id)'
             );
             $stmt->execute([
-                ':cronjob_id'         => $jobId,
-                ':started_at'         => $startedAt,
-                ':target'             => $target,
-                ':during_maintenance' => $duringMaintenance,
+                ':cronjob_id'              => $jobId,
+                ':started_at'              => $startedAt,
+                ':target'                  => $target,
+                ':during_maintenance'      => $duringMaintenance,
+                ':retry_attempt'           => $retryAttempt,
+                ':retry_root_execution_id' => $retryRootExecutionId,
             ]);
 
             $executionId = (int) $this->pdo->lastInsertId();

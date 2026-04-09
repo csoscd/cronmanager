@@ -398,7 +398,7 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                                                 </span>
                                             <?php endif; ?>
                                             <?php if ($tgtInMaint): ?>
-                                                <span class="js-maint-badge inline-flex items-center px-1 py-0.5 rounded text-xs font-medium
+                                                <span class="js-maint-badge hidden items-center px-1 py-0.5 rounded text-xs font-medium
                                                              bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 cursor-help"
                                                       data-maint-schedule="<?= htmlspecialchars((string) ($job['schedule'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                                       data-maint-target="<?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>"
@@ -595,10 +595,22 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
         .catch(function () { return null; })
         .then(function (data) {
             if (!data || !data.conflicts) return;
+
+            // No conflicts at all: remove the badge entirely so jobs whose
+            // schedule never overlaps with the window are not falsely flagged.
+            if (data.conflicts.length === 0) {
+                pair.elements.forEach(function (el) { el.remove(); });
+                return;
+            }
+
             const ratio = data.conflicts.length / LOOK_AHEAD;
             const isRed = ratio >= RED_THRESHOLD;
 
             pair.elements.forEach(function (el) {
+                // Reveal the badge now that we know there is at least one conflict
+                el.classList.remove('hidden');
+                el.classList.add('inline-flex');
+
                 if (isRed) {
                     el.classList.remove('bg-amber-100', 'text-amber-700', 'dark:bg-amber-900/40', 'dark:text-amber-300');
                     el.classList.add('bg-red-100', 'text-red-700', 'dark:bg-red-900/40', 'dark:text-red-300');

@@ -206,7 +206,7 @@ try {
     $maintenanceWindowRepo = new \Cronmanager\Agent\Repository\MaintenanceWindowRepository($pdo, $logger);
 
     $execStart     = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger, $maintenanceWindowRepo);
-    $execFinish    = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier, $telegramNotifier);
+    $execFinish    = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier, $telegramNotifier, $crontabManager, $wrapperScript);
     $execUpdatePid = new \Cronmanager\Agent\Endpoints\ExecutionUpdatePidEndpoint($pdo, $logger);
     $execKill      = new \Cronmanager\Agent\Endpoints\ExecutionKillEndpoint($pdo, $logger);
 
@@ -240,6 +240,9 @@ try {
 
     $maintenanceCleanup = new \Cronmanager\Agent\Endpoints\MaintenanceHistoryCleanupEndpoint($pdo, $logger);
     $router->addRoute('POST', '/maintenance/history/cleanup', [$maintenanceCleanup, 'handle']);
+
+    $logsPrune = new \Cronmanager\Agent\Endpoints\MaintenanceLogsPruneEndpoint($pdo, $logger);
+    $router->addRoute('POST', '/maintenance/logs/prune', [$logsPrune, 'handle']);
 
     // -- Export ---------------------------------------------------------------
 

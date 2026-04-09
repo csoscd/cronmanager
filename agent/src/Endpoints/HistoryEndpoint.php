@@ -316,6 +316,8 @@ final class HistoryEndpoint
                 el.output,
                 el.target,
                 el.during_maintenance,
+                el.retry_attempt,
+                el.retry_root_execution_id,
                 TIMESTAMPDIFF(SECOND, el.started_at, el.finished_at) AS duration_seconds
             FROM execution_log el
             JOIN cronjobs j ON j.id = el.cronjob_id
@@ -374,7 +376,11 @@ final class HistoryEndpoint
             'exit_code'        => isset($row['exit_code']) ? (int) $row['exit_code'] : null,
             'output'           => isset($row['output']) ? (string) $row['output'] : null,
             'target'             => isset($row['target']) ? (string) $row['target'] : null,
-            'during_maintenance' => !empty($row['during_maintenance']),
+            'during_maintenance'       => !empty($row['during_maintenance']),
+            'retry_attempt'            => (int) ($row['retry_attempt'] ?? 0),
+            'retry_root_execution_id'  => isset($row['retry_root_execution_id']) && $row['retry_root_execution_id'] !== null
+                ? (int) $row['retry_root_execution_id']
+                : null,
             'duration_seconds'   => isset($row['duration_seconds']) ? (int) $row['duration_seconds'] : null,
         ];
     }

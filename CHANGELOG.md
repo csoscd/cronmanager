@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.6.1] – branch: `singleton-retry-fix`
+
+### Fixed
+
+- **Singleton guard bypassed while retry is pending** – For singleton jobs configured with auto-retry, the regular cron schedule could start a new execution in the window between a failed attempt (whose `finished_at` is now set) and the scheduled retry firing. The singleton check in `ExecutionStartEndpoint` now also queries `job_retry_state`: if any retry is pending for the job, the start request is rejected with HTTP 409 — identical to the response when another instance is already running. The retry itself clears the state row at the moment it starts, restoring normal singleton behaviour from that point.
+
+---
+
 ## [2.6.0] – branch: `retention-restart`
 
 ### Added

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.7.0] – branch: `advanced_settings`
+
+### Changed
+
+- **Cron job form – Advanced settings panel** – Six settings that are rarely needed for basic jobs are now hidden behind an "Advanced settings" toggle: Execution Limit, Log Retention, Auto-retry on failure, Auto-kill on limit exceeded, Singleton, and Run in maintenance window. The toggle is a chevron button that expands/collapses the panel without a page reload. The panel auto-opens when editing or copying a job that already has any of those fields set to a non-default value, so existing configuration is never silently obscured. The open/closed state is persisted in `sessionStorage` so it survives soft navigations within the same tab session.
+
+---
+
 ## [2.6.1] – branch: `singleton-retry-fix`
 
 ### Fixed

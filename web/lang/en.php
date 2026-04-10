@@ -333,6 +333,8 @@ return [
     'select_all'              => 'Select all',
     'save'                    => 'Save',
     'cancel'                  => 'Cancel',
+    'form_tab_basic'          => 'Basic',
+    'form_advanced_settings'  => 'Advanced',
     'filter_reset'            => 'Reset',
     'back'                    => 'Back',
     'no_results'              => 'No results found.',

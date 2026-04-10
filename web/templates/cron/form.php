@@ -123,28 +123,26 @@ foreach ($tags as $tag) {
 
             <!-- ── Tab bar ──────────────────────────────────────────────────── -->
             <?php
-                $tabBasicActive    = !$advancedOpen;
-                $tabAdvancedActive = $advancedOpen;
-                $tabActiveClass    = 'border-b-2 border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-semibold';
-                $tabInactiveClass  = 'border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600';
+                $tabActiveClass   = 'border-b-2 border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-semibold';
+                $tabInactiveClass = 'border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600';
             ?>
             <div class="flex border-b border-gray-200 dark:border-gray-700 mb-6 -mx-6 px-6">
                 <button type="button" id="tab-btn-basic"
                         onclick="switchTab('basic')"
                         class="px-4 py-2.5 text-sm transition-colors focus:outline-none
-                               <?= $tabBasicActive ? $tabActiveClass : $tabInactiveClass ?>">
+                               <?= $tabActiveClass ?>">
                     <?= htmlspecialchars($t('form_tab_basic'), ENT_QUOTES, 'UTF-8') ?>
                 </button>
                 <button type="button" id="tab-btn-advanced"
                         onclick="switchTab('advanced')"
                         class="px-4 py-2.5 text-sm transition-colors focus:outline-none
-                               <?= $tabAdvancedActive ? $tabActiveClass : $tabInactiveClass ?>">
+                               <?= $tabInactiveClass ?>">
                     <?= htmlspecialchars($t('form_advanced_settings'), ENT_QUOTES, 'UTF-8') ?>
                 </button>
             </div>
 
             <!-- ── Basic tab ─────────────────────────────────────────────────── -->
-            <div id="tab-panel-basic" class="<?= $tabBasicActive ? '' : 'hidden' ?>">
+            <div id="tab-panel-basic" class="">
 
                 <!-- Linux User -->
                 <div class="mb-4">
@@ -308,10 +306,28 @@ foreach ($tags as $tag) {
 
                 </div>
 
+                <!-- Maintenance-window conflict warning – yellow: some runs skipped -->
+                <div id="maintenance-conflict-some" class="hidden mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-300">
+                    <svg class="inline-block w-4 h-4 mr-1 -mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    </svg>
+                    <?= htmlspecialchars($t('targets_conflict_warning_some'), ENT_QUOTES, 'UTF-8') ?>
+                    <span id="maintenance-conflict-details-some" class="block mt-1 text-xs"></span>
+                </div>
+
+                <!-- Maintenance-window conflict warning – red: no runs will execute -->
+                <div id="maintenance-conflict-all" class="hidden mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-sm text-red-800 dark:text-red-400">
+                    <svg class="inline-block w-4 h-4 mr-1 -mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <?= htmlspecialchars($t('targets_conflict_warning_all'), ENT_QUOTES, 'UTF-8') ?>
+                    <span id="maintenance-conflict-details-all" class="block mt-1 text-xs"></span>
+                </div>
+
             </div><!-- /tab-panel-basic -->
 
             <!-- ── Advanced tab ──────────────────────────────────────────────── -->
-            <div id="tab-panel-advanced" class="<?= $tabAdvancedActive ? '' : 'hidden' ?>">
+            <div id="tab-panel-advanced" class="hidden">
 
                 <!-- Execution Limit -->
                 <div class="mb-4">
@@ -439,24 +455,6 @@ foreach ($tags as $tag) {
                         </span>
                     </label>
 
-                    <!-- Maintenance-window conflict warning – yellow: some runs skipped -->
-                    <div id="maintenance-conflict-some" class="hidden mt-1 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-300">
-                        <svg class="inline-block w-4 h-4 mr-1 -mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-                        </svg>
-                        <?= htmlspecialchars($t('targets_conflict_warning_some'), ENT_QUOTES, 'UTF-8') ?>
-                        <span id="maintenance-conflict-details-some" class="block mt-1 text-xs"></span>
-                    </div>
-
-                    <!-- Maintenance-window conflict warning – red: no runs will execute -->
-                    <div id="maintenance-conflict-all" class="hidden mt-1 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-sm text-red-800 dark:text-red-400">
-                        <svg class="inline-block w-4 h-4 mr-1 -mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        <?= htmlspecialchars($t('targets_conflict_warning_all'), ENT_QUOTES, 'UTF-8') ?>
-                        <span id="maintenance-conflict-details-all" class="block mt-1 text-xs"></span>
-                    </div>
-
                 </div>
 
             </div><!-- /tab-panel-advanced -->
@@ -516,16 +514,12 @@ function switchTab(tab) {
 }
 
 // Restore the previously selected tab from sessionStorage.
-// When the server has pre-selected the Advanced tab (non-default advanced
-// values present), that takes precedence and sessionStorage is cleared so
-// subsequent fresh forms start on Basic again.
+// Basic is always the default; Advanced is only active when the user
+// explicitly switched to it during this browser session.
 (function () {
-    const serverDefault = <?= $advancedOpen ? "'advanced'" : "'basic'" ?>;
-    const stored        = sessionStorage.getItem('cronform_active_tab');
-    const active        = serverDefault === 'advanced' ? 'advanced' : (stored || 'basic');
-
-    if (active !== 'basic') {
-        switchTab(active);
+    const stored = sessionStorage.getItem('cronform_active_tab');
+    if (stored === 'advanced') {
+        switchTab('advanced');
     }
 })();
 

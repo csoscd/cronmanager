@@ -12,9 +12,10 @@
 #   DB_PASSWORD         – MariaDB password for the application user
 #
 # Optional environment variables (shown with their defaults):
-#   AGENT_URL           https://cronmanager-agent:8865
+#   AGENT_URL           cronmanager-agent:8865  (host:port only; scheme is derived from AGENT_TLS_ENABLED)
+#   AGENT_TLS_ENABLED   true                    (true = https, false = http; also controls AGENT_SSL_VERIFY default)
 #   AGENT_TIMEOUT       10
-#   AGENT_SSL_VERIFY    false
+#   AGENT_SSL_VERIFY    false                   (default false when TLS enabled, true when disabled)
 #   AGENT_SSL_CA_BUNDLE ""
 #   DB_HOST             cronmanager-db
 #   DB_PORT             3306
@@ -65,6 +66,28 @@ fi
 
 mkdir -p /var/www/conf
 
+# ── Resolve agent URL and TLS settings ───────────────────────────────────────
+# AGENT_TLS_ENABLED controls the URL scheme (default: true = https).
+# AGENT_URL should be host:port only; any existing scheme is stripped so that
+# pre-2.8.0 values like http://cronmanager-agent:8865 are upgraded automatically.
+
+AGENT_TLS_ENABLED="${AGENT_TLS_ENABLED:-true}"
+
+# Strip any scheme (http:// or https://) from AGENT_URL to get host:port only
+_AGENT_HOSTPORT="${AGENT_URL:-cronmanager-agent:8865}"
+_AGENT_HOSTPORT="${_AGENT_HOSTPORT#http://}"
+_AGENT_HOSTPORT="${_AGENT_HOSTPORT#https://}"
+
+if [[ "${AGENT_TLS_ENABLED}" == "true" ]]; then
+    AGENT_URL="https://${_AGENT_HOSTPORT}"
+    AGENT_SSL_VERIFY="${AGENT_SSL_VERIFY:-false}"
+    log_info "Agent URL: ${AGENT_URL} (TLS enabled, ssl_verify=${AGENT_SSL_VERIFY})"
+else
+    AGENT_URL="http://${_AGENT_HOSTPORT}"
+    AGENT_SSL_VERIFY="${AGENT_SSL_VERIFY:-true}"
+    log_info "Agent URL: ${AGENT_URL} (TLS disabled)"
+fi
+
 # The alpine base image uses php84, not php
 php84 -r "
 \$config = [
@@ -76,10 +99,10 @@ php84 -r "
         'password' => getenv('DB_PASSWORD'),
     ],
     'agent' => [
-        'url'            => getenv('AGENT_URL') ?: 'https://cronmanager-agent:8865',
+        'url'            => getenv('AGENT_URL'),
         'hmac_secret'    => getenv('AGENT_HMAC_SECRET'),
         'timeout'        => (int)(getenv('AGENT_TIMEOUT') ?: 10),
-        'ssl_verify'     => filter_var(getenv('AGENT_SSL_VERIFY') ?: 'false', FILTER_VALIDATE_BOOLEAN),
+        'ssl_verify'     => filter_var(getenv('AGENT_SSL_VERIFY'), FILTER_VALIDATE_BOOLEAN),
         'ssl_ca_bundle'  => getenv('AGENT_SSL_CA_BUNDLE') ?: '',
     ],
     'logging' => [

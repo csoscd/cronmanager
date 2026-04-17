@@ -30,6 +30,11 @@ services:
     extra_hosts:
       # Allows the web container to reach the host agent on the Docker host
       - "host.docker.internal:host-gateway"
+    environment:
+      # Agent URL – update to https:// when the host agent runs with TLS enabled
+      AGENT_URL:           "https://host.docker.internal:8865"
+      AGENT_SSL_VERIFY:    "false"
+      AGENT_SSL_CA_BUNDLE: ""
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /opt/cronmanager/www/conf:/var/www/conf

@@ -88,10 +88,10 @@ Browser
 │  Web UI (Docker)         │  PHP-FPM + Nginx  ·  Port 8880
 │  /opt/cronmanager/www    │
 └────────────┬─────────────┘
-             │ HMAC-signed HTTP (host.docker.internal:8865)
+             │ HMAC-signed HTTPS (host.docker.internal:8865)
              ▼
 ┌──────────────────────────┐
-│  Host Agent              │  PHP CLI server  ·  Port 8865
+│  Host Agent              │  nginx (TLS) → PHP CLI server  ·  Port 8865
 │  /opt/cronmanager/agent  │  systemd service on the Docker host
 └────────────┬─────────────┘
              │ reads/writes crontab files
@@ -102,6 +102,7 @@ Browser
 
 The agent runs directly on the Docker host. The web container reaches it via
 `host.docker.internal:8865` (provided by Docker's `extra_hosts: host-gateway` mechanism).
+Communication is encrypted with TLS; see [Agent TLS](#agent-tls) for details.
 
 ### Docker mode
 
@@ -113,10 +114,10 @@ Browser
 │  Web UI (Docker)         │  PHP-FPM + Nginx  ·  Port 8880
 │  /opt/cronmanager/www    │
 └────────────┬─────────────┘
-             │ HMAC-signed HTTP (cronmanager-agent:8865)
+             │ HMAC-signed HTTPS (cronmanager-agent:8865)
              ▼
 ┌──────────────────────────┐
-│  Agent container         │  PHP CLI server  ·  Port 8865
+│  Agent container         │  nginx (TLS) → PHP CLI server  ·  Port 8865
 │  cs1711/cs_cronmanageragent  (internal Docker network)
 └────────────┬─────────────┘
              │ manages container's crontab (root)
@@ -130,7 +131,7 @@ All three services share a private `cronmanager-internal` Docker network.
 No PHP installation is required on the host.
 
 The web container never touches crontab files directly.
-All privileged operations are delegated to the agent via HMAC-secured HTTP calls.
+All privileged operations are delegated to the agent via HMAC-secured HTTPS calls.
 
 A MariaDB container (`cronmanager-db`) stores users, job metadata, tags, and execution logs.
 
@@ -228,7 +229,10 @@ commented-out lines in `docker-compose-full.yml`.
 | Variable | Default | Description |
 |---|---|---|
 | `AGENT_BIND_ADDRESS` | `0.0.0.0` | Bind address for the PHP HTTP server |
-| `AGENT_PORT` | `8865` | Listening port |
+| `AGENT_PORT` | `8865` | Listening port (used by nginx TLS terminator) |
+| `AGENT_TLS_ENABLED` | `true` | Enable nginx TLS reverse proxy (set `false` only for trusted internal networks) |
+| `TLS_CERT_FILE` | `/opt/cronmanager/agent/tls/cert.pem` | Path to TLS certificate inside the container (auto-generated self-signed if absent) |
+| `TLS_KEY_FILE` | `/opt/cronmanager/agent/tls/key.pem` | Path to TLS private key inside the container |
 | `DB_HOST` | `cronmanager-db` | MariaDB hostname |
 | `LOG_PATH` | `/opt/cronmanager/agent/log/cronmanager-agent.log` | Log file path |
 | `LOG_LEVEL` | `info` | Monolog level (`debug`, `info`, `warning`, `error`) |
@@ -251,8 +255,10 @@ commented-out lines in `docker-compose-full.yml`.
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_URL` | `http://cronmanager-agent:8865` | Agent base URL |
+| `AGENT_URL` | `https://cronmanager-agent:8865` | Agent base URL |
 | `AGENT_TIMEOUT` | `10` | HTTP timeout in seconds |
+| `AGENT_SSL_VERIFY` | `false` | Verify agent TLS certificate (`false` = accept self-signed; `true` = require trusted CA) |
+| `AGENT_SSL_CA_BUNDLE` | _(empty)_ | Path to a custom CA bundle PEM inside the container (used when `AGENT_SSL_VERIFY=true` with a private CA) |
 | `DB_HOST` | `cronmanager-db` | MariaDB hostname |
 | `LOG_PATH` | `/var/www/log/cronmanager-web.log` | Log file path |
 | `LOG_LEVEL` | `info` | Monolog level |
@@ -654,8 +660,8 @@ sudo journalctl -u cronmanager-agent -f
 # Restart after a config change
 sudo systemctl restart cronmanager-agent
 
-# Verify the agent is reachable
-curl http://127.0.0.1:8865/health
+# Verify the agent is reachable (TLS with self-signed cert)
+curl -k https://127.0.0.1:8865/health
 # → {"status":"ok","timestamp":"2026-03-18T10:00:00+00:00"}
 ```
 
@@ -678,17 +684,21 @@ On the first deployment, the example configuration is placed there automatically
         "password": "<same-as-DB_PASSWORD-in-db.credentials>"
     },
     "agent": {
-        "url": "http://host.docker.internal:8865",
+        "url": "https://host.docker.internal:8865",
         "hmac_secret": "<same-secret-as-in-agent-config>",
-        "timeout": 10
+        "timeout": 10,
+        "ssl_verify": false,
+        "ssl_ca_bundle": ""
     }
 }
 ```
 
-> **Docker mode:** set `agent.url` to `http://cronmanager-agent:8865` instead. `deploy.sh --docker full` patches this automatically on the first deployment.
+> **Docker mode:** set `agent.url` to `https://cronmanager-agent:8865` instead. `deploy.sh --docker full` patches this automatically on the first deployment.
 
 `host.docker.internal` resolves to the Docker host from within the container and is
 configured automatically via the `extra_hosts` entry in `docker/docker-compose.yml` (host-agent mode). In docker mode, use `cronmanager-agent` as the hostname instead — this is the Docker service name on the shared internal network.
+
+`ssl_verify: false` is correct for the default self-signed certificate. Set it to `true` and supply `ssl_ca_bundle` when using a certificate signed by a private CA.
 
 ---
 
@@ -854,9 +864,11 @@ provider — the account will be re-created on the next login.
 | `database.name` | `cronmanager` | Database name |
 | `database.user` | `cronmanager` | Database user |
 | `database.password` | | Database password |
-| `agent.url` | `http://host.docker.internal:8865` (host-agent) / `http://cronmanager-agent:8865` (docker) | Host agent base URL |
+| `agent.url` | `https://host.docker.internal:8865` (host-agent) / `https://cronmanager-agent:8865` (docker) | Host agent base URL |
 | `agent.hmac_secret` | | Shared HMAC secret (must match agent) |
 | `agent.timeout` | `10` | HTTP timeout in seconds |
+| `agent.ssl_verify` | `false` | `false` = accept self-signed cert; `true` = require trusted CA; path string = use custom CA bundle |
+| `agent.ssl_ca_bundle` | `""` | Path to a PEM CA bundle inside the container (used when `ssl_verify` is `true` with a private CA) |
 | `logging.path` | `/var/www/log/cronmanager-web.log` | Log file path |
 | `logging.level` | `info` | `debug`, `info`, `warning`, `error`, `critical` |
 | `logging.max_days` | `30` | Log file retention in days |
@@ -876,8 +888,9 @@ provider — the account will be re-created on the next login.
 
 | Key | Default | Description |
 |---|---|---|
-| `agent.bind_address` | `0.0.0.0` | Listen address (`127.0.0.1` to restrict to localhost) |
-| `agent.port` | `8865` | Listen port |
+| `agent.bind_address` | `0.0.0.0` | Bind address for the internal PHP server (nginx handles the external port) |
+| `agent.port` | `8865` | External port (nginx TLS) |
+| `agent.tls_enabled` | `true` | Written automatically from `AGENT_TLS_ENABLED`; read by `cron-wrapper.sh` to decide HTTP vs HTTPS |
 | `agent.hmac_secret` | | Shared HMAC secret (must match web config) |
 | `database.host` | `127.0.0.1` | MariaDB hostname |
 | `database.port` | `3306` | MariaDB port |
@@ -902,6 +915,51 @@ provider — the account will be re-created on the next login.
 | `telegram.chat_id` | | Target chat, channel, or group ID |
 | `telegram.timeout` | `15` | HTTP request timeout in seconds |
 | `cron.wrapper_script` | `/opt/cronmanager/agent/bin/cron-wrapper.sh` | Wrapper script path |
+
+---
+
+## Agent TLS
+
+All communication between the web container and the host agent is encrypted with TLS.
+The agent container runs an **nginx reverse proxy** that terminates TLS on port **8865**
+and forwards plain HTTP internally to the PHP built-in server on port **18865**.
+
+### Certificate
+
+By default a **self-signed RSA-2048 certificate** (valid 10 years) is generated
+automatically on the first container start and stored in a Docker-managed named volume
+(`agent-tls`) so it persists across container recreations.
+
+To use your own certificate (Let's Encrypt, private CA, etc.), mount the cert and key
+files into the container and set the corresponding environment variables:
+
+```yaml
+environment:
+  TLS_CERT_FILE: /opt/cronmanager/agent/tls/cert.pem
+  TLS_KEY_FILE:  /opt/cronmanager/agent/tls/key.pem
+volumes:
+  - /path/to/your/cert.pem:/opt/cronmanager/agent/tls/cert.pem:ro
+  - /path/to/your/key.pem:/opt/cronmanager/agent/tls/key.pem:ro
+```
+
+### Web container – certificate verification
+
+Set `agent.ssl_verify` (or `AGENT_SSL_VERIFY`) on the web container:
+
+| Value | When to use |
+|---|---|
+| `false` | Self-signed certificate (default) |
+| `true` | Certificate from a public/trusted CA |
+| `/path/to/ca.pem` | Certificate from a private CA – provide the CA bundle path |
+
+When using a custom CA bundle, also set `agent.ssl_ca_bundle` to the path of the PEM
+file **inside the web container**.
+
+### Disabling TLS
+
+TLS can be disabled by setting `AGENT_TLS_ENABLED=false` on the agent container and
+changing `agent.url` back to `http://` in the web config. This is only recommended
+for isolated internal networks where encryption is provided at another layer.
 
 ---
 
@@ -1168,9 +1226,9 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
 1. Check the agent is running:
    ```bash
    sudo systemctl status cronmanager-agent
-   curl http://127.0.0.1:8865/health
+   curl -k https://127.0.0.1:8865/health
    ```
-2. Verify `agent.url` in the web config points to `http://host.docker.internal:8865`
+2. Verify `agent.url` in the web config points to `https://host.docker.internal:8865` and `ssl_verify` is `false`
 3. Verify the HMAC secret matches in both config files
 4. Inspect agent logs:
    ```bash
@@ -1183,9 +1241,9 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
 1. Check the agent container is running and healthy:
    ```bash
    docker ps | grep cronmanager-agent
-   docker exec cronmanager-agent curl -s http://localhost:8865/health
+   docker exec cronmanager-agent curl -sk https://localhost:8865/health
    ```
-2. Verify `agent.url` in the web config points to `http://cronmanager-agent:8865`
+2. Verify `agent.url` in the web config points to `https://cronmanager-agent:8865` and `ssl_verify` is `false`
 3. Verify the HMAC secret matches in both config files
 4. Inspect agent container logs:
    ```bash

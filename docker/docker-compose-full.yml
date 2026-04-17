@@ -64,9 +64,12 @@ services:
       DB_PORT:  "3306"
       DB_NAME:  "${DB_NAME:-cronmanager}"
       DB_USER:  "${DB_USER:-cronmanager}"
-      # Agent HTTP server
-      AGENT_BIND_ADDRESS: "0.0.0.0"
-      AGENT_PORT:         "8865"
+      # Agent HTTP/TLS server
+      AGENT_BIND_ADDRESS:  "0.0.0.0"
+      AGENT_PORT:          "8865"
+      AGENT_TLS_ENABLED:   "true"
+      # TLS_CERT_FILE:     "/opt/cronmanager/agent/tls/cert.pem"   # auto-generated if omitted
+      # TLS_KEY_FILE:      "/opt/cronmanager/agent/tls/key.pem"    # auto-generated if omitted
       # Logging
       LOG_PATH:     "/opt/cronmanager/agent/log/cronmanager-agent.log"
       LOG_LEVEL:    "${LOG_LEVEL:-info}"
@@ -93,6 +96,10 @@ services:
       - agent-log:/opt/cronmanager/agent/log
       # Optional: persist logs on the host instead
       # - /opt/cronmanager/agent/log:/opt/cronmanager/agent/log
+      # TLS certificates – persisted so the auto-generated cert survives restarts
+      - agent-tls:/opt/cronmanager/agent/tls
+      # Optional: mount your own certificate/key instead of using the auto-generated one
+      # - /opt/cronmanager/agent/tls:/opt/cronmanager/agent/tls
       - /etc/localtime:/etc/localtime:ro
       # SSH keys for remote job execution and crontab import.
       # The default mounts the host root user's full SSH config.
@@ -121,9 +128,11 @@ services:
       # Required
       AGENT_HMAC_SECRET: "${AGENT_HMAC_SECRET}"
       DB_PASSWORD:        "${DB_PASSWORD}"
-      # Agent connection (uses Docker service name)
-      AGENT_URL:     "http://cronmanager-agent:8865"
-      AGENT_TIMEOUT: "${AGENT_TIMEOUT:-10}"
+      # Agent connection (uses Docker service name; TLS, self-signed cert)
+      AGENT_URL:            "https://cronmanager-agent:8865"
+      AGENT_TIMEOUT:        "${AGENT_TIMEOUT:-10}"
+      AGENT_SSL_VERIFY:     "false"
+      AGENT_SSL_CA_BUNDLE:  ""
       # Database
       DB_HOST: "cronmanager-db"
       DB_PORT: "3306"
@@ -160,6 +169,7 @@ services:
 volumes:
   db-data:
   agent-log:
+  agent-tls:
   web-log:
 
 

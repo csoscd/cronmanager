@@ -42,6 +42,8 @@ services:
       - /opt/cronmanager/agent:/opt/cronmanager/agent:ro
       - /opt/cronmanager/agent/config:/opt/cronmanager/agent/config
       - /opt/cronmanager/agent/log:/opt/cronmanager/agent/log
+      # TLS certificates – persisted so the auto-generated cert survives restarts
+      - /opt/cronmanager/agent/tls:/opt/cronmanager/agent/tls
       # SSH keys for remote job execution
       - /root/.ssh:/root/.ssh:ro
       # Shared PHP libraries

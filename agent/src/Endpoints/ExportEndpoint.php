@@ -319,6 +319,14 @@ final class ExportEndpoint
                 j.description,
                 j.active,
                 j.notify_on_failure,
+                j.execution_limit_seconds,
+                j.auto_kill_on_limit,
+                j.singleton,
+                j.run_in_maintenance,
+                j.retention_days,
+                j.retry_count,
+                j.retry_delay_minutes,
+                j.notify_after_failures,
                 j.created_at,
                 GROUP_CONCAT(DISTINCT t.name  ORDER BY t.name  SEPARATOR ',') AS tags,
                 GROUP_CONCAT(DISTINCT jt.target ORDER BY jt.target SEPARATOR ',') AS targets
@@ -364,11 +372,21 @@ final class ExportEndpoint
             'schedule'          => (string) $row['schedule'],
             'command'           => (string) $row['command'],
             'description'       => isset($row['description']) ? (string) $row['description'] : null,
-            'active'            => (bool)   $row['active'],
-            'notify_on_failure' => (bool)   $row['notify_on_failure'],
-            'created_at'        => (string) $row['created_at'],
-            'tags'              => $tags,
-            'targets'           => $targets,
+            'active'                   => (bool)   $row['active'],
+            'notify_on_failure'        => (bool)   $row['notify_on_failure'],
+            'execution_limit_seconds'  => isset($row['execution_limit_seconds']) && $row['execution_limit_seconds'] !== null
+                ? (int) $row['execution_limit_seconds'] : null,
+            'auto_kill_on_limit'       => (bool) ($row['auto_kill_on_limit']    ?? false),
+            'singleton'                => (bool) ($row['singleton']             ?? false),
+            'run_in_maintenance'       => (bool) ($row['run_in_maintenance']    ?? false),
+            'retention_days'           => isset($row['retention_days']) && $row['retention_days'] !== null
+                ? (int) $row['retention_days'] : null,
+            'retry_count'              => (int) ($row['retry_count']            ?? 0),
+            'retry_delay_minutes'      => max(1, (int) ($row['retry_delay_minutes'] ?? 1)),
+            'notify_after_failures'    => max(1, (int) ($row['notify_after_failures'] ?? 1)),
+            'created_at'               => (string) $row['created_at'],
+            'tags'                     => $tags,
+            'targets'                  => $targets,
         ];
     }
 }

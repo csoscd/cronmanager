@@ -92,38 +92,41 @@ try {
     $logger    = $bootstrap->getLogger();
     $config    = $bootstrap->getConfig();
 
-    $jobId       = (int)    ($data['job_id']      ?? 0);
-    $description = (string) ($data['description'] ?? '');
-    $linuxUser   = (string) ($data['linux_user']  ?? '');
-    $schedule    = (string) ($data['schedule']    ?? '');
-    $exitCode    = (int)    ($data['exit_code']   ?? 1);
-    $output      = (string) ($data['output']      ?? '');
-    $startedAt   = (string) ($data['started_at']  ?? '');
-    $finishedAt  = (string) ($data['finished_at'] ?? '');
+    $jobId               = (int)    ($data['job_id']               ?? 0);
+    $description         = (string) ($data['description']         ?? '');
+    $linuxUser           = (string) ($data['linux_user']          ?? '');
+    $schedule            = (string) ($data['schedule']            ?? '');
+    $exitCode            = (int)    ($data['exit_code']           ?? 1);
+    $output              = (string) ($data['output']              ?? '');
+    $startedAt           = (string) ($data['started_at']          ?? '');
+    $finishedAt          = (string) ($data['finished_at']         ?? '');
+    $notifyAfterFailures = max(1, (int) ($data['notify_after_failures'] ?? 1));
 
     $mailNotifier     = new MailNotifier($logger, $config);
     $telegramNotifier = new TelegramNotifier($logger, $config);
 
     $mailNotifier->sendFailureAlert(
-        jobId:       $jobId,
-        description: $description,
-        linuxUser:   $linuxUser,
-        schedule:    $schedule,
-        exitCode:    $exitCode,
-        output:      $output,
-        startedAt:   $startedAt,
-        finishedAt:  $finishedAt,
+        jobId:               $jobId,
+        description:         $description,
+        linuxUser:           $linuxUser,
+        schedule:            $schedule,
+        exitCode:            $exitCode,
+        output:              $output,
+        startedAt:           $startedAt,
+        finishedAt:          $finishedAt,
+        notifyAfterFailures: $notifyAfterFailures,
     );
 
     $telegramNotifier->sendFailureAlert(
-        jobId:       $jobId,
-        description: $description,
-        linuxUser:   $linuxUser,
-        schedule:    $schedule,
-        exitCode:    $exitCode,
-        output:      $output,
-        startedAt:   $startedAt,
-        finishedAt:  $finishedAt,
+        jobId:               $jobId,
+        description:         $description,
+        linuxUser:           $linuxUser,
+        schedule:            $schedule,
+        exitCode:            $exitCode,
+        output:              $output,
+        startedAt:           $startedAt,
+        finishedAt:          $finishedAt,
+        notifyAfterFailures: $notifyAfterFailures,
     );
 
 } catch (\Throwable $e) {

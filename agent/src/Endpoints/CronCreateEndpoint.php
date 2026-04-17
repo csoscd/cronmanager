@@ -145,6 +145,9 @@ final class CronCreateEndpoint
         $retryDelayMinutes    = isset($body['retry_delay_minutes']) && is_int($body['retry_delay_minutes']) && $body['retry_delay_minutes'] >= 1
             ? $body['retry_delay_minutes']
             : 1;
+        $notifyAfterFailures  = isset($body['notify_after_failures']) && is_int($body['notify_after_failures']) && $body['notify_after_failures'] >= 1
+            ? $body['notify_after_failures']
+            : 1;
         $targets              = $this->normaliseTargets($body['targets'] ?? ['local']);
         $tags                 = isset($body['tags']) && is_array($body['tags']) ? $body['tags'] : [];
 
@@ -170,12 +173,12 @@ final class CronCreateEndpoint
                 'INSERT INTO cronjobs
                     (linux_user, schedule, command, description, active, notify_on_failure,
                      execution_limit_seconds, auto_kill_on_limit, singleton, run_in_maintenance,
-                     retention_days, retry_count, retry_delay_minutes,
+                     retention_days, retry_count, retry_delay_minutes, notify_after_failures,
                      execution_mode, ssh_host)
                  VALUES
                     (:linux_user, :schedule, :command, :description, :active, :notify_on_failure,
                      :execution_limit_seconds, :auto_kill_on_limit, :singleton, :run_in_maintenance,
-                     :retention_days, :retry_count, :retry_delay_minutes,
+                     :retention_days, :retry_count, :retry_delay_minutes, :notify_after_failures,
                      :execution_mode, :ssh_host)'
             );
             $stmt->execute([
@@ -192,6 +195,7 @@ final class CronCreateEndpoint
                 ':retention_days'         => $retentionDays,
                 ':retry_count'            => $retryCount,
                 ':retry_delay_minutes'    => $retryDelayMinutes,
+                ':notify_after_failures'  => $notifyAfterFailures,
                 ':execution_mode'         => $executionMode,
                 ':ssh_host'               => $sshHost,
             ]);
@@ -526,6 +530,7 @@ final class CronCreateEndpoint
                 j.retention_days,
                 j.retry_count,
                 j.retry_delay_minutes,
+                j.notify_after_failures,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -572,6 +577,7 @@ final class CronCreateEndpoint
                 : null,
             'retry_count'              => (int)    ($row['retry_count']          ?? 0),
             'retry_delay_minutes'      => (int)    ($row['retry_delay_minutes']  ?? 1),
+            'notify_after_failures'    => (int)    ($row['notify_after_failures'] ?? 1),
             'targets'                  => $targets,
             // Legacy fields kept for backward compatibility
             'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),

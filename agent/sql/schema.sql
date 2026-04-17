@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS cronjobs (
                                                             COMMENT 'Max number of automatic retry attempts on failure; 0 = no retry',
     retry_delay_minutes      SMALLINT UNSIGNED NOT NULL DEFAULT 1
                                                             COMMENT 'Minutes to wait between retry attempts (minimum 1)',
+    notify_after_failures    TINYINT UNSIGNED  NOT NULL DEFAULT 1
+                                                            COMMENT 'Send failure notification only after this many consecutive real failures; 1 = every failure (default)',
     execution_mode    ENUM('local','remote') NOT NULL DEFAULT 'local'
                                                COMMENT 'local = run on this host, remote = execute via SSH',
     ssh_host          VARCHAR(255)            NULL     COMMENT 'SSH config host alias (from ~/.ssh/config); required when execution_mode=remote',

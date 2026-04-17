@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.8.1] – branch: `agent_tls_fix`
+
+### Fixed
+- **TLS upgrade regression** – Deployments that did not explicitly set TLS environment variables could not reach the agent after upgrading to v2.8.0.
+  - `AGENT_TLS_ENABLED` is now a first-class env var on the **web container** too (default `true`). The URL scheme is always derived from this flag — never from the scheme in `AGENT_URL`.
+  - `AGENT_URL` now accepts **host:port only** (e.g. `cronmanager-agent:8865`). Any existing `http://` or `https://` scheme is stripped and replaced automatically, so pre-2.8.0 values like `http://cronmanager-agent:8865` are upgraded to `https://` without any manual intervention.
+  - `AGENT_SSL_VERIFY` defaults to `false` when TLS is enabled and `true` when disabled — no explicit configuration required for the default self-signed certificate setup.
+  - `deploy.sh --docker update` now includes an idempotent migration step that upgrades `http://` to `https://` and adds `ssl_verify: false` in existing web `config.json` files that predate v2.8.0.
+
+---
+
 ## [2.8.0] – branches: `notify_after_failures`, `tls_agent`
 
 ### Added

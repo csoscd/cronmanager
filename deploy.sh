@@ -544,6 +544,38 @@ if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
             "${WEB_SRC}/" "${TARGET_PREFIX}${WEB_WWW_TARGET}/"
     fi
 
+    # ── TLS migration: upgrade pre-2.8.0 http:// agent URL in existing config ──
+    # Runs on every update deploy. Idempotent: no-op when already on https or
+    # when ssl_verify key is already present (written by 2.8.0+ entrypoint).
+    if [[ "${DEPLOY_TARGET}" == "docker" && "${DEPLOY_MODE}" == "update" ]]; then
+        if run_on_target "test -f '${WEB_CONF_TARGET}/config.json'" 2>/dev/null; then
+            log "Checking web config for pre-2.8.0 http:// agent URL..."
+            _run_remote_python \
+'import json, sys
+path = sys.argv[1]
+with open(path, "r") as fh:
+    cfg = json.load(fh)
+agent = cfg.get("agent", {})
+url = agent.get("url", "")
+changed = False
+if url.startswith("http://"):
+    agent["url"] = "https://" + url[len("http://"):]
+    changed = True
+if "ssl_verify" not in agent:
+    agent["ssl_verify"] = False
+    agent["ssl_ca_bundle"] = agent.get("ssl_ca_bundle", "")
+    changed = True
+if changed:
+    cfg["agent"] = agent
+    with open(path, "w") as fh:
+        json.dump(cfg, fh, indent=4, ensure_ascii=False)
+    print("[deploy] Web config migrated: agent.url upgraded to https://, ssl_verify added.")
+else:
+    print("[deploy] Web config already up to date – no migration needed.")' \
+                "${WEB_CONF_TARGET}/config.json"
+        fi
+    fi
+
     # Deploy example web config only on full deploy if none exists yet
     if [[ "${DEPLOY_MODE}" == "full" ]]; then
         if ! file_exists_on_target "${WEB_CONF_TARGET}/config.json" 2>/dev/null; then

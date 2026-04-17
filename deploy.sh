@@ -551,7 +551,7 @@ if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
             copy_to_target "${WEB_SRC}/config/config.json" "${WEB_CONF_TARGET}/config.json"
             # Patch agent.url for docker mode (web → agent via Docker service name)
             if [[ "${DEPLOY_TARGET}" == "docker" ]]; then
-                log "Docker mode: patching web config agent.url → http://cronmanager-agent:8865..."
+                log "Docker mode: patching web config agent.url → https://cronmanager-agent:8865..."
                 _run_remote_python \
 'import json, re, sys
 path = sys.argv[1]
@@ -561,7 +561,9 @@ if isinstance(cfg.get("agent"), dict) and "url" in cfg["agent"]:
     url = cfg["agent"]["url"]
     m = re.search(r":(\d+)", url)
     port = m.group(1) if m else "8865"
-    cfg["agent"]["url"] = "http://cronmanager-agent:" + port
+    cfg["agent"]["url"] = "https://cronmanager-agent:" + port
+    cfg["agent"]["ssl_verify"] = False
+    cfg["agent"]["ssl_ca_bundle"] = ""
 with open(path, "w") as fh:
     json.dump(cfg, fh, indent=4, ensure_ascii=False)
 print("[deploy] Web config agent.url patched.")' \
@@ -690,7 +692,7 @@ print("[deploy] Agent config patched successfully.")' \
     # Changes: agent.url host.docker.internal:PORT → cronmanager-agent:PORT
 
     if run_on_target "test -f '${WEB_CONFIG_FILE}'" 2>/dev/null; then
-        log "Patching web config.json (agent.url → docker service name)..."
+        log "Patching web config.json (agent.url → docker service name, TLS)..."
         _run_remote_python \
 'import json, re, sys
 path = sys.argv[1]
@@ -700,7 +702,9 @@ if isinstance(cfg.get("agent"), dict) and "url" in cfg["agent"]:
     url = cfg["agent"]["url"]
     m = re.search(r":(\d+)", url)
     port = m.group(1) if m else "8865"
-    cfg["agent"]["url"] = "http://cronmanager-agent:" + port
+    cfg["agent"]["url"] = "https://cronmanager-agent:" + port
+    cfg["agent"]["ssl_verify"] = False
+    cfg["agent"]["ssl_ca_bundle"] = ""
 with open(path, "w") as fh:
     json.dump(cfg, fh, indent=4, ensure_ascii=False)
 print("[deploy] Web config patched successfully.")' \

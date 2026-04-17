@@ -12,8 +12,10 @@
 #   DB_PASSWORD         – MariaDB password for the application user
 #
 # Optional environment variables (shown with their defaults):
-#   AGENT_URL           http://cronmanager-agent:8865
+#   AGENT_URL           https://cronmanager-agent:8865
 #   AGENT_TIMEOUT       10
+#   AGENT_SSL_VERIFY    false
+#   AGENT_SSL_CA_BUNDLE ""
 #   DB_HOST             cronmanager-db
 #   DB_PORT             3306
 #   DB_NAME             cronmanager
@@ -74,9 +76,11 @@ php84 -r "
         'password' => getenv('DB_PASSWORD'),
     ],
     'agent' => [
-        'url'         => getenv('AGENT_URL') ?: 'http://cronmanager-agent:8865',
-        'hmac_secret' => getenv('AGENT_HMAC_SECRET'),
-        'timeout'     => (int)(getenv('AGENT_TIMEOUT') ?: 10),
+        'url'            => getenv('AGENT_URL') ?: 'https://cronmanager-agent:8865',
+        'hmac_secret'    => getenv('AGENT_HMAC_SECRET'),
+        'timeout'        => (int)(getenv('AGENT_TIMEOUT') ?: 10),
+        'ssl_verify'     => filter_var(getenv('AGENT_SSL_VERIFY') ?: 'false', FILTER_VALIDATE_BOOLEAN),
+        'ssl_ca_bundle'  => getenv('AGENT_SSL_CA_BUNDLE') ?: '',
     ],
     'logging' => [
         'path'     => getenv('LOG_PATH') ?: '/var/www/log/cronmanager-web.log',

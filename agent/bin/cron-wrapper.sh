@@ -128,13 +128,22 @@ read_config() {
 BIND_ADDRESS="$(read_config 'agent.bind_address' '0.0.0.0')"
 AGENT_PORT="$(read_config 'agent.port' '8865')"
 HMAC_SECRET="$(read_config 'agent.hmac_secret' '')"
+AGENT_TLS_ENABLED="$(read_config 'agent.tls_enabled' 'false')"
 
 # Replace wildcard bind address with loopback for outgoing connections
 if [[ "$BIND_ADDRESS" == "0.0.0.0" ]]; then
     BIND_ADDRESS="127.0.0.1"
 fi
 
-readonly AGENT_BASE_URL="http://${BIND_ADDRESS}:${AGENT_PORT}"
+# When TLS is enabled nginx listens externally; PHP is on an internal port.
+# Connections from within the same container always go to localhost via nginx.
+if [[ "${AGENT_TLS_ENABLED}" == "1" || "${AGENT_TLS_ENABLED}" == "true" ]]; then
+    readonly AGENT_BASE_URL="https://${BIND_ADDRESS}:${AGENT_PORT}"
+    readonly AGENT_TLS_INSECURE="--insecure"   # allow self-signed certificates
+else
+    readonly AGENT_BASE_URL="http://${BIND_ADDRESS}:${AGENT_PORT}"
+    readonly AGENT_TLS_INSECURE=""
+fi
 
 if [[ -z "$HMAC_SECRET" ]]; then
     log_warn "HMAC secret is empty – requests will be rejected by the agent"
@@ -202,6 +211,11 @@ agent_request() {
         --write-out '%{http_code}'
         --output "${tmp_file}"
     )
+
+    # Add --insecure when talking to a self-signed TLS certificate
+    if [[ -n "${AGENT_TLS_INSECURE:-}" ]]; then
+        curl_args+=("${AGENT_TLS_INSECURE}")
+    fi
 
     if [[ "$method" == "POST" ]]; then
         curl_args+=(

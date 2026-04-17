@@ -7,9 +7,11 @@
         "password": "cronmanagerpassword"
     },
     "agent": {
-        "url": "http://host.docker.internal:8865",
+        "url": "https://host.docker.internal:8865",
         "hmac_secret": "change-me-to-a-secure-random-string",
-        "timeout": 10
+        "timeout": 10,
+        "ssl_verify": false,
+        "ssl_ca_bundle": ""
     },
     "logging": {
         "path": "/var/www/log/cronmanager-web.log",

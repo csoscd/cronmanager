@@ -10,9 +10,11 @@ declare(strict_types=1);
  * the agent can verify that the call originated from a trusted source.
  *
  * Config keys used:
- *   agent.url         – Base URL of the host agent (e.g. http://host.docker.internal:8865)
- *   agent.hmac_secret – Shared secret for HMAC-SHA256 request signing
- *   agent.timeout     – Request timeout in seconds (default: 10)
+ *   agent.url            – Base URL of the host agent (e.g. https://host.docker.internal:8865)
+ *   agent.hmac_secret    – Shared secret for HMAC-SHA256 request signing
+ *   agent.timeout        – Request timeout in seconds (default: 10)
+ *   agent.ssl_verify     – Verify TLS certificate (default: true; set false for self-signed certs)
+ *   agent.ssl_ca_bundle  – Path to custom CA bundle PEM (optional; used when ssl_verify is true)
  *
  * Signature algorithm:
  *   X-Agent-Signature: hmac_sha256(secret, UPPER(method) + path + rawBody)
@@ -311,20 +313,41 @@ class HostAgentClient
     // -------------------------------------------------------------------------
 
     /**
-     * Return a lazily-created Guzzle HTTP client configured with the agent base URL
-     * and request timeout from configuration.
+     * Return a lazily-created Guzzle HTTP client configured with the agent base URL,
+     * request timeout, and TLS verification settings from configuration.
+     *
+     * Config keys:
+     *   agent.ssl_verify    – true to verify the server certificate, false to skip
+     *                         (use false for self-signed certs; default: true)
+     *   agent.ssl_ca_bundle – path to a CA bundle PEM file; used when ssl_verify is
+     *                         true and the server uses a certificate from a custom CA
      *
      * @return Client
      */
     private function client(): Client
     {
         if ($this->guzzle === null) {
-            $baseUrl = (string) $this->config->get('agent.url', 'http://host.docker.internal:8865');
-            $timeout = (int)    $this->config->get('agent.timeout', 10);
+            $baseUrl   = (string) $this->config->get('agent.url', 'http://host.docker.internal:8865');
+            $timeout   = (int)    $this->config->get('agent.timeout', 10);
+            $sslVerify = (bool)   $this->config->get('agent.ssl_verify', true);
+            $caBundle  = (string) $this->config->get('agent.ssl_ca_bundle', '');
+
+            // Resolve the 'verify' option for Guzzle:
+            //   false          → disable certificate verification (self-signed)
+            //   '/path/ca.pem' → verify against a custom CA bundle
+            //   true           → use the system CA bundle
+            if (!$sslVerify) {
+                $verify = false;
+            } elseif ($caBundle !== '') {
+                $verify = $caBundle;
+            } else {
+                $verify = true;
+            }
 
             $this->guzzle = new Client([
                 'base_uri'    => rtrim($baseUrl, '/'),
                 'timeout'     => $timeout,
+                'verify'      => $verify,
                 'http_errors' => false,  // We handle error codes ourselves
             ]);
         }

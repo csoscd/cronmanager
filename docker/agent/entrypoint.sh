@@ -6,9 +6,12 @@
 #   1. Generate /opt/cronmanager/agent/config/config.json from environment variables.
 #   2. Wait for MariaDB and apply schema.sql if the 'cronjobs' table is missing.
 #   3. Fix SSH key permissions (host-mounted keys are often 644).
-#   4. Start the system cron daemon in the background.
-#   5. Read bind address and port from the generated config and start the PHP
+#   4. Configure nginx TLS reverse proxy (when AGENT_TLS_ENABLED=true).
+#   5. Start the system cron daemon in the background.
+#   6. Read bind address and port from the generated config and start the PHP
 #      built-in server as the foreground process (PID 1 equivalent).
+#      When TLS is enabled, PHP binds on 127.0.0.1:18865 and nginx terminates
+#      TLS on 0.0.0.0:8865, proxying to the PHP server.
 #
 # Required environment variables:
 #   AGENT_HMAC_SECRET   – shared secret for HMAC-SHA256 request signing
@@ -38,6 +41,9 @@
 #   TELEGRAM_CHAT_ID    ""
 #   TELEGRAM_TIMEOUT    15
 #   CRON_WRAPPER_SCRIPT /opt/cronmanager/agent/bin/cron-wrapper.sh
+#   AGENT_TLS_ENABLED   true
+#   TLS_CERT_FILE       /opt/cronmanager/agent/tls/cert.pem
+#   TLS_KEY_FILE        /opt/cronmanager/agent/tls/key.pem
 #
 # @author  Christian Schulz <technik@meinetechnikwelt.rocks>
 # @license GNU General Public License version 3 or later
@@ -78,6 +84,7 @@ php -r "
         'bind_address' => getenv('AGENT_BIND_ADDRESS') ?: '0.0.0.0',
         'port'         => (int)(getenv('AGENT_PORT') ?: 8865),
         'hmac_secret'  => getenv('AGENT_HMAC_SECRET'),
+        'tls_enabled'  => filter_var(getenv('AGENT_TLS_ENABLED') ?: 'true', FILTER_VALIDATE_BOOLEAN),
     ],
     'database' => [
         'host'     => getenv('DB_HOST') ?: 'cronmanager-db',
@@ -319,6 +326,7 @@ fi
 #    We copy the keys to a writable location and fix permissions there.
 # =============================================================================
 
+
 if [[ -d /root/.ssh ]]; then
     SSH_PERMS_OK=true
 
@@ -343,7 +351,99 @@ else
 fi
 
 # =============================================================================
-# 3. Resync crontab from database
+# 4. Configure nginx TLS reverse proxy
+#    When AGENT_TLS_ENABLED=true, nginx terminates TLS on 0.0.0.0:8865 and
+#    forwards plain HTTP to the PHP built-in server on 127.0.0.1:18865.
+#    A self-signed certificate is generated automatically when no cert files
+#    are found at the configured paths.
+# =============================================================================
+
+AGENT_TLS_ENABLED="${AGENT_TLS_ENABLED:-true}"
+TLS_CERT_FILE="${TLS_CERT_FILE:-/opt/cronmanager/agent/tls/cert.pem}"
+TLS_KEY_FILE="${TLS_KEY_FILE:-/opt/cronmanager/agent/tls/key.pem}"
+TLS_INTERNAL_PORT=18865
+
+if [[ "${AGENT_TLS_ENABLED}" == "true" ]]; then
+    log_info "TLS enabled – configuring nginx reverse proxy..."
+
+    TLS_DIR=$(dirname "${TLS_CERT_FILE}")
+    mkdir -p "${TLS_DIR}"
+
+    # Auto-generate a self-signed certificate when none exists
+    if [[ ! -f "${TLS_CERT_FILE}" ]] || [[ ! -f "${TLS_KEY_FILE}" ]]; then
+        log_info "No TLS certificate found at ${TLS_CERT_FILE} – generating self-signed certificate..."
+        TLS_CERT_FILE="${TLS_CERT_FILE}" TLS_KEY_FILE="${TLS_KEY_FILE}" php -r "
+            \$key = openssl_pkey_new([
+                'private_key_bits' => 2048,
+                'private_key_type' => OPENSSL_KEYTYPE_RSA,
+            ]);
+            if (!\$key) {
+                fwrite(STDERR, 'openssl_pkey_new failed: ' . implode(', ', array_reverse(array_keys(openssl_error_string() ? [] : []))) . PHP_EOL);
+                exit(1);
+            }
+            \$csr = openssl_csr_new(
+                ['CN' => 'cronmanager-agent', 'O' => 'Cronmanager'],
+                \$key,
+                ['digest_alg' => 'sha256']
+            );
+            \$cert = openssl_csr_sign(\$csr, null, \$key, 3650, ['digest_alg' => 'sha256'], 0);
+            openssl_x509_export(\$cert, \$certPem);
+            openssl_pkey_export(\$key, \$keyPem);
+            file_put_contents(getenv('TLS_CERT_FILE'), \$certPem);
+            file_put_contents(getenv('TLS_KEY_FILE'), \$keyPem);
+            chmod(getenv('TLS_KEY_FILE'), 0600);
+            echo 'Certificate written.' . PHP_EOL;
+        " || { log_error "Failed to generate self-signed TLS certificate."; exit 1; }
+        log_info "Self-signed TLS certificate generated (valid 10 years)."
+    else
+        log_info "TLS certificate found at ${TLS_CERT_FILE}."
+    fi
+
+    # Remove the default nginx site to avoid port conflicts
+    rm -f /etc/nginx/sites-enabled/default
+
+    # Use the configured external port (from env var; config.json is not yet read at this point)
+    AGENT_EXTERNAL_PORT="${AGENT_PORT:-8865}"
+
+    # Write the agent nginx vhost
+    cat > /etc/nginx/sites-enabled/cronmanager-agent.conf << NGINX_EOF
+server {
+    listen 0.0.0.0:${AGENT_EXTERNAL_PORT} ssl;
+
+    ssl_certificate     ${TLS_CERT_FILE};
+    ssl_certificate_key ${TLS_KEY_FILE};
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    access_log /dev/stdout;
+    error_log  /dev/stderr;
+
+    location / {
+        proxy_pass         http://127.0.0.1:${TLS_INTERNAL_PORT};
+        proxy_set_header   Host \$host;
+        proxy_set_header   X-Real-IP \$remote_addr;
+        proxy_read_timeout 60;
+        proxy_connect_timeout 10;
+    }
+}
+NGINX_EOF
+
+    # Validate config and start nginx
+    if nginx -t 2>&1; then
+        nginx
+        log_info "nginx TLS reverse proxy started (0.0.0.0:${AGENT_EXTERNAL_PORT} → 127.0.0.1:${TLS_INTERNAL_PORT})."
+    else
+        log_error "nginx configuration test failed – aborting."
+        exit 1
+    fi
+else
+    log_info "TLS disabled (AGENT_TLS_ENABLED=${AGENT_TLS_ENABLED})."
+fi
+
+# =============================================================================
+# 5. Resync crontab from database
 #    Rebuilds all crontab entries so that jobs are never lost after a
 #    container recreation (e.g. Portainer stack redeploy, image update).
 # =============================================================================
@@ -362,7 +462,7 @@ else
 fi
 
 # =============================================================================
-# 4. Install execution-limit checker cron entry and start cron daemon
+# 5b. Install execution-limit checker cron entry and start cron daemon
 # =============================================================================
 
 LIMITS_CRON_FILE="/etc/cron.d/cronmanager-limits"
@@ -380,7 +480,11 @@ CRON_PID=$!
 log_info "Cron daemon started (PID ${CRON_PID})."
 
 # =============================================================================
-# 5. Start PHP built-in server (foreground – becomes main process)
+# 6. Start PHP built-in server (foreground – becomes main process)
+#
+#    TLS mode  : PHP binds on 127.0.0.1:18865 (internal only); nginx handles
+#                the external TLS port 8865.
+#    Plain mode: PHP binds on AGENT_BIND_ADDRESS:AGENT_PORT (default 0.0.0.0:8865).
 # =============================================================================
 
 # Re-read bind address and port from the generated config file
@@ -395,6 +499,13 @@ if [[ -f "$CONFIG_FILE" ]]; then
     " 2>/dev/null || echo "0.0.0.0 8865")
     BIND_ADDRESS="${_parsed%% *}"
     PORT="${_parsed##* }"
+fi
+
+# When TLS is enabled, nginx owns the external port – PHP binds internally only
+if [[ "${AGENT_TLS_ENABLED}" == "true" ]]; then
+    BIND_ADDRESS="127.0.0.1"
+    PORT="${TLS_INTERNAL_PORT}"
+    log_info "TLS mode: PHP built-in server binding on ${BIND_ADDRESS}:${PORT} (nginx on :${AGENT_PORT:-8865})"
 fi
 
 AGENT_PHP="${AGENT_DIR}/agent.php"

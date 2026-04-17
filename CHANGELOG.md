@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [2.8.0] – branch: `notify_after_failures`
+## [2.8.0] – branches: `notify_after_failures`, `tls_agent`
 
 ### Added
 - New per-job setting **"Notify after N consecutive failures"** (`notify_after_failures`, default 1).
@@ -15,6 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Exit code `-4` (maintenance-window skip) does not advance the failure counter.
   - Database migration `008_notify_after_failures.sql` adds the new column to `cronjobs`.
 - Notification messages (e-mail and Telegram) include a footer when the threshold is > 1, stating that no further alerts will be sent until the job recovers.
+- **TLS for agent communication** – the agent container now runs an nginx reverse proxy that terminates TLS on port 8865, forwarding plain HTTP internally to the PHP built-in server.
+  - A 2048-bit RSA self-signed certificate is auto-generated on first start when no certificate files are found.
+  - Custom certificates can be provided by mounting `TLS_CERT_FILE` / `TLS_KEY_FILE` paths.
+  - TLS can be disabled per-container via `AGENT_TLS_ENABLED=false` for trusted internal deployments.
+  - `HostAgentClient` gains `agent.ssl_verify` and `agent.ssl_ca_bundle` config keys for flexible certificate verification.
+  - All compose files and the example `.env` updated to use `https://` agent URLs by default.
 
 ### Changed
 - `ExportEndpoint` now exports all advanced job fields (`execution_limit_seconds`, `auto_kill_on_limit`, `singleton`, `run_in_maintenance`, `retention_days`, `retry_count`, `retry_delay_minutes`, `notify_after_failures`) for a complete job backup.

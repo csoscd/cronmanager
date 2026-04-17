@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.8.0] – branch: `notify_after_failures`
+
+### Added
+- New per-job setting **"Notify after N consecutive failures"** (`notify_after_failures`, default 1).
+  - A failure notification is sent only when the consecutive failure count reaches the configured threshold for the first time.
+  - Subsequent failures beyond the threshold are silently suppressed until the job recovers (any successful execution resets the counter).
+  - Exit code `-4` (maintenance-window skip) does not advance the failure counter.
+  - Database migration `008_notify_after_failures.sql` adds the new column to `cronjobs`.
+- Notification messages (e-mail and Telegram) include a footer when the threshold is > 1, stating that no further alerts will be sent until the job recovers.
+
+### Changed
+- `ExportEndpoint` now exports all advanced job fields (`execution_limit_seconds`, `auto_kill_on_limit`, `singleton`, `run_in_maintenance`, `retention_days`, `retry_count`, `retry_delay_minutes`, `notify_after_failures`) for a complete job backup.
+
+---
+
 ## [2.7.0] – branch: `advanced_settings`
 
 ### Changed

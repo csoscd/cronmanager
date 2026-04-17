@@ -115,7 +115,8 @@ final class TelegramNotifier
         int    $exitCode,
         string $output,
         string $startedAt,
-        string $finishedAt
+        string $finishedAt,
+        int    $notifyAfterFailures = 1,
     ): bool {
         // ------------------------------------------------------------------
         // Guard: respect the master telegram.enabled switch
@@ -166,7 +167,8 @@ final class TelegramNotifier
             $exitCode,
             $truncatedOutput,
             $startedAt,
-            $finishedAt
+            $finishedAt,
+            $notifyAfterFailures,
         );
 
         // ------------------------------------------------------------------
@@ -293,7 +295,8 @@ final class TelegramNotifier
         int    $exitCode,
         string $output,
         string $startedAt,
-        string $finishedAt
+        string $finishedAt,
+        int    $notifyAfterFailures = 1,
     ): string {
         // Helper: escape a value for safe HTML embedding in Telegram messages
         $e = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -319,6 +322,15 @@ final class TelegramNotifier
             ? sprintf("\n\n<b>Output:</b>\n<pre>%s</pre>", $e($output))
             : "\n\n<b>Output:</b> <i>(none)</i>";
 
+        // "No further alerts" footer – only shown when threshold > 1
+        $noFurtherAlertsBlock = $notifyAfterFailures > 1
+            ? sprintf(
+                "\n\n<i>\u{2139}\u{FE0F} Alert threshold reached (%d consecutive failures). "
+                . "No further failure alerts will be sent until this job recovers.</i>",
+                $notifyAfterFailures,
+            )
+            : '';
+
         $message = sprintf(
             "%s <b>Cronmanager \u{2013} %s</b>\n\n"
             . "<b>Job ID:</b> %s\n"
@@ -328,6 +340,7 @@ final class TelegramNotifier
             . "<b>Exit Code:</b> %s\n"
             . "<b>Started:</b> %s\n"
             . "<b>%s:</b> %s"
+            . "%s"
             . "%s",
             $emoji,
             $e($title),
@@ -339,7 +352,8 @@ final class TelegramNotifier
             $e($startedAt),
             $e($finishedLabel),
             $e($finishedAt),
-            $outputBlock
+            $outputBlock,
+            $noFurtherAlertsBlock,
         );
 
         // Final safety cap: truncate to Telegram's hard 4 096-character limit

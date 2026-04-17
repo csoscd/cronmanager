@@ -395,8 +395,9 @@ final class ExecutionFinishEndpoint
                 // When retryScheduled is false (no more retries or retry not configured),
                 // send notification for non-zero exit codes as usual.
                 if ($exitCode !== 0 && !$retryScheduled) {
-                    $retryCount      = (int) ($job['retry_count'] ?? 0);
-                    $currentAttempt  = $this->fetchRetryAttempt($executionId);
+                    $retryCount          = (int) ($job['retry_count']          ?? 0);
+                    $notifyAfterFailures = max(1, (int) ($job['notify_after_failures'] ?? 1));
+                    $currentAttempt      = $this->fetchRetryAttempt($executionId);
 
                     // Add retry context to the output when this was a retry
                     $notifyOutput = $output;
@@ -409,16 +410,37 @@ final class ExecutionFinishEndpoint
                         );
                     }
 
-                    $notified = $this->dispatchNotification(
-                        jobId:       $jobId,
-                        description: $label,
-                        linuxUser:   (string) $job['linux_user'],
-                        schedule:    (string) $job['schedule'],
-                        exitCode:    $exitCode,
-                        output:      $notifyOutput,
-                        startedAt:   $startedAt,
-                        finishedAt:  $finishedAt
-                    );
+                    // threshold=1 (default): notify on every failure – no count query needed,
+                    // preserves original behaviour exactly.
+                    // threshold>1: notify only the first time the streak reaches the
+                    // threshold; subsequent failures are silent until the job recovers.
+                    $shouldNotify = true;
+                    if ($notifyAfterFailures > 1) {
+                        $consecutiveFailures = $this->countConsecutiveFailedRuns($jobId, $target);
+                        $shouldNotify        = ($consecutiveFailures === $notifyAfterFailures);
+
+                        if (!$shouldNotify) {
+                            $this->logger->info('ExecutionFinishEndpoint: failure notification suppressed (threshold not reached or already notified)', [
+                                'job_id'               => $jobId,
+                                'consecutive_failures' => $consecutiveFailures,
+                                'threshold'            => $notifyAfterFailures,
+                            ]);
+                        }
+                    }
+
+                    if ($shouldNotify) {
+                        $notified = $this->dispatchNotification(
+                            jobId:               $jobId,
+                            description:         $label,
+                            linuxUser:           (string) $job['linux_user'],
+                            schedule:            (string) $job['schedule'],
+                            exitCode:            $exitCode,
+                            output:              $notifyOutput,
+                            startedAt:           $startedAt,
+                            finishedAt:          $finishedAt,
+                            notifyAfterFailures: $notifyAfterFailures,
+                        );
+                    }
                 }
 
                 // ---- Limit-exceeded notification (if not already sent by check-limits.php) ----
@@ -569,7 +591,8 @@ final class ExecutionFinishEndpoint
     {
         $stmt = $this->pdo->prepare(
             'SELECT id, linux_user, schedule, command, description, notify_on_failure,
-                    execution_limit_seconds, retry_count, retry_delay_minutes
+                    execution_limit_seconds, retry_count, retry_delay_minutes,
+                    notify_after_failures
                FROM cronjobs
               WHERE id = :id
               LIMIT 1'
@@ -737,7 +760,8 @@ final class ExecutionFinishEndpoint
         int    $exitCode,
         string $output,
         string $startedAt,
-        string $finishedAt
+        string $finishedAt,
+        int    $notifyAfterFailures = 1,
     ): bool {
         // Path: agent/src/Endpoints/ → up 2 levels → agent/ → bin/send-notification.php
         $notifyScript = dirname(__DIR__, 2) . '/bin/send-notification.php';
@@ -752,24 +776,26 @@ final class ExecutionFinishEndpoint
                 'exec_available' => $execAvailable,
             ]);
             $mailSent     = $this->mailNotifier->sendFailureAlert(
-                jobId:       $jobId,
-                description: $description,
-                linuxUser:   $linuxUser,
-                schedule:    $schedule,
-                exitCode:    $exitCode,
-                output:      $output,
-                startedAt:   $startedAt,
-                finishedAt:  $finishedAt
+                jobId:               $jobId,
+                description:         $description,
+                linuxUser:           $linuxUser,
+                schedule:            $schedule,
+                exitCode:            $exitCode,
+                output:              $output,
+                startedAt:           $startedAt,
+                finishedAt:          $finishedAt,
+                notifyAfterFailures: $notifyAfterFailures,
             );
             $telegramSent = $this->telegramNotifier->sendFailureAlert(
-                jobId:       $jobId,
-                description: $description,
-                linuxUser:   $linuxUser,
-                schedule:    $schedule,
-                exitCode:    $exitCode,
-                output:      $output,
-                startedAt:   $startedAt,
-                finishedAt:  $finishedAt
+                jobId:               $jobId,
+                description:         $description,
+                linuxUser:           $linuxUser,
+                schedule:            $schedule,
+                exitCode:            $exitCode,
+                output:              $output,
+                startedAt:           $startedAt,
+                finishedAt:          $finishedAt,
+                notifyAfterFailures: $notifyAfterFailures,
             );
             return $mailSent || $telegramSent;
         }
@@ -780,61 +806,66 @@ final class ExecutionFinishEndpoint
         if ($tempFile === false) {
             $this->logger->error('ExecutionFinishEndpoint: tempnam() failed – falling back to synchronous notification sending');
             $mailSent     = $this->mailNotifier->sendFailureAlert(
-                jobId:       $jobId,
-                description: $description,
-                linuxUser:   $linuxUser,
-                schedule:    $schedule,
-                exitCode:    $exitCode,
-                output:      $output,
-                startedAt:   $startedAt,
-                finishedAt:  $finishedAt
+                jobId:               $jobId,
+                description:         $description,
+                linuxUser:           $linuxUser,
+                schedule:            $schedule,
+                exitCode:            $exitCode,
+                output:              $output,
+                startedAt:           $startedAt,
+                finishedAt:          $finishedAt,
+                notifyAfterFailures: $notifyAfterFailures,
             );
             $telegramSent = $this->telegramNotifier->sendFailureAlert(
-                jobId:       $jobId,
-                description: $description,
-                linuxUser:   $linuxUser,
-                schedule:    $schedule,
-                exitCode:    $exitCode,
-                output:      $output,
-                startedAt:   $startedAt,
-                finishedAt:  $finishedAt
+                jobId:               $jobId,
+                description:         $description,
+                linuxUser:           $linuxUser,
+                schedule:            $schedule,
+                exitCode:            $exitCode,
+                output:              $output,
+                startedAt:           $startedAt,
+                finishedAt:          $finishedAt,
+                notifyAfterFailures: $notifyAfterFailures,
             );
             return $mailSent || $telegramSent;
         }
 
         $payload = json_encode([
-            'job_id'      => $jobId,
-            'description' => $description,
-            'linux_user'  => $linuxUser,
-            'schedule'    => $schedule,
-            'exit_code'   => $exitCode,
-            'output'      => $output,
-            'started_at'  => $startedAt,
-            'finished_at' => $finishedAt,
+            'job_id'               => $jobId,
+            'description'          => $description,
+            'linux_user'           => $linuxUser,
+            'schedule'             => $schedule,
+            'exit_code'            => $exitCode,
+            'output'               => $output,
+            'started_at'           => $startedAt,
+            'finished_at'          => $finishedAt,
+            'notify_after_failures' => $notifyAfterFailures,
         ], JSON_UNESCAPED_UNICODE);
 
         if (file_put_contents($tempFile, $payload) === false) {
             @unlink($tempFile);
             $this->logger->error('ExecutionFinishEndpoint: failed to write notification temp file – falling back to synchronous notification sending');
             $mailSent     = $this->mailNotifier->sendFailureAlert(
-                jobId:       $jobId,
-                description: $description,
-                linuxUser:   $linuxUser,
-                schedule:    $schedule,
-                exitCode:    $exitCode,
-                output:      $output,
-                startedAt:   $startedAt,
-                finishedAt:  $finishedAt
+                jobId:               $jobId,
+                description:         $description,
+                linuxUser:           $linuxUser,
+                schedule:            $schedule,
+                exitCode:            $exitCode,
+                output:              $output,
+                startedAt:           $startedAt,
+                finishedAt:          $finishedAt,
+                notifyAfterFailures: $notifyAfterFailures,
             );
             $telegramSent = $this->telegramNotifier->sendFailureAlert(
-                jobId:       $jobId,
-                description: $description,
-                linuxUser:   $linuxUser,
-                schedule:    $schedule,
-                exitCode:    $exitCode,
-                output:      $output,
-                startedAt:   $startedAt,
-                finishedAt:  $finishedAt
+                jobId:               $jobId,
+                description:         $description,
+                linuxUser:           $linuxUser,
+                schedule:            $schedule,
+                exitCode:            $exitCode,
+                output:              $output,
+                startedAt:           $startedAt,
+                finishedAt:          $finishedAt,
+                notifyAfterFailures: $notifyAfterFailures,
             );
             return $mailSent || $telegramSent;
         }
@@ -855,6 +886,63 @@ final class ExecutionFinishEndpoint
         ]);
 
         return true;
+    }
+
+    /**
+     * Count consecutive failed original runs for a given job and target.
+     *
+     * "Consecutive" means uninterrupted by any successful execution (exit_code = 0,
+     * any retry_attempt).  Only retry_attempt = 0 rows are counted as individual
+     * "runs" so that each retry chain counts as one logical failure event.
+     *
+     * Exit code -4 (skipped during maintenance window) is excluded because a skip
+     * is not a failure and should not advance the failure counter.
+     *
+     * The current execution must already be committed before this method is called.
+     *
+     * @param int         $jobId  Cron job ID.
+     * @param string|null $target Execution target ("local", SSH alias, or NULL for legacy rows).
+     *
+     * @return int Number of consecutive failed runs since the last success.
+     */
+    private function countConsecutiveFailedRuns(int $jobId, ?string $target): int
+    {
+        // Find the started_at of the most recent successful execution for this
+        // job/target (success = exit_code 0, any retry attempt).
+        // PDO named parameters may not be reused within one query, so each
+        // occurrence of the target value gets a distinct placeholder name.
+        $lastSuccessStmt = $this->pdo->prepare(
+            'SELECT MAX(started_at)
+               FROM execution_log
+              WHERE cronjob_id = :job_id
+                AND (:target1 IS NULL AND target IS NULL OR target = :target2)
+                AND exit_code = 0
+                AND finished_at IS NOT NULL'
+        );
+        $lastSuccessStmt->execute([':job_id' => $jobId, ':target1' => $target, ':target2' => $target]);
+        $lastSuccess = $lastSuccessStmt->fetchColumn();
+
+        // Count original runs (retry_attempt = 0) that started after the last
+        // success and have a real failure exit code (not 0, not -4 maintenance skip).
+        $countStmt = $this->pdo->prepare(
+            'SELECT COUNT(*)
+               FROM execution_log
+              WHERE cronjob_id = :job_id
+                AND (:target1 IS NULL AND target IS NULL OR target = :target2)
+                AND retry_attempt = 0
+                AND finished_at IS NOT NULL
+                AND exit_code != 0
+                AND exit_code != -4
+                AND started_at > COALESCE(:last_success, \'1970-01-01 00:00:00\')'
+        );
+        $countStmt->execute([
+            ':job_id'       => $jobId,
+            ':target1'      => $target,
+            ':target2'      => $target,
+            ':last_success' => ($lastSuccess !== false && $lastSuccess !== null) ? (string) $lastSuccess : null,
+        ]);
+
+        return (int) $countStmt->fetchColumn();
     }
 
     /**

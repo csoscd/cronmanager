@@ -1081,6 +1081,12 @@ class CronController extends BaseController
             ? (int) $rawRetryDelay
             : 1;
 
+        // notify_after_failures: positive integer, default 1
+        $rawNotifyAfter = trim((string) ($post['notify_after_failures'] ?? ''));
+        $notifyAfterFailures = ($rawNotifyAfter !== '' && ctype_digit($rawNotifyAfter) && (int) $rawNotifyAfter >= 1)
+            ? (int) $rawNotifyAfter
+            : 1;
+
         return [
             'linux_user'               => trim((string) ($post['linux_user']   ?? '')),
             'schedule'                 => trim((string) ($post['schedule']     ?? '')),
@@ -1096,6 +1102,7 @@ class CronController extends BaseController
             'retention_days'           => $retentionDays,
             'retry_count'              => $retryCount,
             'retry_delay_minutes'      => $retryDelayMinutes,
+            'notify_after_failures'    => $notifyAfterFailures,
             'targets'                  => $targets,
         ];
     }

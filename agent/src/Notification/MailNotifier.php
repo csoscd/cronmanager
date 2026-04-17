@@ -85,7 +85,8 @@ final class MailNotifier
         int    $exitCode,
         string $output,
         string $startedAt,
-        string $finishedAt
+        string $finishedAt,
+        int    $notifyAfterFailures = 1,
     ): bool {
         // ------------------------------------------------------------------
         // Guard: respect the master mail.enabled switch
@@ -139,7 +140,8 @@ final class MailNotifier
             $exitCode,
             $truncatedOutput,
             $startedAt,
-            $finishedAt
+            $finishedAt,
+            $notifyAfterFailures,
         );
 
         $htmlBody = $this->buildHtmlBody(
@@ -150,7 +152,8 @@ final class MailNotifier
             $exitCode,
             $truncatedOutput,
             $startedAt,
-            $finishedAt
+            $finishedAt,
+            $notifyAfterFailures,
         );
 
         // ------------------------------------------------------------------
@@ -361,7 +364,8 @@ HTML;
         int    $exitCode,
         string $output,
         string $startedAt,
-        string $finishedAt
+        string $finishedAt,
+        int    $notifyAfterFailures = 1,
     ): string {
         $headline = match (true) {
             $exitCode === -2 => 'CRONMANAGER – JOB AUTO-KILLED (EXECUTION LIMIT EXCEEDED)',
@@ -378,7 +382,7 @@ HTML;
             ? sprintf('Notified At: %s', $finishedAt)
             : sprintf('Finished   : %s', $finishedAt);
 
-        return implode("\n", [
+        $lines = [
             $headline,
             str_repeat('=', 60),
             '',
@@ -396,8 +400,20 @@ HTML;
             $output !== '' ? $output : '(no output)',
             '',
             str_repeat('=', 60),
-            'This message was generated automatically by Cronmanager.',
-        ]);
+        ];
+
+        if ($notifyAfterFailures > 1) {
+            $lines[] = sprintf(
+                'NOTE: This alert was triggered after %d consecutive failures.',
+                $notifyAfterFailures,
+            );
+            $lines[] = '      No further failure alerts will be sent until this job recovers.';
+            $lines[] = '';
+        }
+
+        $lines[] = 'This message was generated automatically by Cronmanager.';
+
+        return implode("\n", $lines);
     }
 
     /**
@@ -425,12 +441,22 @@ HTML;
         int    $exitCode,
         string $output,
         string $startedAt,
-        string $finishedAt
+        string $finishedAt,
+        int    $notifyAfterFailures = 1,
     ): string {
         // Helper: escape a value for safe HTML embedding
         $e = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
         $outputHtml = $output !== '' ? $e($output) : '<em>(no output)</em>';
+
+        $noFurtherAlertsHtml = $notifyAfterFailures > 1
+            ? sprintf(
+                '<div style="margin-top:16px;padding:10px 14px;background:#fef9c3;border-left:4px solid #ca8a04;border-radius:4px;font-size:13px;color:#713f12;">'
+                . '<strong>&#x26A0; Alert threshold reached:</strong> This notification was triggered after <strong>%d consecutive failures</strong>. '
+                . 'No further failure alerts will be sent until this job recovers successfully.</div>',
+                $notifyAfterFailures,
+            )
+            : '';
 
         [$h1Text, $introText, $h1Color] = match (true) {
             $exitCode === -2 => [
@@ -485,6 +511,8 @@ HTML;
 
     <h2 style="font-size:15px; margin-bottom:6px;">Output</h2>
     <pre>{$outputHtml}</pre>
+
+    {$noFurtherAlertsHtml}
 
     <p class="footer">This message was generated automatically by Cronmanager.</p>
 </div>

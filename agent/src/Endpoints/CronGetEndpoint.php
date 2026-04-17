@@ -182,6 +182,7 @@ final class CronGetEndpoint
                 j.retention_days,
                 j.retry_count,
                 j.retry_delay_minutes,
+                j.notify_after_failures,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -262,6 +263,7 @@ final class CronGetEndpoint
                 : null,
             'retry_count'              => (int) ($row['retry_count']          ?? 0),
             'retry_delay_minutes'      => max(1, (int) ($row['retry_delay_minutes'] ?? 1)),
+            'notify_after_failures'    => max(1, (int) ($row['notify_after_failures'] ?? 1)),
             'targets'                  => $targets,
             // Legacy fields kept so old wrapper invocations (no target arg) still work
             'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),

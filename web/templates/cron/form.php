@@ -53,14 +53,18 @@ $isSingletonVal       = $job !== null ? !empty($job['singleton']) : false;
 $isRunInMaintVal      = $job !== null ? !empty($job['run_in_maintenance']) : false;
 $pageTitle     = $isEdit ? $t('cron_edit') : $t('cron_add');
 
-// Auto-expand the advanced panel when any non-default advanced value is already set
-// (edit/copy mode) so the user immediately sees why those fields are populated.
+// Auto-expand the advanced tab when any non-default advanced value is already set.
 $advancedOpen  = $isAutoKillVal
     || $isSingletonVal
     || $isRunInMaintVal
     || $val('execution_limit_seconds') !== ''
     || $val('retention_days') !== ''
     || (int) $val('retry_count', '0') > 0;
+
+// Auto-expand the notify tab when any notify setting deviates from the default.
+$notifyOpen    = !$isNotifyVal
+    || (int) $val('notify_after_failures', '1') > 1
+    || (int) $val('notify_after_limit_exceeded', '1') > 1;
 
 // Collect existing tag names for click-to-insert hints
 $tagHints = [];
@@ -138,6 +142,12 @@ foreach ($tags as $tag) {
                         class="px-4 py-2.5 text-sm transition-colors focus:outline-none
                                <?= $tabInactiveClass ?>">
                     <?= htmlspecialchars($t('form_advanced_settings'), ENT_QUOTES, 'UTF-8') ?>
+                </button>
+                <button type="button" id="tab-btn-notify"
+                        onclick="switchTab('notify')"
+                        class="px-4 py-2.5 text-sm transition-colors focus:outline-none
+                               <?= $tabInactiveClass ?>">
+                    <?= htmlspecialchars($t('form_tab_notify'), ENT_QUOTES, 'UTF-8') ?>
                 </button>
             </div>
 
@@ -281,7 +291,7 @@ foreach ($tags as $tag) {
                     <?php endif; ?>
                 </div>
 
-                <!-- Active + Notify checkboxes -->
+                <!-- Active checkbox -->
                 <div class="mb-4 flex flex-wrap gap-6">
 
                     <label class="flex items-center gap-2 cursor-pointer">
@@ -291,16 +301,6 @@ foreach ($tags as $tag) {
                                       focus:ring-blue-500 cursor-pointer">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
                             <?= htmlspecialchars($t('cron_active'), ENT_QUOTES, 'UTF-8') ?>
-                        </span>
-                    </label>
-
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" name="notify_on_failure" value="1"
-                               <?= $isNotifyVal ? 'checked' : '' ?>
-                               class="w-4 h-4 text-blue-600 border-gray-300 rounded
-                                      focus:ring-blue-500 cursor-pointer">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            <?= htmlspecialchars($t('cron_notify_on_failure'), ENT_QUOTES, 'UTF-8') ?>
                         </span>
                     </label>
 
@@ -416,28 +416,6 @@ foreach ($tags as $tag) {
                     </p>
                 </div>
 
-                <!-- Notify after N failures -->
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        <?= htmlspecialchars($t('cron_notify_after_failures'), ENT_QUOTES, 'UTF-8') ?>
-                    </label>
-                    <div class="flex items-center gap-2">
-                        <input type="number" id="notify_after_failures" name="notify_after_failures"
-                               min="1" step="1"
-                               value="<?= htmlspecialchars($val('notify_after_failures', '1'), ENT_QUOTES, 'UTF-8') ?>"
-                               class="w-20 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
-                                      bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                                      focus:outline-none focus:ring-2 focus:ring-blue-500
-                                      focus:border-blue-500 transition">
-                        <span class="text-sm text-gray-500 dark:text-gray-400">
-                            <?= htmlspecialchars($t('cron_notify_after_failures_unit'), ENT_QUOTES, 'UTF-8') ?>
-                        </span>
-                    </div>
-                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                        <?= htmlspecialchars($t('cron_notify_after_failures_hint'), ENT_QUOTES, 'UTF-8') ?>
-                    </p>
-                </div>
-
                 <!-- Advanced checkboxes -->
                 <div class="mb-6 flex flex-wrap gap-6">
 
@@ -481,6 +459,72 @@ foreach ($tags as $tag) {
 
             </div><!-- /tab-panel-advanced -->
 
+            <!-- ── Notify tab ────────────────────────────────────────────────── -->
+            <div id="tab-panel-notify" class="hidden">
+
+                <!-- Master notification switch -->
+                <div class="mb-6">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="notify_on_failure" value="1"
+                               id="notify_on_failure"
+                               <?= $isNotifyVal ? 'checked' : '' ?>
+                               class="w-4 h-4 text-blue-600 border-gray-300 rounded
+                                      focus:ring-blue-500 cursor-pointer">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            <?= htmlspecialchars($t('cron_notify_on_failure'), ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                    </label>
+                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500 ml-6">
+                        <?= htmlspecialchars($t('cron_notify_on_failure_hint'), ENT_QUOTES, 'UTF-8') ?>
+                    </p>
+                </div>
+
+                <!-- Notify after N consecutive failures -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <?= htmlspecialchars($t('cron_notify_after_failures'), ENT_QUOTES, 'UTF-8') ?>
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="notify_after_failures" name="notify_after_failures"
+                               min="1" step="1"
+                               value="<?= htmlspecialchars($val('notify_after_failures', '1'), ENT_QUOTES, 'UTF-8') ?>"
+                               class="w-20 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                      bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                      focus:outline-none focus:ring-2 focus:ring-blue-500
+                                      focus:border-blue-500 transition">
+                        <span class="text-sm text-gray-500 dark:text-gray-400">
+                            <?= htmlspecialchars($t('cron_notify_after_failures_unit'), ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        <?= htmlspecialchars($t('cron_notify_after_failures_hint'), ENT_QUOTES, 'UTF-8') ?>
+                    </p>
+                </div>
+
+                <!-- Notify after N consecutive limit exceedings -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <?= htmlspecialchars($t('cron_notify_after_limit_exceeded'), ENT_QUOTES, 'UTF-8') ?>
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="notify_after_limit_exceeded" name="notify_after_limit_exceeded"
+                               min="1" step="1"
+                               value="<?= htmlspecialchars($val('notify_after_limit_exceeded', '1'), ENT_QUOTES, 'UTF-8') ?>"
+                               class="w-20 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                      bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                      focus:outline-none focus:ring-2 focus:ring-blue-500
+                                      focus:border-blue-500 transition">
+                        <span class="text-sm text-gray-500 dark:text-gray-400">
+                            <?= htmlspecialchars($t('cron_notify_after_limit_exceeded_unit'), ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        <?= htmlspecialchars($t('cron_notify_after_limit_exceeded_hint'), ENT_QUOTES, 'UTF-8') ?>
+                    </p>
+                </div>
+
+            </div><!-- /tab-panel-notify -->
+
             <!-- Action buttons -->
             <div class="flex items-center gap-3">
                 <button type="submit"
@@ -508,7 +552,7 @@ foreach ($tags as $tag) {
  * @param {'basic'|'advanced'} tab  Tab to activate.
  */
 function switchTab(tab) {
-    const tabs    = ['basic', 'advanced'];
+    const tabs    = ['basic', 'advanced', 'notify'];
     const active  = 'border-b-2 border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-semibold';
     const inactive = 'border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600';
 
@@ -535,13 +579,19 @@ function switchTab(tab) {
     sessionStorage.setItem('cronform_active_tab', tab);
 }
 
-// Restore the previously selected tab from sessionStorage.
-// Basic is always the default; Advanced is only active when the user
-// explicitly switched to it during this browser session.
+// Restore the previously selected tab from sessionStorage; fall back to
+// auto-opening the notify or advanced tab when existing values deviate from
+// the defaults (edit/copy mode).
 (function () {
     const stored = sessionStorage.getItem('cronform_active_tab');
-    if (stored === 'advanced') {
+    if (stored === 'advanced' || stored === 'notify') {
+        switchTab(stored);
+    } else if (!stored) {
+        <?php if ($notifyOpen): ?>
+        switchTab('notify');
+        <?php elseif ($advancedOpen): ?>
         switchTab('advanced');
+        <?php endif; ?>
     }
 })();
 

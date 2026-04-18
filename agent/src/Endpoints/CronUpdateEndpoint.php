@@ -174,6 +174,7 @@ final class CronUpdateEndpoint
                      retry_count = :retry_count,
                      retry_delay_minutes = :retry_delay_minutes,
                      notify_after_failures = :notify_after_failures,
+                     notify_after_limit_exceeded = :notify_after_limit_exceeded,
                      execution_mode = :execution_mode,
                      ssh_host = :ssh_host
                  WHERE id = :id'
@@ -192,8 +193,9 @@ final class CronUpdateEndpoint
                 ':retention_days'          => $merged['retention_days'],
                 ':retry_count'             => (int) ($merged['retry_count']            ?? 0),
                 ':retry_delay_minutes'     => max(1, (int) ($merged['retry_delay_minutes'] ?? 1)),
-                ':notify_after_failures'   => max(1, (int) ($merged['notify_after_failures'] ?? 1)),
-                ':execution_mode'          => $executionMode,
+                ':notify_after_failures'        => max(1, (int) ($merged['notify_after_failures']        ?? 1)),
+                ':notify_after_limit_exceeded'  => max(1, (int) ($merged['notify_after_limit_exceeded']  ?? 1)),
+                ':execution_mode'               => $executionMode,
                 ':ssh_host'                => $sshHost,
                 ':id'                      => $jobId,
             ]);
@@ -319,10 +321,13 @@ final class CronUpdateEndpoint
             'retry_delay_minutes'      => array_key_exists('retry_delay_minutes', $body)
                 ? max(1, (int) $body['retry_delay_minutes'])
                 : max(1, (int) ($existing['retry_delay_minutes'] ?? 1)),
-            'notify_after_failures'    => array_key_exists('notify_after_failures', $body)
+            'notify_after_failures'       => array_key_exists('notify_after_failures', $body)
                 ? max(1, (int) $body['notify_after_failures'])
                 : max(1, (int) ($existing['notify_after_failures'] ?? 1)),
-            'targets'                  => $mergedTargets,
+            'notify_after_limit_exceeded' => array_key_exists('notify_after_limit_exceeded', $body)
+                ? max(1, (int) $body['notify_after_limit_exceeded'])
+                : max(1, (int) ($existing['notify_after_limit_exceeded'] ?? 1)),
+            'targets'                     => $mergedTargets,
             'tags'                     => array_key_exists('tags', $body) ? $body['tags'] : $existingTags,
         ];
     }
@@ -597,6 +602,7 @@ final class CronUpdateEndpoint
                 j.retry_count,
                 j.retry_delay_minutes,
                 j.notify_after_failures,
+                j.notify_after_limit_exceeded,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -657,9 +663,10 @@ final class CronUpdateEndpoint
                 : null,
             'retry_count'              => (int) ($row['retry_count']          ?? 0),
             'retry_delay_minutes'      => max(1, (int) ($row['retry_delay_minutes'] ?? 1)),
-            'notify_after_failures'    => max(1, (int) ($row['notify_after_failures'] ?? 1)),
-            'targets'                  => $targets,
-            'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),
+            'notify_after_failures'       => max(1, (int) ($row['notify_after_failures']        ?? 1)),
+            'notify_after_limit_exceeded' => max(1, (int) ($row['notify_after_limit_exceeded']  ?? 1)),
+            'targets'                     => $targets,
+            'execution_mode'              => (string) ($row['execution_mode'] ?? 'local'),
             'ssh_host'                 => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,
             'created_at'               => (string) $row['created_at'],
             'tags'                     => $tags,

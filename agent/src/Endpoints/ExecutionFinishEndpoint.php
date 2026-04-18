@@ -453,32 +453,55 @@ final class ExecutionFinishEndpoint
                     $elapsedSeconds = $this->calcElapsedSeconds($startedAt, $finishedAt);
 
                     if ($elapsedSeconds > $limitSeconds) {
-                        $limitOutput = sprintf(
-                            'Execution limit exceeded: job ran for %d seconds (limit: %d seconds).%s',
-                            $elapsedSeconds,
-                            $limitSeconds,
-                            $output !== '' ? "\n\nOutput:\n" . $output : '',
-                        );
+                        $notifyAfterLimitExceeded = max(1, (int) ($job['notify_after_limit_exceeded'] ?? 1));
 
-                        $notified = $this->dispatchNotification(
-                            jobId:       $jobId,
-                            description: $label,
-                            linuxUser:   (string) $job['linux_user'],
-                            schedule:    (string) $job['schedule'],
-                            exitCode:    -3,  // sentinel: -3 = limit exceeded
-                            output:      $limitOutput,
-                            startedAt:   $startedAt,
-                            finishedAt:  $finishedAt
-                        );
+                        // threshold=1: notify on every occurrence.
+                        // threshold>1: count consecutive limit-exceeded executions (previous
+                        // finished ones + this one) and only notify on exactly the Nth streak.
+                        $shouldNotifyLimit = true;
+                        if ($notifyAfterLimitExceeded > 1) {
+                            $prevConsecutive   = $this->countConsecutiveLimitExceeded($jobId, $target, $executionId);
+                            $totalConsecutive  = $prevConsecutive + 1;
+                            $shouldNotifyLimit = ($totalConsecutive === $notifyAfterLimitExceeded);
 
-                        // Mark as notified to prevent a duplicate from check-limits.php
+                            if (!$shouldNotifyLimit) {
+                                $this->logger->info('ExecutionFinishEndpoint: limit-exceeded notification suppressed (threshold not reached or already notified)', [
+                                    'execution_id'              => $executionId,
+                                    'consecutive_limit_exceeded' => $totalConsecutive,
+                                    'threshold'                 => $notifyAfterLimitExceeded,
+                                ]);
+                            }
+                        }
+
+                        // Always mark as notified so check-limits.php does not send a duplicate,
+                        // regardless of whether we actually dispatched the notification.
                         $this->markLimitNotified($executionId);
 
-                        $this->logger->info('ExecutionFinishEndpoint: limit-exceeded notification dispatched at finish', [
-                            'execution_id'    => $executionId,
-                            'elapsed_seconds' => $elapsedSeconds,
-                            'limit_seconds'   => $limitSeconds,
-                        ]);
+                        if ($shouldNotifyLimit) {
+                            $limitOutput = sprintf(
+                                'Execution limit exceeded: job ran for %d seconds (limit: %d seconds).%s',
+                                $elapsedSeconds,
+                                $limitSeconds,
+                                $output !== '' ? "\n\nOutput:\n" . $output : '',
+                            );
+
+                            $notified = $this->dispatchNotification(
+                                jobId:       $jobId,
+                                description: $label,
+                                linuxUser:   (string) $job['linux_user'],
+                                schedule:    (string) $job['schedule'],
+                                exitCode:    -3,  // sentinel: -3 = limit exceeded
+                                output:      $limitOutput,
+                                startedAt:   $startedAt,
+                                finishedAt:  $finishedAt
+                            );
+
+                            $this->logger->info('ExecutionFinishEndpoint: limit-exceeded notification dispatched at finish', [
+                                'execution_id'    => $executionId,
+                                'elapsed_seconds' => $elapsedSeconds,
+                                'limit_seconds'   => $limitSeconds,
+                            ]);
+                        }
                     }
                 }
             } else {
@@ -592,7 +615,7 @@ final class ExecutionFinishEndpoint
         $stmt = $this->pdo->prepare(
             'SELECT id, linux_user, schedule, command, description, notify_on_failure,
                     execution_limit_seconds, retry_count, retry_delay_minutes,
-                    notify_after_failures
+                    notify_after_failures, notify_after_limit_exceeded
                FROM cronjobs
               WHERE id = :id
               LIMIT 1'
@@ -940,6 +963,67 @@ final class ExecutionFinishEndpoint
             ':target1'      => $target,
             ':target2'      => $target,
             ':last_success' => ($lastSuccess !== false && $lastSuccess !== null) ? (string) $lastSuccess : null,
+        ]);
+
+        return (int) $countStmt->fetchColumn();
+    }
+
+    /**
+     * Count consecutive limit-exceeded finished executions for a job/target,
+     * excluding the current execution (which is being processed right now and
+     * does not yet have notified_limit_exceeded = 1).
+     *
+     * "Consecutive" means uninterrupted by any finished execution that did NOT
+     * exceed the limit (notified_limit_exceeded = 0 and exit_code != -2).
+     *
+     * The caller adds 1 for the current execution to obtain the full streak.
+     *
+     * @param int         $jobId       Cron job ID.
+     * @param string|null $target      Execution target.
+     * @param int         $executionId Current execution ID (excluded from the query).
+     *
+     * @return int Number of previous consecutive limit-exceeded finished executions.
+     */
+    private function countConsecutiveLimitExceeded(int $jobId, ?string $target, int $executionId): int
+    {
+        // Most recent finished execution (excluding current) that did NOT exceed
+        // the limit – this is the point where the consecutive streak resets.
+        $lastOkStmt = $this->pdo->prepare(
+            'SELECT MAX(started_at)
+               FROM execution_log
+              WHERE cronjob_id = :job_id
+                AND (:target1 IS NULL AND target IS NULL OR target = :target2)
+                AND finished_at IS NOT NULL
+                AND id != :execution_id
+                AND notified_limit_exceeded = 0
+                AND exit_code != -2'
+        );
+        $lastOkStmt->execute([
+            ':job_id'       => $jobId,
+            ':target1'      => $target,
+            ':target2'      => $target,
+            ':execution_id' => $executionId,
+        ]);
+        $lastOk = $lastOkStmt->fetchColumn();
+
+        // Count finished executions (excluding current) after $lastOk that DID exceed
+        // the limit (notified_limit_exceeded = 1 or auto-killed with exit_code = -2).
+        $countStmt = $this->pdo->prepare(
+            'SELECT COUNT(*)
+               FROM execution_log
+              WHERE cronjob_id = :job_id
+                AND (:target1 IS NULL AND target IS NULL OR target = :target2)
+                AND finished_at IS NOT NULL
+                AND id != :execution_id
+                AND (notified_limit_exceeded = 1 OR exit_code = -2)
+                AND started_at > COALESCE(:last_ok, \'1970-01-01 00:00:00\')'
+        );
+        $countStmt->execute([
+            ':job_id'       => $jobId,
+            ':target1'      => $target,
+            ':target2'      => $target,
+            ':execution_id' => $executionId,
+            ':last_ok'      => ($lastOk !== false && $lastOk !== null) ? (string) $lastOk : null,
         ]);
 
         return (int) $countStmt->fetchColumn();

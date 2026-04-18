@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.8.2] – branch: `notify-improve`
+
+### Added
+- New **"Notify" tab** in the job edit / create form, consolidating all notification settings in one place.
+  - The `notify_on_failure` master switch and the existing `notify_after_failures` threshold have been moved from the Basic and Advanced tabs to the new Notify tab.
+  - The Notify tab is auto-opened when any setting deviates from the default (edit / copy mode).
+- New per-job setting **"Notify after N consecutive limit exceedings"** (`notify_after_limit_exceeded`, default 1).
+  - A limit-exceeded alert is sent only when the consecutive exceeding count reaches the configured threshold.
+  - Subsequent exceedings beyond the threshold are silently suppressed until an execution completes within the limit.
+  - Applies to both the real-time checker (`check-limits.php`) and the at-finish path in `ExecutionFinishEndpoint`.
+  - Database migration `009_notify_after_limit_exceeded.sql` adds the new column to `cronjobs`.
+- `deploy.sh` now runs pending SQL migrations automatically on both `full` and `update` deploys (docker mode). Migrations are tracked in the new `schema_migrations` table — each migration file is applied at most once.
+
+---
+
 ## [2.8.1] – branch: `agent_tls_fix`
 
 ### Fixed

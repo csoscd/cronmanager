@@ -523,6 +523,55 @@ EOF
             && log "Schema applied successfully." \
             || log "WARNING: Schema application failed – container may not be running yet. Apply manually."
     fi
+
+    # ── Database migrations ───────────────────────────────────────────────────
+    # Applies pending SQL migrations from agent/sql/migrations/ in sorted order.
+    # Each migration is recorded in schema_migrations so it runs at most once.
+    # Runs on both full and update deploys (safe to re-run; schema.sql already
+    # contains the full column set, so migrations are no-ops on fresh installs
+    # once the tracking table catches up).
+    if [[ "${DEPLOY_TARGET}" == "docker" ]]; then
+        log "Checking pending database migrations..."
+
+        run_on_target "docker exec -i cronmanager-db mariadb \
+            -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' \
+            -e \"CREATE TABLE IF NOT EXISTS schema_migrations (
+                     migration  VARCHAR(255) NOT NULL PRIMARY KEY,
+                     applied_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\"" 2>/dev/null \
+            && log "Migrations tracking table ready." \
+            || log "WARNING: Could not create schema_migrations table – DB may not be running yet."
+
+        _mig_dir="${AGENT_TARGET}/sql/migrations"
+        _mig_list=$(run_on_target "ls '${_mig_dir}/'*.sql 2>/dev/null | sort" 2>/dev/null || true)
+
+        if [[ -z "${_mig_list}" ]]; then
+            log "No migration files found in ${_mig_dir}."
+        else
+            while IFS= read -r _mig_path; do
+                [[ -z "${_mig_path}" ]] && continue
+                _mig_name=$(basename "${_mig_path}")
+                _applied=$(run_on_target "docker exec -i cronmanager-db mariadb \
+                    -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' \
+                    -sNe \"SELECT COUNT(*) FROM schema_migrations WHERE migration='${_mig_name}'\"" 2>/dev/null || echo "0")
+                if [[ "${_applied}" == "0" ]]; then
+                    log "Applying migration: ${_mig_name}..."
+                    if run_on_target "docker exec -i cronmanager-db mariadb \
+                        -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' \
+                        < '${_mig_path}'" 2>/dev/null; then
+                        run_on_target "docker exec -i cronmanager-db mariadb \
+                            -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' \
+                            -e \"INSERT IGNORE INTO schema_migrations (migration) VALUES ('${_mig_name}')\"" 2>/dev/null || true
+                        log "Migration applied: ${_mig_name}"
+                    else
+                        log "WARNING: Migration failed: ${_mig_name} – apply manually if needed."
+                    fi
+                else
+                    log "Migration already applied: ${_mig_name}"
+                fi
+            done <<< "${_mig_list}"
+        fi
+    fi
 fi
 
 # ---------------------------------------------------------------------------

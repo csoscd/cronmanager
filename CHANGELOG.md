@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.9.0] – branch: `influx-connection`
+
+### Added
+- **InfluxDB 2.x integration**: every completed execution now writes a data point to InfluxDB when enabled.
+  - Enabled via `INFLUXDB_ENABLED=true` (Docker env) plus `INFLUXDB_URL`, `INFLUXDB_TOKEN`, `INFLUXDB_ORG`, and `INFLUXDB_BUCKET`.
+  - Measurement: `cron_execution` with tags `job_id`, `description`, `linux_user`, `target`, `status`, and all job tags as individual tag keys.
+  - Fields: `duration_seconds` (float), `exit_code` (int), `output_length` (int), `during_maintenance` (0/1).
+  - Status tag values: `success`, `failed`, `killed`, `limit_exceeded`, `maintenance`, `interrupted`.
+  - Timestamp precision: nanoseconds (InfluxDB `precision=ns`).
+  - Write is dispatched in a **background process** (`send-influx.php`) — slow or unreachable InfluxDB instances never delay the agent's HTTP response.
+  - Configurable timeout via `INFLUXDB_TIMEOUT` (default 10 s).
+- **Grafana example dashboard** (`grafana/cronmanager-overview.json`): importable JSON dashboard for InfluxDB 2.x / Flux queries.
+  - Variables: `DS_INFLUXDB` (datasource picker, automatically bound on import) and `bucket` (textbox, default `cronmanager`).
+  - Panels: Total Executions, Success Rate gauge, Failed stat, Avg Duration, Maintenance Skipped, Executions over Time by Status (stacked), Duration over Time by Job, Executions by Job (bar chart), Avg Duration by Job (bar chart), Recent Failures table.
+  - Status colours: success=green, failed=red, killed=orange, limit_exceeded=orange, maintenance=gray, interrupted=gray.
+
+---
+
 ## [2.8.5] – branch: `db-reconnect`
 
 ### Fixed

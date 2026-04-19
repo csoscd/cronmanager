@@ -475,6 +475,36 @@ port 587 (STARTTLS). Mixing these causes the connection to hang.
 returns the list of named `Host` entries (excluding wildcard `*` entries).
 These are offered in the web UI's target selector when creating or editing a job.
 
+### InfluxWriter / send-influx.php
+
+`src/Influx/InfluxWriter.php` writes a single `cron_execution` data point to
+InfluxDB 2.x after every completed execution (when `influxdb.enabled = true`).
+
+**Line protocol fields written:**
+
+| Name | Type | Notes |
+|---|---|---|
+| `duration_seconds` | float | Elapsed time in seconds |
+| `exit_code` | int | Raw process exit code |
+| `output_length` | int | Bytes of captured output |
+| `during_maintenance` | int | 1 if a maintenance window was active |
+
+**Tags:** `job_id`, `description`, `linux_user`, `target`, `status` (derived from exit code: `success / failed / killed / limit_exceeded / maintenance / interrupted`), and each job tag as `job_tags` (omitted when empty).
+
+**Async dispatch:** `ExecutionFinishEndpoint` writes the execution payload to a temporary
+JSON file and spawns `bin/send-influx.php <tempfile>` as a detached background process
+(same pattern as `send-notification.php`). The HTTP response is returned immediately;
+InfluxDB latency or unavailability never stalls the agent.
+
+**HTTP write:** `InfluxWriter` uses Guzzle to `POST` to
+`{influxdb.url}/api/v2/write?org=...&bucket=...&precision=ns` with an
+`Authorization: Token ...` header. Timestamp precision is nanoseconds.
+
+**Grafana dashboard:** `grafana/cronmanager-overview.json` is an importable Grafana
+dashboard with Flux queries covering execution counts, success rate, durations, and a
+recent-failures table. It uses two variables: `DS_INFLUXDB` (datasource picker,
+auto-bound on import) and `bucket` (textbox, default `cronmanager`).
+
 ---
 
 ## Agent HTTP API

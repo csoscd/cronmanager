@@ -50,6 +50,14 @@ services:
       - /opt/phplib/vendor:/opt/phplib/vendor:ro
       # Container entrypoint script
       - /opt/cronmanager/agent/docker/agent/entrypoint.sh:/entrypoint.sh:ro
+    environment:
+      # Optional: InfluxDB 2.x metrics (set in Portainer stack env or .env)
+      INFLUXDB_ENABLED: "${INFLUXDB_ENABLED:-false}"
+      INFLUXDB_URL:     "${INFLUXDB_URL:-http://influxdb:8086}"
+      INFLUXDB_TOKEN:   "${INFLUXDB_TOKEN:-}"
+      INFLUXDB_ORG:     "${INFLUXDB_ORG:-}"
+      INFLUXDB_BUCKET:  "${INFLUXDB_BUCKET:-cronmanager}"
+      INFLUXDB_TIMEOUT: "${INFLUXDB_TIMEOUT:-10}"
     networks:
       - cronmanager-internal
     depends_on:

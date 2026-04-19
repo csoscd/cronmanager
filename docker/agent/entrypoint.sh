@@ -45,6 +45,12 @@
 #   WEB_URL             ""  (base URL of the web UI, e.g. https://cronmanager.example.com – appended to alert links)
 #   TLS_CERT_FILE       /opt/cronmanager/agent/tls/cert.pem
 #   TLS_KEY_FILE        /opt/cronmanager/agent/tls/key.pem
+#   INFLUXDB_ENABLED    false
+#   INFLUXDB_URL        http://influxdb:8086
+#   INFLUXDB_TOKEN      ""
+#   INFLUXDB_ORG        ""
+#   INFLUXDB_BUCKET     cronmanager
+#   INFLUXDB_TIMEOUT    10
 #
 # @author  Christian Schulz <technik@meinetechnikwelt.rocks>
 # @license GNU General Public License version 3 or later
@@ -121,6 +127,14 @@ php -r "
     ],
     'notifications' => [
         'web_url' => getenv('WEB_URL') ?: '',
+    ],
+    'influxdb' => [
+        'enabled' => filter_var(getenv('INFLUXDB_ENABLED') ?: 'false', FILTER_VALIDATE_BOOLEAN),
+        'url'     => getenv('INFLUXDB_URL')    ?: 'http://influxdb:8086',
+        'token'   => getenv('INFLUXDB_TOKEN')  ?: '',
+        'org'     => getenv('INFLUXDB_ORG')    ?: '',
+        'bucket'  => getenv('INFLUXDB_BUCKET') ?: 'cronmanager',
+        'timeout' => (int)(getenv('INFLUXDB_TIMEOUT') ?: 10),
     ],
 ];
 file_put_contents('${CONFIG_FILE}', json_encode(\$config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);

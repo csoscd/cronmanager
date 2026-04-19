@@ -38,5 +38,13 @@
     },
     "notifications": {
         "web_url": ""
+    },
+    "influxdb": {
+        "enabled": false,
+        "url": "http://influxdb:8086",
+        "token": "",
+        "org": "",
+        "bucket": "cronmanager",
+        "timeout": 10
     }
 }

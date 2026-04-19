@@ -106,6 +106,7 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │   │   ├── cron-wrapper.sh        ← injected into every crontab entry
 │   │   ├── send-notification.php  ← background SMTP dispatcher (spawned by ExecutionFinishEndpoint)
 │   │   ├── check-limits.php       ← execution limit checker (runs every minute via /etc/cron.d)
+│   │   ├── startup-cleanup.php    ← one-shot orphan cleanup; called by start-agent.sh on every start
 │   │   ├── resync-crontab.php     ← CLI: rebuild all crontab entries from the database
 │   │   ├── start-agent.sh         ← manual start helper
 │   │   └── create-admin.php       ← CLI tool: create first admin
@@ -180,10 +181,10 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
     │   │   └── monitor.php
     │   ├── users/list.php
     │   ├── maintenance/
-    │   │   └── index.php
-    │   └── targets/
-    │       ├── list.php
-    │       └── form.php
+    │   │   ├── list.php          ← maintenance window list (per-target + _agent_)
+    │   │   └── form.php          ← maintenance window create/edit form
+    │   └── housekeeping/
+    │       └── index.php         ← admin tools (crontab resync, stuck executions, etc.)
     └── src/
         ├── Bootstrap.php
         ├── Database/Connection.php
@@ -210,7 +211,7 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
             ├── ExportController.php
             ├── UserController.php
             ├── MaintenanceController.php
-            └── TargetsController.php
+            └── TargetController.php
 ```
 
 ---
@@ -375,8 +376,9 @@ a notice and exits 0 without running the command. This is the mechanism behind s
 mode (see below).
 
 The wrapper also handles HTTP `423 Locked` from `POST /execution/start`: this indicates
-the job's target is currently inside a maintenance window and `run_in_maintenance = 0`.
-The wrapper records exit code `−4`, sets `during_maintenance = 1` in the finish call, and
+either (a) the `_agent_` target has an active maintenance window (all jobs blocked, no per-job
+override) or (b) the job's specific target is inside a maintenance window and `run_in_maintenance = 0`.
+In both cases the wrapper records exit code `−4`, sets `during_maintenance = 1` in the finish call, and
 exits 0. No failure alert is sent for maintenance-skipped executions.
 
 The wrapper logs to stderr (which is delivered by cron as a mail to the Linux user if
@@ -420,6 +422,30 @@ and either notify, auto-kill, or both — handling the case where the job outliv
 The `notified_limit_exceeded` flag ensures only one notification is sent even if the
 job runs for multiple checker cycles. `ExecutionFinishEndpoint` performs the same
 check at finish time to cover jobs that complete before the next checker run.
+
+### startup-cleanup.php
+
+`bin/startup-cleanup.php` is a one-shot CLI script executed by `start-agent.sh` **once** at agent start, before the PHP built-in server is launched.
+
+**Purpose:** detect execution_log rows that were left in the "running" state (`finished_at IS NULL`) because the agent was stopped while a job was executing. These orphan rows would otherwise remain stuck in the UI as perpetually running.
+
+**Grace period:** only rows whose `started_at` is more than 2 minutes in the past are considered, preventing false positives for jobs just launched before the restart.
+
+**Logic per orphan row:**
+
+```
+1. Query execution_log WHERE finished_at IS NULL
+                          AND started_at < NOW() - 2 minutes
+2. For each row:
+   a. If target = "local" AND pid IS NOT NULL:
+        posix_kill($pid, 0)  → if process still alive, skip
+        Otherwise: mark interrupted
+   b. SSH target or no pid: mark interrupted unconditionally
+3. "Mark interrupted" = SET exit_code=-5, finished_at=NOW(),
+                        APPEND "Interrupted: agent restarted..." to output
+```
+
+Exit code `-5` is displayed in the UI with an "Interrupted" badge (grey). The script exits 0 even if the database is temporarily unavailable so the agent always starts.
 
 ### MailNotifier
 
@@ -968,7 +994,15 @@ The web UI requests `look_ahead = 50` and considers a schedule **red** (will nev
 
 ### POST /execution/start (maintenance behaviour)
 
-When `POST /execution/start` is called for a job/target pair that is currently inside an active maintenance window:
+`ExecutionStartEndpoint` applies two independent maintenance guards in order:
+
+**1. Agent-level maintenance window (checked first)**
+
+If the reserved target `_agent_` has an active maintenance window at the time of the call, the endpoint immediately returns **HTTP 423 Locked** for every job, regardless of the job's own `run_in_maintenance` flag. The cron wrapper records exit code `−4` and `during_maintenance = 1`, then exits 0. There is no per-job override for the agent-level window.
+
+**2. Per-target maintenance window (checked second)**
+
+When `POST /execution/start` is called for a job/target pair that is currently inside an active per-target maintenance window:
 
 - If the job has `run_in_maintenance = 0` (default): the endpoint returns **HTTP 423 Locked**. The cron wrapper records exit code `−4` and `during_maintenance = 1` in the execution log, then exits 0.
 - If the job has `run_in_maintenance = 1`: the endpoint creates the execution row normally (HTTP 201) with `during_maintenance = 1` so the UI can label the run accordingly.
@@ -1042,8 +1076,8 @@ for security-sensitive checks such as navigation visibility.
 | `SwimlaneController` | `GET /swimlane`, `GET /swimlane?debug=1` | view |
 | `ExportController` | `GET /export`, `GET /export/download` | view |
 | `UserController` | `GET /users`, `POST /users/{id}/role`, `POST /users/{id}/delete` | admin |
-| `MaintenanceController` | `GET /maintenance`, `POST /maintenance/crontab/resync`, `POST /maintenance/executions/{id}/finish`, `DELETE /maintenance/executions/{id}`, `POST /maintenance/executions/bulk`, `POST /maintenance/history/cleanup` | admin |
-| `TargetsController` | `GET /targets`, `POST /targets`, `GET /targets/{id}/edit`, `POST /targets/{id}`, `DELETE /targets/{id}` | admin |
+| `MaintenanceController` | `GET /housekeeping`, `POST /housekeeping/crontab/resync`, `POST /housekeeping/executions/{id}/finish`, `DELETE /housekeeping/executions/{id}`, `POST /housekeeping/executions/bulk`, `POST /housekeeping/history/cleanup` | admin |
+| `TargetController` | `GET /maintenance`, `POST /maintenance`, `GET /maintenance/{target}/edit`, `POST /maintenance/{target}`, `DELETE /maintenance/{target}`, `GET /maintenance/windows/conflict` | admin |
 
 ### HostAgentClient
 
@@ -1211,7 +1245,7 @@ UNIQUE KEY: `(job_id, target)`
 | `cronjob_id` | INT UNSIGNED FK → `cronjobs.id` | CASCADE DELETE |
 | `started_at` | DATETIME | |
 | `finished_at` | DATETIME NULL | NULL while running |
-| `exit_code` | INT NULL | NULL while running; `-2` = killed by operator; `-3` = limit exceeded (still running); `-4` = skipped due to maintenance window |
+| `exit_code` | INT NULL | NULL while running; `-2` = killed by operator; `-3` = limit exceeded (still running); `-4` = skipped due to maintenance window; `-5` = interrupted by agent restart (orphan cleanup) |
 | `output` | TEXT NULL | Truncated at 50,000 bytes |
 | `target` | VARCHAR(255) NULL | `"local"`, SSH alias, or NULL (pre-migration rows) |
 | `pid` | INT UNSIGNED NULL | Process PID for local executions; cleared on finish |
@@ -1224,7 +1258,7 @@ UNIQUE KEY: `(job_id, target)`
 | Column | Type | Notes |
 |---|---|---|
 | `id` | INT PK | |
-| `target` | VARCHAR(255) | `"local"` or SSH host alias |
+| `target` | VARCHAR(255) | `"local"`, SSH host alias, or reserved value `"_agent_"` (blocks all job executions regardless of per-job `run_in_maintenance` flag) |
 | `cron_schedule` | VARCHAR(100) | 5-field cron expression for window start time |
 | `duration_minutes` | SMALLINT UNSIGNED | Window length in minutes (default: 60) |
 | `description` | VARCHAR(255) NULL | Human-readable label |

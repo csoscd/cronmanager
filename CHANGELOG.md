@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.8.4] – branch: `small-features`
+
+### Added
+- **Startup orphan cleanup**: when the agent restarts after an ungraceful shutdown (e.g. VM maintenance stop), any execution records still marked as "running" with no live process are automatically resolved to exit code **-5** ("Interrupted by system restart"). A 2-minute grace period prevents false positives. Local jobs with a stored PID are verified via `posix_kill`; remote SSH jobs are cleaned up by age. The cleanup runs once before the HTTP server starts via `startup-cleanup.php` (called from `start-agent.sh`).
+- **Agent-level maintenance window**: the Maintenance page now includes a reserved pseudo-target **"Cronmanager Agent"** (`_agent_`). Maintenance windows defined for this target block **all** job executions unconditionally — the per-job "Run in maintenance" override is ignored. This models host-wide events (VM suspend/resume cycles) where no job should start regardless of individual settings.
+- **Navigation renamed**: the former "Targets" page (maintenance windows per target) is now called **"Maintenance"** (at `/maintenance`). The former "Maintenance" admin page (crontab resync, stuck executions, etc.) is now called **"Housekeeping"** (at `/housekeeping`).
+- New exit code **-5** displayed as "Interrupted" badge (gray) in timeline and job detail view.
+
+---
+
+## [2.8.3] – branch: `small-features`
+
+### Added
+- **Copy / Download log output** (issue #59): each execution log entry in the job detail view now has a _Copy_ button (clipboard) and a _Download_ button (saves as `cronmanager-jobN-YYYY-MM-DD.log`).
+- **Links in failure notifications** (issue #60): when `notifications.web_url` is configured (env var `WEB_URL` in Docker), notification messages now include a direct link to the Cronmanager UI.
+  - Still-running limit-exceeded alerts link to the job detail page (`/crons/{jobId}`).
+  - Finished failures and at-finish limit-exceeded alerts link to the timeline filtered by job, target, and `status=failed` so the specific error remains visible even after many subsequent runs.
+  - Applies to both e-mail (plain text + HTML) and Telegram notifications.
+  - The link is omitted when `WEB_URL` is empty (default), preserving existing behaviour.
+
+### Fixed
+- **Timeline direct-link filter clash** (issue #61): navigating to the timeline via a dashboard error entry or a notification link no longer applies the user's previously saved date-range (and other) cookie filters. Links from the dashboard and notifications now carry `?_direct=1`, which puts the timeline into _direct-link mode_: only the URL parameters are used, cookies are neither read nor written. Pagination within a direct-link session preserves `_direct=1`. The user can exit direct-link mode and save the shown filters by clicking the "Apply" button in the filter bar. A blue info banner is shown during direct-link mode to communicate this behaviour.
+- E-mail and Telegram subject/title/body for the at-finish limit-exceeded path now correctly says "at finish" rather than "still running", since the job has already completed when `ExecutionFinishEndpoint` processes it.
+
+---
+
 ## [2.8.2] – branch: `notify-improve`
 
 ### Added

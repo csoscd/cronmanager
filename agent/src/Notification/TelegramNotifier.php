@@ -117,6 +117,8 @@ final class TelegramNotifier
         string $startedAt,
         string $finishedAt,
         int    $notifyAfterFailures = 1,
+        string $target = '',
+        bool   $stillRunning = false,
     ): bool {
         // ------------------------------------------------------------------
         // Guard: respect the master telegram.enabled switch
@@ -169,6 +171,8 @@ final class TelegramNotifier
             $startedAt,
             $finishedAt,
             $notifyAfterFailures,
+            $target,
+            $stillRunning,
         );
 
         // ------------------------------------------------------------------
@@ -297,25 +301,39 @@ final class TelegramNotifier
         string $startedAt,
         string $finishedAt,
         int    $notifyAfterFailures = 1,
+        string $target = '',
+        bool   $stillRunning = false,
     ): string {
         // Helper: escape a value for safe HTML embedding in Telegram messages
         $e = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
         // Determine heading and emoji based on exit-code sentinel
         [$emoji, $title] = match (true) {
-            $exitCode === -2 => ["\u{1F6AB}", 'Job Auto-Killed (Limit Exceeded)'],
-            $exitCode === -3 => ["\u{23F0}",  'Job Execution Limit Exceeded'],
-            default          => ["\u{26A0}",  'Job Failure Alert'],
+            $exitCode === -2                  => ["\u{1F6AB}", 'Job Auto-Killed (Limit Exceeded)'],
+            $exitCode === -3 && $stillRunning => ["\u{23F0}",  'Job Execution Limit Exceeded'],
+            $exitCode === -3                  => ["\u{23F0}",  'Job Execution Limit Exceeded (at Finish)'],
+            default                          => ["\u{26A0}",  'Job Failure Alert'],
         };
 
-        // Exit-code line: show N/A for limit-exceeded alerts where the job is
-        // still running and has no real exit code yet.
-        $exitCodeDisplay = $exitCode === -3
-            ? "<i>N/A \u{2013} job still running</i>"
-            : sprintf('<b>%s</b>', $e((string) $exitCode));
+        // Exit-code line: show N/A for limit-exceeded alerts.
+        $exitCodeDisplay = match (true) {
+            $exitCode === -3 && $stillRunning => "<i>N/A \u{2013} job still running</i>",
+            $exitCode === -3                  => "<i>N/A \u{2013} execution limit exceeded</i>",
+            default                          => sprintf('<b>%s</b>', $e((string) $exitCode)),
+        };
 
-        // Timestamp label: use "Notified At" for still-running jobs.
-        $finishedLabel = $exitCode === -3 ? 'Notified At' : 'Finished';
+        // Timestamp label: use "Notified At" only for still-running jobs.
+        $finishedLabel = ($exitCode === -3 && $stillRunning) ? 'Notified At' : 'Finished';
+
+        // Optional link to the UI
+        $webUrl    = (string) $this->config->get('notifications.web_url', '');
+        $linkBlock = '';
+        if ($webUrl !== '') {
+            $link      = $stillRunning
+                ? rtrim($webUrl, '/') . '/crons/' . $jobId
+                : rtrim($webUrl, '/') . '/timeline?job_id=' . $jobId . '&target=' . urlencode($target) . '&status=failed&_direct=1';
+            $linkBlock = sprintf("\n\n<a href=\"%s\">\u{1F517} View in Cronmanager</a>", $e($link));
+        }
 
         // Output block
         $outputBlock = $output !== ''
@@ -341,6 +359,7 @@ final class TelegramNotifier
             . "<b>Started:</b> %s\n"
             . "<b>%s:</b> %s"
             . "%s"
+            . "%s"
             . "%s",
             $emoji,
             $e($title),
@@ -354,6 +373,7 @@ final class TelegramNotifier
             $e($finishedAt),
             $outputBlock,
             $noFurtherAlertsBlock,
+            $linkBlock,
         );
 
         // Final safety cap: truncate to Telegram's hard 4 096-character limit

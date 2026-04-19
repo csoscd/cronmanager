@@ -36,7 +36,7 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 10. [Failure Alerts (Email & Telegram)](#failure-alerts-email--telegram)
 11. [Multi-Host Execution](#multi-host-execution)
 12. [Crontab Import](#crontab-import)
-13. [Maintenance](#maintenance)
+13. [Housekeeping](#housekeeping)
 14. [Maintenance Windows](#maintenance-windows)
 15. [Export](#export)
 16. [User Management](#user-management)
@@ -64,8 +64,9 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Export** | Download a ready-to-use crontab file or JSON for all managed jobs |
 | **Email alerts** | Receive an email when a job exits with a non-zero status or exceeds its execution limit |
 | **Telegram alerts** | Receive a Telegram message for the same events via the Bot API |
-| **Maintenance Windows** | Define per-target scheduled maintenance windows; jobs are either skipped (exit code −4) or executed silently depending on the per-job setting. Conflict icons (⚠ amber / ✕ red) appear in the job list and detail view |
-| **Maintenance** | Crontab sync, stuck-execution cleanup, and history bulk-delete |
+| **Maintenance Windows** | Define per-target scheduled maintenance windows; jobs are either skipped (exit code −4) or executed silently depending on the per-job setting. A special **"Cronmanager Agent"** target blocks all executions host-wide (useful for VM maintenance cycles). Conflict icons (⚠ amber / ✕ red) appear in the job list and detail view |
+| **Startup orphan cleanup** | On agent restart, executions still marked as "running" with no live process are automatically resolved to exit code −5 ("Interrupted by system restart") |
+| **Housekeeping** | Crontab sync, stuck-execution cleanup, and history bulk-delete |
 | **Local & SSO auth** | Username/password accounts or OAuth 2.0 / OpenID Connect (OIDC) via Authentik |
 | **Role-based access** | Admin (full access) and Viewer (read-only) roles |
 | **User management** | Admins can promote, demote, or remove users |
@@ -1087,15 +1088,15 @@ docker exec cronmanager-agent crontab -l
 docker exec cronmanager-agent cat /var/spool/cron/crontabs/root
 ```
 
-> **Note:** After migrating from host-agent to docker mode, use **Maintenance → Crontab Sync** in the web UI to write all active jobs into the container's crontab. Without this step the container crontab will be empty and no jobs will execute.
+> **Note:** After migrating from host-agent to docker mode, use **Housekeeping → Crontab Sync** in the web UI to write all active jobs into the container's crontab. Without this step the container crontab will be empty and no jobs will execute.
 
 > **Linux user requirement:** In docker mode all jobs run as `root` inside the container. Ensure every job's **Linux user** is set to `root` before running Crontab Sync.
 
 ---
 
-## Maintenance
+## Housekeeping
 
-The **Maintenance** page (`/maintenance`, admin only) provides three operational tools for keeping the system healthy.
+The **Housekeeping** page (`/housekeeping`, admin only) provides operational tools for keeping the system healthy.
 
 ### Crontab Sync
 
@@ -1103,7 +1104,9 @@ Re-writes all crontab entries from the database in one click. Active jobs have t
 
 ### Stuck Executions
 
-Lists executions that have been in the "running" state longer than a configurable threshold (default: 2 hours). This happens when the agent restarted mid-execution, leaving records without a finish timestamp.
+Lists executions that have been in the "running" state longer than a configurable threshold (default: 2 hours). This can occur when the agent restarted mid-execution, leaving records without a finish timestamp.
+
+> **Tip:** The [Startup Orphan Cleanup](#startup-orphan-cleanup) feature automatically resolves most of these cases on agent restart. The Stuck Executions panel handles any edge cases that slip through (e.g. very recent restarts within the 2-minute grace period).
 
 **Per-row actions:**
 - **Mark Finished** – sets `exit_code = -1`, records `finished_at = NOW()`, appends a note to the output
@@ -1121,8 +1124,24 @@ Bulk-deletes finished execution records older than a configurable number of days
 
 ## Maintenance Windows
 
-Maintenance windows let you mark scheduled time slots as off-limits for job execution on a per-target basis.
-They are managed via **Targets** in the navigation bar (admin only).
+Maintenance windows let you mark scheduled time slots as off-limits for job execution.
+They are managed via **Maintenance** in the navigation bar (admin only).
+
+### Startup Orphan Cleanup
+
+Every time the agent service starts, a cleanup script (`startup-cleanup.php`) runs before the HTTP server accepts requests. It scans `execution_log` for records still in the "running" state whose process is no longer alive and resolves them automatically:
+
+| Target type | How checked |
+|---|---|
+| `local` with a stored PID | `posix_kill($pid, 0)` — process existence verified; alive processes are left untouched |
+| `local` without a PID | Assumed dead after a restart — marked interrupted |
+| Remote SSH targets | PID is on the remote host; assumed dead — marked interrupted |
+
+Cleaned-up executions receive `exit_code = -5` ("Interrupted by system restart") and appear in the timeline and job detail view with a gray **Interrupted** badge. A 2-minute grace period prevents false positives for jobs that happened to start right as the agent restarted.
+
+### Per-target windows
+
+The normal use-case: a window defined for `local` or an SSH host alias blocks job execution on that specific target during the configured period.
 
 ### Defining a maintenance window
 
@@ -1271,7 +1290,7 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
    ```
 
 **Docker mode:**
-1. Verify the container crontab has entries (use Maintenance → Crontab Sync if empty):
+1. Verify the container crontab has entries (use Housekeeping → Crontab Sync if empty):
    ```bash
    docker exec cronmanager-agent crontab -l
    ```
@@ -1429,7 +1448,7 @@ the container is recreated.
 
 **Clean up via the UI:**
 
-1. Go to **Maintenance → Stuck Executions**
+1. Go to **Housekeeping → Stuck Executions**
 2. Adjust the lookback threshold if needed
 3. Use **Mark Finished** (sets exit code `-1`) or **Delete** per row, or select all and use the bulk toolbar
 

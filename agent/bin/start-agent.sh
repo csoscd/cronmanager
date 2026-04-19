@@ -16,6 +16,7 @@ set -euo pipefail
 # Path to the production configuration file
 CONFIG="/opt/cronmanager/agent/config/config.json"
 AGENT_PHP="/opt/cronmanager/agent/agent.php"
+CLEANUP_PHP="/opt/cronmanager/agent/bin/startup-cleanup.php"
 AUTOLOAD="/opt/phplib/vendor/autoload.php"
 
 # ---------------------------------------------------------------------------
@@ -29,6 +30,14 @@ BIND=$(php -r "
 
 echo "[cronmanager-agent] Starting PHP built-in server on ${BIND}"
 echo "[cronmanager-agent] Agent script: ${AGENT_PHP}"
+
+# ---------------------------------------------------------------------------
+# Startup cleanup: mark any orphaned running executions as interrupted.
+# Runs once before the HTTP server starts so stale records are resolved
+# before the first incoming request.  Failure is non-fatal.
+# ---------------------------------------------------------------------------
+echo "[cronmanager-agent] Running startup cleanup..."
+/usr/bin/php "${CLEANUP_PHP}" || echo "[cronmanager-agent] WARNING: startup cleanup encountered an error (agent will still start)"
 
 # ---------------------------------------------------------------------------
 # Start the PHP built-in server

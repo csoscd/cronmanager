@@ -44,6 +44,7 @@ return [
     'nav_export'              => 'Export',
     'nav_users'               => 'Benutzer',
     'nav_maintenance'         => 'Wartung',
+    'nav_housekeeping'        => 'Verwaltung',
 
     // -------------------------------------------------------------------------
     // Rollen
@@ -161,6 +162,7 @@ return [
     'timeline_title'          => 'Zeitachse',
     'timeline_no_results'     => 'Keine Ausführungen gefunden.',
     'timeline_showing'        => '{from}–{to} von {total} Ausführungen',
+    'timeline_direct_link_notice' => 'Ergebnisse aus einem direkten Link. Gespeicherte Filtereinstellungen wurden nicht angewendet. Klicke auf „Anwenden", um diese Filter zu speichern.',
 
     // -------------------------------------------------------------------------
     // Swimlane
@@ -346,11 +348,17 @@ return [
     'filter_reset'            => 'Zurücksetzen',
     'back'                    => 'Zurück',
     'no_results'              => 'Keine Ergebnisse gefunden.',
+    'output_copy'             => 'Kopieren',
+    'output_copied'           => 'Kopiert!',
+    'output_copy_title'       => 'Ausgabe in Zwischenablage kopieren',
+    'output_download'         => 'Herunterladen',
+    'output_download_title'   => 'Ausgabe als Logdatei herunterladen',
 
     // -------------------------------------------------------------------------
-    // Wartungsseite
+    // Verwaltungsseite (ehemals "Wartung")
     // -------------------------------------------------------------------------
-    'maintenance_title'                  => 'Wartung',
+    'housekeeping_title'                 => 'Verwaltung',
+    'maintenance_title'                  => 'Verwaltung',
 
     // Crontab-Synchronisation
     'maintenance_resync_title'           => 'Crontab-Synchronisation',
@@ -413,12 +421,17 @@ return [
     'maintenance_notify_agent_err'       => 'Der Agent konnte für den Benachrichtigungstest nicht erreicht werden.',
 
     // -------------------------------------------------------------------------
-    // Targets / Maintenance Windows
+    // Wartungsseite (Wartungsfenster — ehemals "Targets")
     // -------------------------------------------------------------------------
-    'nav_targets'                    => 'Targets',
+    'nav_targets'                    => 'Wartung',
     'target_window_new'              => 'Neues Wartungsfenster',
     'target_window_edit'             => 'Wartungsfenster bearbeiten',
-    'targets_title'                  => 'Targets & Wartungsfenster',
+    'maintenance_windows_title'      => 'Wartungsfenster',
+    'maintenance_windows_desc'       => 'Definiert geplante Wartungsfenster pro Target. Während eines aktiven Fensters werden Jobs, die "Im Wartungsfenster ausführen" nicht aktiviert haben, übersprungen (exit-Code −4). Jobs mit aktivierter Option werden normal ausgeführt, aber Fehlerbenachrichtigungen werden unterdrückt.',
+    'maintenance_agent_target_name'  => 'Cronmanager Agent',
+    'maintenance_agent_target_badge' => 'agent',
+    'maintenance_agent_target_desc'  => 'Fenster für den Cronmanager Agent blockieren ALLE Job-Ausführungen, unabhängig von der per-Job-Einstellung "Im Wartungsfenster ausführen". Verwende dies für host-weite Wartungsperioden (z. B. VM-Suspend/Resume-Zyklen).',
+    'targets_title'                  => 'Wartungsfenster',
     'targets_desc'                   => 'Definiert geplante Wartungsfenster pro Target. Während eines aktiven Fensters werden Jobs, die "Im Wartungsfenster ausführen" nicht aktiviert haben, übersprungen (exit-Code −4). Jobs mit aktivierter Option werden normal ausgeführt, aber Fehlerbenachrichtigungen werden unterdrückt.',
     'targets_no_windows'             => 'Keine Wartungsfenster für dieses Target definiert.',
     'targets_add_window'             => 'Fenster hinzufügen',
@@ -445,4 +458,5 @@ return [
     'cron_run_in_maintenance_hint'   => 'Wenn aktiviert, läuft der Job auch während Wartungsfenstern, aber Fehlerbenachrichtigungen werden unterdrückt.',
     'cron_maintenance_skipped_badge' => 'Übersprungen (Wartung)',
     'cron_during_maintenance_badge'  => 'Wartung',
+    'cron_interrupted_badge'         => 'Unterbrochen',
 ];

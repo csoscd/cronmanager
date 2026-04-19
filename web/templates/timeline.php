@@ -46,6 +46,11 @@ $hasActiveFilter = $activeSearch !== '' || $activeJobId !== '' || $activeTag !==
     || $activeUser !== '' || $activeTarget !== '' || $activeStatus !== ''
     || $activeFrom !== '' || $activeTo !== '';
 
+// Direct-link mode: filters come from a programmatic link (dashboard / notification)
+// and have not been saved to cookies. Pagination links preserve this mode so the
+// date-range cookie cannot silently narrow the result set across pages.
+$isDirect = isset($isDirect) && (bool) $isDirect;
+
 // Pagination helpers
 $prevOffset  = max(0, $offset - $limit);
 $nextOffset  = $offset + $limit;
@@ -59,7 +64,7 @@ $showTo      = min($offset + $limit, $total);
  *
  * @param int $newOffset Offset to use in the generated URL.
  */
-$pageUrl = static function (int $newOffset) use ($filters, $limit): string {
+$pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect): string {
     $params = array_filter([
         'search' => $filters['search'] ?? '',
         'job_id' => $filters['job_id'] ?? '',
@@ -73,6 +78,10 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
         'offset' => (string) $newOffset,
     ], static fn(string $v): bool => $v !== '');
 
+    if ($isDirect) {
+        $params['_direct'] = '1';
+    }
+
     return '/timeline?' . http_build_query($params);
 };
 ?>
@@ -85,6 +94,19 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
         <?= htmlspecialchars($t('timeline_title'), ENT_QUOTES, 'UTF-8') ?>
     </h1>
 </div>
+
+<!-- ======================================================================
+     Direct-link notice (shown when arriving via dashboard / notification link)
+     ====================================================================== -->
+<?php if ($isDirect): ?>
+<div class="mb-4 flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm
+            text-blue-800 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+    <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <span><?= htmlspecialchars($t('timeline_direct_link_notice'), ENT_QUOTES, 'UTF-8') ?></span>
+</div>
+<?php endif; ?>
 
 <!-- ======================================================================
      Filter bar
@@ -340,6 +362,14 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
                                     . '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>'
                                     . htmlspecialchars($t('status_success'), ENT_QUOTES, 'UTF-8')
                                     . '</span>';
+                            } elseif ((int) $exitCode === -4) {
+                                $statusBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">'
+                                    . htmlspecialchars($t('cron_maintenance_skipped_badge'), ENT_QUOTES, 'UTF-8')
+                                    . '</span>';
+                            } elseif ((int) $exitCode === -5) {
+                                $statusBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">'
+                                    . htmlspecialchars($t('cron_interrupted_badge'), ENT_QUOTES, 'UTF-8')
+                                    . '</span>';
                             } else {
                                 $statusBadge = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">'
                                     . '<svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>'
@@ -390,6 +420,9 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
                             </td>
                             <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-xs">
                                 <?php if ($output !== ''): ?>
+                                    <!-- Full output stored for copy/download (hidden) -->
+                                    <span id="tl-output-<?= $idx ?>-data"
+                                          class="hidden"><?= htmlspecialchars($output, ENT_QUOTES, 'UTF-8') ?></span>
                                     <span id="tl-output-<?= $idx ?>-short"
                                           class="font-mono text-xs break-all">
                                         <?= htmlspecialchars($outputTrunc, ENT_QUOTES, 'UTF-8') ?>
@@ -405,6 +438,35 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
                                             show more
                                         </button>
                                     <?php endif; ?>
+                                    <!-- Copy / Download buttons -->
+                                    <div class="mt-1 flex items-center gap-1">
+                                        <button type="button"
+                                                onclick="tlCopyOutput('tl-output-<?= $idx ?>', this)"
+                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium
+                                                       bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700
+                                                       dark:hover:bg-gray-600 dark:text-gray-300 border border-gray-200
+                                                       dark:border-gray-600 transition focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                                title="<?= htmlspecialchars($t('output_copy_title'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                      d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+                                            </svg>
+                                            <span><?= htmlspecialchars($t('output_copy'), ENT_QUOTES, 'UTF-8') ?></span>
+                                        </button>
+                                        <button type="button"
+                                                onclick="tlDownloadOutput('tl-output-<?= $idx ?>', <?= (int) $jobId ?>, '<?= htmlspecialchars(addslashes($startedAt), ENT_QUOTES, 'UTF-8') ?>')"
+                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium
+                                                       bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700
+                                                       dark:hover:bg-gray-600 dark:text-gray-300 border border-gray-200
+                                                       dark:border-gray-600 transition focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                                title="<?= htmlspecialchars($t('output_download_title'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                            </svg>
+                                            <span><?= htmlspecialchars($t('output_download'), ENT_QUOTES, 'UTF-8') ?></span>
+                                        </button>
+                                    </div>
                                 <?php else: ?>
                                     <span class="text-gray-300 dark:text-gray-600">—</span>
                                 <?php endif; ?>
@@ -446,6 +508,76 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit): string {
 <?php endif; ?>
 
 <script>
+/**
+ * Copy the full output of a timeline row to the clipboard.
+ *
+ * @param {string}      id  Base element id.
+ * @param {HTMLElement} btn The button element (for visual feedback).
+ */
+function tlCopyOutput(id, btn) {
+    const dataEl = document.getElementById(id + '-data');
+    if (!dataEl) return;
+
+    const text = dataEl.textContent;
+    const span = btn.querySelector('span');
+
+    const setFeedback = function (label, ok) {
+        if (span) span.textContent = label;
+        btn.classList.toggle('text-green-600', ok);
+        btn.classList.toggle('border-green-300', ok);
+    };
+
+    const reset = function () {
+        setTimeout(function () { setFeedback('<?= addslashes($t('output_copy')) ?>', false); }, 2000);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+            setFeedback('<?= addslashes($t('output_copied')) ?>', true);
+            reset();
+        }).catch(function () { fallbackCopy(text); });
+    } else {
+        fallbackCopy(text);
+    }
+
+    function fallbackCopy(t) {
+        const ta = document.createElement('textarea');
+        ta.value = t;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (e) { /* ignore */ }
+        document.body.removeChild(ta);
+    }
+}
+
+/**
+ * Download the full output of a timeline row as a plain-text log file.
+ *
+ * @param {string} id        Base element id.
+ * @param {number} jobId     Cron job ID (used in filename).
+ * @param {string} startedAt Execution start timestamp (used in filename).
+ */
+function tlDownloadOutput(id, jobId, startedAt) {
+    const dataEl = document.getElementById(id + '-data');
+    if (!dataEl) return;
+
+    const blob = new Blob([dataEl.textContent], { type: 'text/plain;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+
+    const safeDateStr = String(startedAt).replace(' ', '_').replace(/[^0-9_T:-]/g, '').replace(/:/g, '-').slice(0, 19);
+    const filename = 'cronmanager-job' + jobId + '-' + safeDateStr + '.log';
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.cssText = 'display:none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
 /**
  * Toggle between truncated and full output for a timeline row.
  *

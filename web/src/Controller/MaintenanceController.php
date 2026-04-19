@@ -85,7 +85,7 @@ final class MaintenanceController extends BaseController
             : null;
         $flashLogsPruneErr  = isset($_GET['prune_err']);
 
-        $this->render('maintenance/index.php', $this->translator()->t('maintenance_title'), [
+        $this->render('housekeeping/index.php', $this->translator()->t('housekeeping_title'), [
             'hours'             => $hours,
             'stuckExecutions'   => $stuckExecutions,
             'stuckError'        => $stuckError,
@@ -99,7 +99,7 @@ final class MaintenanceController extends BaseController
             'flashOnceRemoved'  => $flashOnceRemoved,
             'flashLogsPruned'   => $flashLogsPruned,
             'flashLogsPruneErr' => $flashLogsPruneErr,
-        ], '/maintenance');
+        ], '/housekeeping');
     }
 
     // -------------------------------------------------------------------------
@@ -116,10 +116,10 @@ final class MaintenanceController extends BaseController
         try {
             $result = $this->agentClient()->post('/maintenance/crontab/resync');
             $synced = (int) ($result['synced'] ?? 0);
-            (new Response())->redirect('/maintenance?sync_ok=' . $synced);
+            (new Response())->redirect('/housekeeping?sync_ok=' . $synced);
         } catch (\RuntimeException $e) {
             $this->logger->error('MaintenanceController: resync failed', ['error' => $e->getMessage()]);
-            (new Response())->redirect('/maintenance?sync_err=1');
+            (new Response())->redirect('/housekeeping?sync_err=1');
         }
     }
 
@@ -146,7 +146,7 @@ final class MaintenanceController extends BaseController
             ]);
         }
 
-        (new Response())->redirect("/maintenance?resolved=1&hours={$hours}");
+        (new Response())->redirect("/housekeeping?resolved=1&hours={$hours}");
     }
 
     // -------------------------------------------------------------------------
@@ -172,7 +172,7 @@ final class MaintenanceController extends BaseController
             ]);
         }
 
-        (new Response())->redirect("/maintenance?exec_del=1&hours={$hours}");
+        (new Response())->redirect("/housekeeping?exec_del=1&hours={$hours}");
     }
 
     // -------------------------------------------------------------------------
@@ -196,7 +196,7 @@ final class MaintenanceController extends BaseController
         $hours  = max(1, (int) ($_POST['hours'] ?? 2));
 
         if (empty($ids) || !in_array($action, ['finish', 'delete'], true)) {
-            (new Response())->redirect("/maintenance?hours={$hours}");
+            (new Response())->redirect("/housekeeping?hours={$hours}");
             return;
         }
 
@@ -220,7 +220,7 @@ final class MaintenanceController extends BaseController
         }
 
         $param = $action === 'finish' ? 'bulk_resolved' : 'bulk_deleted';
-        (new Response())->redirect("/maintenance?{$param}={$count}&hours={$hours}");
+        (new Response())->redirect("/housekeeping?{$param}={$count}&hours={$hours}");
     }
 
     // -------------------------------------------------------------------------
@@ -240,12 +240,12 @@ final class MaintenanceController extends BaseController
         try {
             $result  = $this->agentClient()->post('/maintenance/once/cleanup');
             $removed = (int) ($result['removed'] ?? 0);
-            (new Response())->redirect('/maintenance?once_removed=' . $removed);
+            (new Response())->redirect('/housekeeping?once_removed=' . $removed);
         } catch (\RuntimeException $e) {
             $this->logger->error('MaintenanceController: onceCleanup failed', [
                 'error' => $e->getMessage(),
             ]);
-            (new Response())->redirect('/maintenance');
+            (new Response())->redirect('/housekeeping');
         }
     }
 
@@ -320,12 +320,12 @@ final class MaintenanceController extends BaseController
                 'older_than_days' => $days,
             ]);
             $deleted = (int) ($result['deleted'] ?? 0);
-            (new Response())->redirect('/maintenance?cleaned=' . $deleted);
+            (new Response())->redirect('/housekeeping?cleaned=' . $deleted);
         } catch (\RuntimeException $e) {
             $this->logger->error('MaintenanceController: cleanHistory failed', [
                 'error' => $e->getMessage(),
             ]);
-            (new Response())->redirect('/maintenance');
+            (new Response())->redirect('/housekeeping');
         }
     }
 
@@ -345,13 +345,13 @@ final class MaintenanceController extends BaseController
             $deletedLogs  = (int) ($result['deleted_logs']        ?? 0);
             $deletedRetry = (int) ($result['deleted_retry_state'] ?? 0);
             (new Response())->redirect(
-                '/maintenance?logs_pruned=' . $deletedLogs . '&retry_state_pruned=' . $deletedRetry
+                '/housekeeping?logs_pruned=' . $deletedLogs . '&retry_state_pruned=' . $deletedRetry
             );
         } catch (\RuntimeException $e) {
             $this->logger->error('MaintenanceController: pruneLogs failed', [
                 'error' => $e->getMessage(),
             ]);
-            (new Response())->redirect('/maintenance?prune_err=1');
+            (new Response())->redirect('/housekeeping?prune_err=1');
         }
     }
 }

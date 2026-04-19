@@ -206,7 +206,27 @@ abstract class BaseController
      *
      * @return string Resolved, trimmed filter value.
      */
-    protected function filterParam(string $get, string $cookie, string $default = ''): string
+    /**
+     * Resolve a filter parameter from GET, falling back to a persistent cookie.
+     *
+     * Resolution order:
+     *   1. If ?_reset is present in the request, expire the cookie and return $default.
+     *   2. If the named GET key is present, use its value (even empty).
+     *   3. If $persist is true, fall back to the stored cookie value.
+     *   4. Otherwise return $default.
+     *
+     * When $persist is false (direct/deep-link mode) the resolved value is never
+     * written back to the cookie, so the user's manually configured filter state
+     * is not overwritten by programmatically generated link parameters.
+     *
+     * @param string $get     Name of the GET query parameter.
+     * @param string $cookie  Cookie name to read from / write to.
+     * @param string $default Value returned when absent from both GET and cookie.
+     * @param bool   $persist When false, cookie is neither read nor written (direct-link mode).
+     *
+     * @return string Resolved, trimmed filter value.
+     */
+    protected function filterParam(string $get, string $cookie, string $default = '', bool $persist = true): string
     {
         // User clicked "reset filters" – clear the cookie and return the default.
         if (isset($_GET['_reset'])) {
@@ -222,17 +242,23 @@ abstract class BaseController
         // Explicit GET value (including empty string) takes precedence over cookie.
         if (array_key_exists($get, $_GET)) {
             $value = trim((string) $_GET[$get]);
-        } else {
+        } elseif ($persist) {
+            // Cookie fallback only in normal (non-direct) mode.
             $value = isset($_COOKIE[$cookie]) ? (string) $_COOKIE[$cookie] : $default;
+        } else {
+            // Direct-link mode: absent GET param → default (ignore saved cookie).
+            $value = $default;
         }
 
-        // Persist the resolved value for the next page load.
-        setcookie($cookie, $value, [
-            'expires'  => time() + 30 * 24 * 3600,
-            'path'     => '/',
-            'samesite' => 'Lax',
-            'httponly' => true,
-        ]);
+        // Persist the resolved value only when not in direct-link mode.
+        if ($persist) {
+            setcookie($cookie, $value, [
+                'expires'  => time() + 30 * 24 * 3600,
+                'path'     => '/',
+                'samesite' => 'Lax',
+                'httponly' => true,
+            ]);
+        }
 
         return $value;
     }

@@ -524,7 +524,29 @@ final class ExecutionFinishEndpoint
         }
 
         // ------------------------------------------------------------------
-        // 6. Return result
+        // 6. Write metrics to InfluxDB (non-blocking, background process)
+        // ------------------------------------------------------------------
+
+        try {
+            $this->dispatchInflux(
+                executionId:       $executionId,
+                jobId:             $jobId,
+                exitCode:          $exitCode,
+                output:            $output,
+                finishedAt:        $finishedAt,
+                target:            $target ?? '',
+                duringMaintenance: $duringMaintenance,
+            );
+        } catch (\Throwable $e) {
+            // Metrics dispatch failure must never affect the finish response
+            $this->logger->warning('ExecutionFinishEndpoint: InfluxDB dispatch error', [
+                'execution_id' => $executionId,
+                'message'      => $e->getMessage(),
+            ]);
+        }
+
+        // ------------------------------------------------------------------
+        // 7. Return result
         // ------------------------------------------------------------------
 
         jsonResponse(200, [
@@ -1047,6 +1069,120 @@ final class ExecutionFinishEndpoint
         ]);
 
         return (int) $countStmt->fetchColumn();
+    }
+
+    /**
+     * Dispatch execution metrics to InfluxDB via a detached background process.
+     *
+     * Builds the payload (fetching job metadata and tags from the DB), writes it
+     * to a temp file, and spawns agent/bin/send-influx.php in the background.
+     * Failures are logged but never propagate to the caller.
+     *
+     * @param int    $executionId
+     * @param int    $jobId
+     * @param int    $exitCode
+     * @param string $output
+     * @param string $finishedAt        UTC datetime string (Y-m-d H:i:s).
+     * @param string $target
+     * @param bool   $duringMaintenance
+     *
+     * @return void
+     */
+    private function dispatchInflux(
+        int    $executionId,
+        int    $jobId,
+        int    $exitCode,
+        string $output,
+        string $finishedAt,
+        string $target,
+        bool   $duringMaintenance,
+    ): void {
+        $influxScript = dirname(__DIR__, 2) . '/bin/send-influx.php';
+
+        $execAvailable = function_exists('exec')
+            && !in_array('exec', array_map('trim', explode(',', (string) ini_get('disable_functions'))), true);
+
+        if (!file_exists($influxScript) || !$execAvailable) {
+            return;
+        }
+
+        // Fetch job metadata needed for InfluxDB tags
+        $job     = $this->fetchJob($jobId);
+        $startedAt = $this->fetchStartedAt($executionId);
+
+        // Compute duration
+        $durationSeconds = 0.0;
+        try {
+            $start  = new \DateTimeImmutable($startedAt);
+            $finish = new \DateTimeImmutable($finishedAt);
+            $durationSeconds = max(0.0, (float) ($finish->getTimestamp() - $start->getTimestamp()));
+        } catch (\Exception) {
+            // Use 0 on parse error
+        }
+
+        // Finished-at as nanosecond Unix timestamp for InfluxDB
+        $finishedAtNs = 0;
+        try {
+            $finishedAtNs = (new \DateTimeImmutable($finishedAt))->getTimestamp() * 1_000_000_000;
+        } catch (\Exception) {
+            $finishedAtNs = time() * 1_000_000_000;
+        }
+
+        // Fetch cronmanager job tags as a comma-separated string
+        $jobTags = implode(',', $this->fetchJobTags($jobId));
+
+        $payload = json_encode([
+            'job_id'             => $jobId,
+            'description'        => $job['description'] ?? $job['command'] ?? '',
+            'linux_user'         => $job['linux_user'] ?? '',
+            'target'             => $target !== '' ? $target : 'local',
+            'exit_code'          => $exitCode,
+            'output_length'      => mb_strlen($output, '8bit'),
+            'duration_seconds'   => $durationSeconds,
+            'during_maintenance' => $duringMaintenance ? 1 : 0,
+            'job_tags'           => $jobTags,
+            'finished_at_ns'     => $finishedAtNs,
+        ], JSON_UNESCAPED_UNICODE);
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'cronmgr_influx_');
+        if ($tempFile === false || file_put_contents($tempFile, $payload) === false) {
+            if ($tempFile !== false) {
+                @unlink($tempFile);
+            }
+            $this->logger->warning('ExecutionFinishEndpoint: could not write InfluxDB temp file');
+            return;
+        }
+
+        $cmd = sprintf(
+            'php %s %s > /dev/null 2>&1 &',
+            escapeshellarg($influxScript),
+            escapeshellarg($tempFile)
+        );
+        exec($cmd);
+    }
+
+    /**
+     * Fetch all tag names for a job as a plain array of strings.
+     *
+     * @param int $jobId Cron job ID.
+     *
+     * @return string[] Tag names.
+     */
+    private function fetchJobTags(int $jobId): array
+    {
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT t.name
+                   FROM tags t
+                   JOIN cronjob_tags ct ON ct.tag_id = t.id
+                  WHERE ct.cronjob_id = :job_id
+                  ORDER BY t.name'
+            );
+            $stmt->execute([':job_id' => $jobId]);
+            return $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        } catch (\PDOException) {
+            return [];
+        }
     }
 
     /**

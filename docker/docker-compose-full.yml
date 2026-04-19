@@ -89,6 +89,15 @@ services:
       # TELEGRAM_BOT_TOKEN: "123456789:AABBccDDeeFFggHH..."
       # TELEGRAM_CHAT_ID:   "-1001234567890"
       # TELEGRAM_TIMEOUT:   "15"
+      # Optional: notification link (base URL of the web UI)
+      # WEB_URL: "${WEB_URL:-}"
+      # Optional: InfluxDB 2.x metrics
+      INFLUXDB_ENABLED: "${INFLUXDB_ENABLED:-false}"
+      INFLUXDB_URL:     "${INFLUXDB_URL:-http://influxdb:8086}"
+      INFLUXDB_TOKEN:   "${INFLUXDB_TOKEN:-}"
+      INFLUXDB_ORG:     "${INFLUXDB_ORG:-}"
+      INFLUXDB_BUCKET:  "${INFLUXDB_BUCKET:-cronmanager}"
+      INFLUXDB_TIMEOUT: "${INFLUXDB_TIMEOUT:-10}"
     networks:
       - cronmanager-internal
     volumes:

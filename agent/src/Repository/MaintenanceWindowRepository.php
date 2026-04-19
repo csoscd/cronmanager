@@ -37,6 +37,18 @@ use PDOException;
 final class MaintenanceWindowRepository
 {
     // -------------------------------------------------------------------------
+    // Constants
+    // -------------------------------------------------------------------------
+
+    /**
+     * Reserved target name for agent-level maintenance windows.
+     *
+     * A maintenance window with this target blocks ALL job executions
+     * regardless of per-job run_in_maintenance settings.  It models
+     * host-wide maintenance (e.g. VM suspend/resume cycles).
+     */
+    public const AGENT_TARGET = '_agent_';
+    // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
 
@@ -264,6 +276,20 @@ final class MaintenanceWindowRepository
         }
 
         return false;
+    }
+
+    /**
+     * Determine whether the current moment is inside an active agent-level
+     * maintenance window (target = AGENT_TARGET).
+     *
+     * When true, all job executions must be skipped regardless of per-job
+     * run_in_maintenance settings.
+     *
+     * @return bool True when the agent itself is in maintenance.
+     */
+    public function isAgentInMaintenance(): bool
+    {
+        return $this->isTargetInMaintenance(self::AGENT_TARGET);
     }
 
     /**

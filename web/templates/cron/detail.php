@@ -465,6 +465,10 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">'
                                     . htmlspecialchars($t('status_running'), ENT_QUOTES, 'UTF-8')
                                     . '</span>';
+                            } elseif ($exitCode !== null && (int) $exitCode === -5) {
+                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">'
+                                    . htmlspecialchars($t('cron_interrupted_badge'), ENT_QUOTES, 'UTF-8')
+                                    . '</span>';
                             } elseif ($exitCode !== null && (int) $exitCode === -4) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">'
                                     . htmlspecialchars($t('cron_maintenance_skipped_badge'), ENT_QUOTES, 'UTF-8')
@@ -521,6 +525,9 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                             </td>
                             <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-sm">
                                 <?php if ($output !== ''): ?>
+                                    <!-- Full output stored for copy/download (hidden) -->
+                                    <span id="<?= htmlspecialchars($outputId . '-data', ENT_QUOTES, 'UTF-8') ?>"
+                                          class="hidden"><?= htmlspecialchars($output, ENT_QUOTES, 'UTF-8') ?></span>
                                     <span id="<?= htmlspecialchars($outputId . '-short', ENT_QUOTES, 'UTF-8') ?>"
                                           class="font-mono text-xs break-all">
                                         <?= htmlspecialchars($outputTrunc, ENT_QUOTES, 'UTF-8') ?>
@@ -536,6 +543,35 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                                             show more
                                         </button>
                                     <?php endif; ?>
+                                    <!-- Copy / Download buttons -->
+                                    <div class="mt-1 flex items-center gap-1">
+                                        <button type="button"
+                                                onclick="copyOutput('<?= htmlspecialchars($outputId, ENT_QUOTES, 'UTF-8') ?>', this)"
+                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium
+                                                       bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700
+                                                       dark:hover:bg-gray-600 dark:text-gray-300 border border-gray-200
+                                                       dark:border-gray-600 transition focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                                title="<?= htmlspecialchars($t('output_copy_title'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                      d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+                                            </svg>
+                                            <span><?= htmlspecialchars($t('output_copy'), ENT_QUOTES, 'UTF-8') ?></span>
+                                        </button>
+                                        <button type="button"
+                                                onclick="downloadOutput('<?= htmlspecialchars($outputId, ENT_QUOTES, 'UTF-8') ?>', <?= (int) $jobId ?>, '<?= htmlspecialchars(addslashes($startedAt), ENT_QUOTES, 'UTF-8') ?>')"
+                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium
+                                                       bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700
+                                                       dark:hover:bg-gray-600 dark:text-gray-300 border border-gray-200
+                                                       dark:border-gray-600 transition focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                                title="<?= htmlspecialchars($t('output_download_title'), ENT_QUOTES, 'UTF-8') ?>">
+                                            <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                            </svg>
+                                            <span><?= htmlspecialchars($t('output_download'), ENT_QUOTES, 'UTF-8') ?></span>
+                                        </button>
+                                    </div>
                                 <?php else: ?>
                                     <span class="text-gray-300 dark:text-gray-600">—</span>
                                 <?php endif; ?>
@@ -638,6 +674,76 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
 <?php endif; ?>
 
 <script>
+/**
+ * Copy the full output of a history entry to the clipboard.
+ *
+ * @param {string}      id  Base element id.
+ * @param {HTMLElement} btn The button element (for visual feedback).
+ */
+function copyOutput(id, btn) {
+    const dataEl = document.getElementById(id + '-data');
+    if (!dataEl) return;
+
+    const text = dataEl.textContent;
+    const span = btn.querySelector('span');
+
+    const setFeedback = function (label, ok) {
+        if (span) span.textContent = label;
+        btn.classList.toggle('text-green-600', ok);
+        btn.classList.toggle('border-green-300', ok);
+    };
+
+    const reset = function () {
+        setTimeout(function () { setFeedback('<?= addslashes($t('output_copy')) ?>', false); }, 2000);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+            setFeedback('<?= addslashes($t('output_copied')) ?>', true);
+            reset();
+        }).catch(function () { fallbackCopy(text); });
+    } else {
+        fallbackCopy(text);
+    }
+
+    function fallbackCopy(t) {
+        const ta = document.createElement('textarea');
+        ta.value = t;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (e) { /* ignore */ }
+        document.body.removeChild(ta);
+    }
+}
+
+/**
+ * Download the full output of a history entry as a plain-text log file.
+ *
+ * @param {string} id        Base element id.
+ * @param {number} jobId     Cron job ID (used in filename).
+ * @param {string} startedAt Execution start timestamp (used in filename).
+ */
+function downloadOutput(id, jobId, startedAt) {
+    const dataEl = document.getElementById(id + '-data');
+    if (!dataEl) return;
+
+    const blob = new Blob([dataEl.textContent], { type: 'text/plain;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+
+    const safeDateStr = String(startedAt).replace(' ', '_').replace(/[^0-9_T:-]/g, '').replace(/:/g, '-').slice(0, 19);
+    const filename = 'cronmanager-job' + jobId + '-' + safeDateStr + '.log';
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.cssText = 'display:none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
 /**
  * Toggle between truncated and full output for a history entry.
  *

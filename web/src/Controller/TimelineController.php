@@ -59,22 +59,31 @@ class TimelineController extends BaseController
         // filterParam() reads from GET first, falls back to a persistent cookie,
         // and saves the resolved value back to the cookie for next time.
         // ------------------------------------------------------------------
-        $filterSearch = $this->filterParam('search', 'cronmgr_tl_search');
+        // Direct-link mode: ?_direct=1 is appended by the dashboard and notification
+        // links to signal that filter state should not be read from or written to
+        // cookies. This prevents a previously saved date range from hiding entries
+        // that the link is explicitly trying to highlight. Pagination within a
+        // direct-link session preserves ?_direct=1 so the mode stays active until
+        // the user explicitly submits the filter form (which has no _direct field).
+        $isDirect = isset($_GET['_direct']);
+        $persist  = !$isDirect;
+
+        $filterSearch = $this->filterParam('search', 'cronmgr_tl_search', '', $persist);
         // job_id is a one-time deep-link parameter (e.g. from the dashboard) and
         // is intentionally not cookie-persisted so it does not pollute later visits.
         $filterJobId  = isset($_GET['job_id']) && ctype_digit((string) $_GET['job_id'])
             ? (string) $_GET['job_id']
             : '';
-        $filterTag    = $this->filterParam('tag',    'cronmgr_tl_tag');
-        $filterUser   = $this->filterParam('user',   'cronmgr_tl_user');
-        $filterTarget = $this->filterParam('target', 'cronmgr_tl_target');
-        $filterStatus = $this->filterParam('status', 'cronmgr_tl_status');
-        $filterFrom   = $this->filterParam('from',   'cronmgr_tl_from');
-        $filterTo     = $this->filterParam('to',     'cronmgr_tl_to');
+        $filterTag    = $this->filterParam('tag',    'cronmgr_tl_tag',    '', $persist);
+        $filterUser   = $this->filterParam('user',   'cronmgr_tl_user',   '', $persist);
+        $filterTarget = $this->filterParam('target', 'cronmgr_tl_target', '', $persist);
+        $filterStatus = $this->filterParam('status', 'cronmgr_tl_status', '', $persist);
+        $filterFrom   = $this->filterParam('from',   'cronmgr_tl_from',   '', $persist);
+        $filterTo     = $this->filterParam('to',     'cronmgr_tl_to',     '', $persist);
 
-        // Page size: validate against the allowed set; persist via cookie.
+        // Page size: validate against the allowed set; persist via cookie (except in direct mode).
         $allowedLimits = [10, 25, 50, 100, 500];
-        $limitRaw      = (int) $this->filterParam('limit', 'cronmgr_tl_limit', '50');
+        $limitRaw      = (int) $this->filterParam('limit', 'cronmgr_tl_limit', '50', $persist);
         $limit         = in_array($limitRaw, $allowedLimits, strict: true) ? $limitRaw : 50;
 
         // Offset is pure pagination state – never stored in a cookie.
@@ -169,6 +178,7 @@ class TimelineController extends BaseController
             'limit'      => $limit,
             'offset'     => $offset,
             'filters'    => $filters,
+            'isDirect'   => $isDirect,
         ], '/timeline');
     }
 }

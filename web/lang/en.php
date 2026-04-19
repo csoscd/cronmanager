@@ -44,6 +44,7 @@ return [
     'nav_export'              => 'Export',
     'nav_users'               => 'Users',
     'nav_maintenance'         => 'Maintenance',
+    'nav_housekeeping'        => 'Housekeeping',
 
     // -------------------------------------------------------------------------
     // Roles
@@ -161,6 +162,7 @@ return [
     'timeline_title'          => 'Timeline',
     'timeline_no_results'     => 'No executions found.',
     'timeline_showing'        => 'Showing {from}–{to} of {total} executions',
+    'timeline_direct_link_notice' => 'Showing results from a direct link. Your saved filter settings have not been applied. Click Apply to save these filters.',
 
     // -------------------------------------------------------------------------
     // Swimlane
@@ -346,11 +348,17 @@ return [
     'filter_reset'            => 'Reset',
     'back'                    => 'Back',
     'no_results'              => 'No results found.',
+    'output_copy'             => 'Copy',
+    'output_copied'           => 'Copied!',
+    'output_copy_title'       => 'Copy output to clipboard',
+    'output_download'         => 'Download',
+    'output_download_title'   => 'Download output as log file',
 
     // -------------------------------------------------------------------------
-    // Maintenance page
+    // Housekeeping page (formerly "Maintenance")
     // -------------------------------------------------------------------------
-    'maintenance_title'                  => 'Maintenance',
+    'housekeeping_title'                 => 'Housekeeping',
+    'maintenance_title'                  => 'Housekeeping',
 
     // Crontab resync
     'maintenance_resync_title'           => 'Crontab Sync',
@@ -413,12 +421,17 @@ return [
     'maintenance_notify_agent_err'       => 'Could not reach the agent to send the test notification.',
 
     // -------------------------------------------------------------------------
-    // Targets / Maintenance Windows
+    // Maintenance page (Maintenance Windows — formerly "Targets")
     // -------------------------------------------------------------------------
-    'nav_targets'                    => 'Targets',
+    'nav_targets'                    => 'Maintenance',
     'target_window_new'              => 'New Maintenance Window',
     'target_window_edit'             => 'Edit Maintenance Window',
-    'targets_title'                  => 'Targets & Maintenance Windows',
+    'maintenance_windows_title'      => 'Maintenance Windows',
+    'maintenance_windows_desc'       => 'Define scheduled maintenance windows per target. During an active window, jobs that do not have "Run in maintenance" enabled are skipped (recorded with exit code −4). Jobs with "Run in maintenance" will execute normally but failure notifications are suppressed.',
+    'maintenance_agent_target_name'  => 'Cronmanager Agent',
+    'maintenance_agent_target_badge' => 'agent',
+    'maintenance_agent_target_desc'  => 'Windows defined for the Cronmanager Agent block ALL job executions regardless of per-job "Run in maintenance" settings. Use this to model host-wide maintenance periods (e.g. VM suspend/resume cycles).',
+    'targets_title'                  => 'Maintenance Windows',
     'targets_desc'                   => 'Define scheduled maintenance windows per target. During an active window, jobs that do not have "Run in maintenance" enabled are skipped (recorded with exit code −4). Jobs with "Run in maintenance" will execute normally but failure notifications are suppressed.',
     'targets_no_windows'             => 'No maintenance windows defined for this target.',
     'targets_add_window'             => 'Add Window',
@@ -445,4 +458,5 @@ return [
     'cron_run_in_maintenance_hint'   => 'When enabled, the job runs during maintenance windows but failure notifications are suppressed.',
     'cron_maintenance_skipped_badge' => 'Skipped (maintenance)',
     'cron_during_maintenance_badge'  => 'Maintenance',
+    'cron_interrupted_badge'         => 'Interrupted',
 ];

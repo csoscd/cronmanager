@@ -401,6 +401,7 @@ represent security best practices:
 | `extract(EXTR_SKIP)` | Template rendering | Prevents template variable injection from data |
 | Output escaping | All templates | `htmlspecialchars(ENT_QUOTES, UTF-8)` on all dynamic output |
 | cron-wrapper HMAC | `cron-wrapper.sh` | Execution reports are signed; the agent validates them |
+| Startup orphan cleanup | `agent/bin/startup-cleanup.php` | On agent restart, detects and resolves execution_log rows left "running" by a previous crash/stop; prevents ghost "running" entries in the UI after VM maintenance |
 
 ---
 
@@ -467,5 +468,5 @@ Use this checklist when deploying a new instance or reviewing after changes.
 
 ---
 
-*Analysis performed: 2026-03-18; last updated: 2026-04-08 (v2.5.0)*
+*Analysis performed: 2026-03-18; last updated: 2026-04-19 (v2.8.4)*
 *Analyst: Christian Schulz <technik@meinetechnikwelt.rocks>*

@@ -199,18 +199,20 @@ foreach ($exceeded as $row) {
 
         if ($shouldNotify) {
             $payload = json_encode([
-                'job_id'      => $jobId,
-                'description' => $label,
-                'linux_user'  => (string) $row['linux_user'],
-                'schedule'    => (string) $row['schedule'],
-                'exit_code'   => -3,   // sentinel: -3 = limit exceeded (still running)
-                'output'      => sprintf(
+                'job_id'       => $jobId,
+                'description'  => $label,
+                'linux_user'   => (string) $row['linux_user'],
+                'schedule'     => (string) $row['schedule'],
+                'exit_code'    => -3,   // sentinel: -3 = limit exceeded (still running)
+                'output'       => sprintf(
                     'Execution limit exceeded: job has been running for %d seconds (limit: %d seconds).',
                     $elapsedSeconds,
                     $limitSeconds,
                 ),
-                'started_at'  => $startedAt,
-                'finished_at' => date('Y-m-d H:i:s'),
+                'started_at'   => $startedAt,
+                'finished_at'  => date('Y-m-d H:i:s'),
+                'target'       => $target,
+                'still_running' => true,
             ], JSON_UNESCAPED_UNICODE);
 
             $dispatched = false;
@@ -242,14 +244,16 @@ foreach ($exceeded as $row) {
 
                 try {
                     $mailNotifier->sendFailureAlert(
-                        jobId:       $jobId,
-                        description: $label,
-                        linuxUser:   (string) $row['linux_user'],
-                        schedule:    (string) $row['schedule'],
-                        exitCode:    -3,
-                        output:      $limitOutput,
-                        startedAt:   $startedAt,
-                        finishedAt:  date('Y-m-d H:i:s'),
+                        jobId:        $jobId,
+                        description:  $label,
+                        linuxUser:    (string) $row['linux_user'],
+                        schedule:     (string) $row['schedule'],
+                        exitCode:     -3,
+                        output:       $limitOutput,
+                        startedAt:    $startedAt,
+                        finishedAt:   date('Y-m-d H:i:s'),
+                        target:       $target,
+                        stillRunning: true,
                     );
                     $logger->info('check-limits: limit-exceeded mail notification sent synchronously', [
                         'execution_id' => $executionId,
@@ -263,14 +267,16 @@ foreach ($exceeded as $row) {
 
                 try {
                     $telegramNotifier->sendFailureAlert(
-                        jobId:       $jobId,
-                        description: $label,
-                        linuxUser:   (string) $row['linux_user'],
-                        schedule:    (string) $row['schedule'],
-                        exitCode:    -3,
-                        output:      $limitOutput,
-                        startedAt:   $startedAt,
-                        finishedAt:  date('Y-m-d H:i:s'),
+                        jobId:        $jobId,
+                        description:  $label,
+                        linuxUser:    (string) $row['linux_user'],
+                        schedule:     (string) $row['schedule'],
+                        exitCode:     -3,
+                        output:       $limitOutput,
+                        startedAt:    $startedAt,
+                        finishedAt:   date('Y-m-d H:i:s'),
+                        target:       $target,
+                        stillRunning: true,
                     );
                     $logger->info('check-limits: limit-exceeded Telegram notification sent synchronously', [
                         'execution_id' => $executionId,

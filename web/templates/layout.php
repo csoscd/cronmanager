@@ -115,11 +115,11 @@ $navClass = static function (string $path) use ($currentPath): string {
                             <a href="/users" class="<?= $navClass('/users') ?>">
                                 <?= htmlspecialchars($t('nav_users'), ENT_QUOTES, 'UTF-8') ?>
                             </a>
-                            <a href="/targets" class="<?= $navClass('/targets') ?>">
-                                <?= htmlspecialchars($t('nav_targets'), ENT_QUOTES, 'UTF-8') ?>
-                            </a>
                             <a href="/maintenance" class="<?= $navClass('/maintenance') ?>">
                                 <?= htmlspecialchars($t('nav_maintenance'), ENT_QUOTES, 'UTF-8') ?>
+                            </a>
+                            <a href="/housekeeping" class="<?= $navClass('/housekeeping') ?>">
+                                <?= htmlspecialchars($t('nav_housekeeping'), ENT_QUOTES, 'UTF-8') ?>
                             </a>
                         <?php endif; ?>
                     </div>
@@ -162,9 +162,9 @@ $navClass = static function (string $path) use ($currentPath): string {
             <a href="/swimlane"  class="<?= $navClass('/swimlane') ?>"><?= htmlspecialchars($t('nav_swimlane'), ENT_QUOTES, 'UTF-8') ?></a>
             <a href="/export"    class="<?= $navClass('/export') ?>"><?= htmlspecialchars($t('nav_export'), ENT_QUOTES, 'UTF-8') ?></a>
             <?php if (SessionManager::hasRole('admin')): ?>
-                <a href="/users"       class="<?= $navClass('/users') ?>"><?= htmlspecialchars($t('nav_users'), ENT_QUOTES, 'UTF-8') ?></a>
-                <a href="/targets"     class="<?= $navClass('/targets') ?>"><?= htmlspecialchars($t('nav_targets'), ENT_QUOTES, 'UTF-8') ?></a>
+                <a href="/users"        class="<?= $navClass('/users') ?>"><?= htmlspecialchars($t('nav_users'), ENT_QUOTES, 'UTF-8') ?></a>
                 <a href="/maintenance" class="<?= $navClass('/maintenance') ?>"><?= htmlspecialchars($t('nav_maintenance'), ENT_QUOTES, 'UTF-8') ?></a>
+                <a href="/housekeeping" class="<?= $navClass('/housekeeping') ?>"><?= htmlspecialchars($t('nav_housekeeping'), ENT_QUOTES, 'UTF-8') ?></a>
             <?php endif; ?>
         </div>
     </nav>

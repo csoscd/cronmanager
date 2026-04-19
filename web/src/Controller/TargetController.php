@@ -30,6 +30,9 @@ use Cronmanager\Web\Http\Response;
  */
 class TargetController extends BaseController
 {
+    /** Reserved pseudo-target that blocks all job executions agent-wide. */
+    private const AGENT_TARGET = '_agent_';
+
     // -------------------------------------------------------------------------
     // Actions
     // -------------------------------------------------------------------------
@@ -54,7 +57,7 @@ class TargetController extends BaseController
             $this->logger->error('TargetController::index: agent request failed', [
                 'message' => $e->getMessage(),
             ]);
-            $this->renderError(503, 'error_agent_unavailable', '/targets');
+            $this->renderError(503, 'error_agent_unavailable', '/maintenance');
             return;
         }
 
@@ -84,12 +87,17 @@ class TargetController extends BaseController
             $byTarget['local'] = [];
         }
 
+        // Always show the agent-level pseudo-target so admins can add agent windows
+        if (!isset($byTarget[self::AGENT_TARGET])) {
+            $byTarget[self::AGENT_TARGET] = [];
+        }
+
         ksort($byTarget);
 
-        $this->render('targets/list.php', $this->translator()->t('nav_targets'), [
+        $this->render('maintenance/list.php', $this->translator()->t('nav_maintenance'), [
             'byTarget' => $byTarget,
             'isAdmin'  => true,
-        ], '/targets');
+        ], '/maintenance');
     }
 
     /**
@@ -104,16 +112,16 @@ class TargetController extends BaseController
         $target = urldecode((string) ($params['target'] ?? ''));
 
         if ($target === '') {
-            $this->renderError(400, 'error_404', '/targets');
+            $this->renderError(400, 'error_404', '/maintenance');
             return;
         }
 
-        $this->render('targets/form.php', $this->translator()->t('target_window_new'), [
+        $this->render('maintenance/form.php', $this->translator()->t('target_window_new'), [
             'window'    => ['target' => $target, 'duration_minutes' => 60, 'active' => true],
             'isEdit'    => false,
             'error'     => null,
-            'formAction' => '/targets/' . rawurlencode($target) . '/windows',
-        ], '/targets');
+            'formAction' => '/maintenance/' . rawurlencode($target) . '/windows',
+        ], '/maintenance');
     }
 
     /**
@@ -146,12 +154,12 @@ class TargetController extends BaseController
                 'message' => $e->getMessage(),
             ]);
 
-            $this->render('targets/form.php', $this->translator()->t('target_window_new'), [
+            $this->render('maintenance/form.php', $this->translator()->t('target_window_new'), [
                 'window'     => array_merge($data, $_POST),
                 'isEdit'     => false,
                 'error'      => $e->getMessage(),
-                'formAction' => '/targets/' . rawurlencode($target) . '/windows',
-            ], '/targets');
+                'formAction' => '/maintenance/' . rawurlencode($target) . '/windows',
+            ], '/maintenance');
             return;
         }
 
@@ -159,7 +167,7 @@ class TargetController extends BaseController
             'target' => $target,
         ]);
 
-        (new Response())->redirect('/targets');
+        (new Response())->redirect('/maintenance');
     }
 
     /**
@@ -174,7 +182,7 @@ class TargetController extends BaseController
         $id = (int) ($params['id'] ?? 0);
 
         if ($id <= 0) {
-            $this->renderError(404, 'error_404', '/targets');
+            $this->renderError(404, 'error_404', '/maintenance');
             return;
         }
 
@@ -185,21 +193,21 @@ class TargetController extends BaseController
                 'id'      => $id,
                 'message' => $e->getMessage(),
             ]);
-            $this->renderError(503, 'error_agent_unavailable', '/targets');
+            $this->renderError(503, 'error_agent_unavailable', '/maintenance');
             return;
         }
 
         if (empty($window)) {
-            $this->renderError(404, 'error_404', '/targets');
+            $this->renderError(404, 'error_404', '/maintenance');
             return;
         }
 
-        $this->render('targets/form.php', $this->translator()->t('target_window_edit'), [
+        $this->render('maintenance/form.php', $this->translator()->t('target_window_edit'), [
             'window'     => $window,
             'isEdit'     => true,
             'error'      => null,
-            'formAction' => '/targets/windows/' . $id . '/edit',
-        ], '/targets');
+            'formAction' => '/maintenance/windows/' . $id . '/edit',
+        ], '/maintenance');
     }
 
     /**
@@ -214,7 +222,7 @@ class TargetController extends BaseController
         $id = (int) ($params['id'] ?? 0);
 
         if ($id <= 0) {
-            $this->renderError(404, 'error_404', '/targets');
+            $this->renderError(404, 'error_404', '/maintenance');
             return;
         }
 
@@ -238,18 +246,18 @@ class TargetController extends BaseController
                 'message' => $e->getMessage(),
             ]);
 
-            $this->render('targets/form.php', $this->translator()->t('target_window_edit'), [
+            $this->render('maintenance/form.php', $this->translator()->t('target_window_edit'), [
                 'window'     => array_merge($data, ['id' => $id]),
                 'isEdit'     => true,
                 'error'      => $e->getMessage(),
-                'formAction' => '/targets/windows/' . $id . '/edit',
-            ], '/targets');
+                'formAction' => '/maintenance/windows/' . $id . '/edit',
+            ], '/maintenance');
             return;
         }
 
         $this->logger->info('TargetController::updateWindow: window updated', ['id' => $id]);
 
-        (new Response())->redirect('/targets');
+        (new Response())->redirect('/maintenance');
     }
 
     /**
@@ -303,7 +311,7 @@ class TargetController extends BaseController
         $id = (int) ($params['id'] ?? 0);
 
         if ($id <= 0) {
-            $this->renderError(404, 'error_404', '/targets');
+            $this->renderError(404, 'error_404', '/maintenance');
             return;
         }
 
@@ -314,12 +322,12 @@ class TargetController extends BaseController
                 'id'      => $id,
                 'message' => $e->getMessage(),
             ]);
-            $this->renderError(503, 'error_agent_unavailable', '/targets');
+            $this->renderError(503, 'error_agent_unavailable', '/maintenance');
             return;
         }
 
         $this->logger->info('TargetController::deleteWindow: window deleted', ['id' => $id]);
 
-        (new Response())->redirect('/targets');
+        (new Response())->redirect('/maintenance');
     }
 }

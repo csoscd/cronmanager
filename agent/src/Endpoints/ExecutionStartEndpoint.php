@@ -166,7 +166,50 @@ final class ExecutionStartEndpoint
             }
 
             // ------------------------------------------------------------------
-            // 5. Maintenance-window guard
+            // 5a. Agent-level maintenance window guard (overrides per-job setting)
+            //
+            // If the agent itself has an active maintenance window (target =
+            // '_agent_'), ALL jobs are blocked unconditionally – the per-job
+            // run_in_maintenance flag is ignored.  This models host-wide events
+            // such as VM maintenance windows where no process can run at all.
+            // ------------------------------------------------------------------
+
+            if ($this->maintenanceRepo->isAgentInMaintenance()) {
+                $nowUtc = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s');
+
+                $stmt = $this->pdo->prepare(
+                    'INSERT INTO execution_log
+                        (cronjob_id, started_at, finished_at, exit_code, output, target,
+                         during_maintenance, retry_attempt, retry_root_execution_id)
+                     VALUES (:cronjob_id, :started_at, :finished_at, :exit_code, :output, :target, 1, 0, NULL)'
+                );
+                $stmt->execute([
+                    ':cronjob_id'  => $jobId,
+                    ':started_at'  => $nowUtc,
+                    ':finished_at' => $nowUtc,
+                    ':exit_code'   => -4,
+                    ':output'      => 'Skipped: Cronmanager Agent is in a maintenance window.',
+                    ':target'      => $target,
+                ]);
+
+                $skippedId = (int) $this->pdo->lastInsertId();
+
+                $this->logger->info('ExecutionStartEndpoint: job skipped – agent in maintenance window', [
+                    'job_id'       => $jobId,
+                    'execution_id' => $skippedId,
+                ]);
+
+                jsonResponse(423, [
+                    'error'        => 'Locked',
+                    'message'      => 'Cronmanager Agent is in a maintenance window. Execution skipped.',
+                    'execution_id' => $skippedId,
+                    'code'         => 423,
+                ]);
+                return;
+            }
+
+            // ------------------------------------------------------------------
+            // 5. Per-target maintenance-window guard
             // ------------------------------------------------------------------
 
             $effectiveTarget  = $target ?? 'local';

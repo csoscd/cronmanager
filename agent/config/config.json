@@ -35,5 +35,8 @@
     },
     "cron": {
         "wrapper_script": "/opt/cronmanager/agent/bin/cron-wrapper.sh"
+    },
+    "notifications": {
+        "web_url": ""
     }
 }

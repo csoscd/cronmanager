@@ -206,28 +206,29 @@ try {
     $router->addProtectedRoute('POST', '/users/{id}/role',     [$userCtrl, 'updateRole'], 'admin');
     $router->addProtectedRoute('POST', '/users/{id}/delete',   [$userCtrl, 'destroy'],    'admin');
 
-    // Targets / Maintenance Windows – admin only
-    // Conflict check is GET with query params (no auth body needed, but still admin).
-    // /targets/windows/{id}/edit and /targets/windows/{id}/delete must be
-    // registered before /targets/{target}/windows (static vs dynamic segment).
-    $router->addProtectedRoute('GET',  '/maintenance/windows/conflict',         [$targetCtrl, 'conflictCheck'], 'view');
-    $router->addProtectedRoute('GET',  '/targets',                              [$targetCtrl, 'index'],        'admin');
-    $router->addProtectedRoute('GET',  '/targets/{target}/windows/new',         [$targetCtrl, 'newWindow'],    'admin');
-    $router->addProtectedRoute('POST', '/targets/{target}/windows',             [$targetCtrl, 'storeWindow'],  'admin');
-    $router->addProtectedRoute('GET',  '/targets/windows/{id}/edit',            [$targetCtrl, 'editWindow'],   'admin');
-    $router->addProtectedRoute('POST', '/targets/windows/{id}/edit',            [$targetCtrl, 'updateWindow'], 'admin');
-    $router->addProtectedRoute('POST', '/targets/windows/{id}/delete',          [$targetCtrl, 'deleteWindow'], 'admin');
+    // Maintenance / Maintenance Windows (formerly "Targets") – admin only
+    // Conflict check uses GET with query params (view role sufficient).
+    // /maintenance/windows/{id}/edit and /maintenance/windows/{id}/delete must be
+    // registered before /maintenance/{target}/windows (static vs dynamic segment).
+    // /maintenance/windows/conflict must be registered before /maintenance/windows/{id}.
+    $router->addProtectedRoute('GET',  '/maintenance/windows/conflict',              [$targetCtrl, 'conflictCheck'], 'view');
+    $router->addProtectedRoute('GET',  '/maintenance/windows/{id}/edit',             [$targetCtrl, 'editWindow'],   'admin');
+    $router->addProtectedRoute('POST', '/maintenance/windows/{id}/edit',             [$targetCtrl, 'updateWindow'], 'admin');
+    $router->addProtectedRoute('POST', '/maintenance/windows/{id}/delete',           [$targetCtrl, 'deleteWindow'], 'admin');
+    $router->addProtectedRoute('GET',  '/maintenance/{target}/windows/new',          [$targetCtrl, 'newWindow'],    'admin');
+    $router->addProtectedRoute('POST', '/maintenance/{target}/windows',              [$targetCtrl, 'storeWindow'],  'admin');
+    $router->addProtectedRoute('GET',  '/maintenance',                               [$targetCtrl, 'index'],        'admin');
 
-    // Maintenance – admin only; more-specific paths registered before /{id} sub-routes
-    $router->addProtectedRoute('GET',  '/maintenance',                              [$maintenanceCtrl, 'index'],           'admin');
-    $router->addProtectedRoute('POST', '/maintenance/resync',                       [$maintenanceCtrl, 'resyncCrontab'],   'admin');
-    $router->addProtectedRoute('POST', '/maintenance/executions/bulk',              [$maintenanceCtrl, 'bulkAction'],      'admin');
-    $router->addProtectedRoute('POST', '/maintenance/executions/{id}/finish',       [$maintenanceCtrl, 'resolveExecution'],'admin');
-    $router->addProtectedRoute('POST', '/maintenance/executions/{id}/delete',       [$maintenanceCtrl, 'deleteExecution'], 'admin');
-    $router->addProtectedRoute('POST', '/maintenance/history/cleanup',              [$maintenanceCtrl, 'cleanHistory'],    'admin');
-    $router->addProtectedRoute('POST', '/maintenance/once/cleanup',                 [$maintenanceCtrl, 'onceCleanup'],     'admin');
-    $router->addProtectedRoute('POST', '/maintenance/logs/prune',                   [$maintenanceCtrl, 'pruneLogs'],       'admin');
-    $router->addProtectedRoute('POST', '/maintenance/notification/test',            [$maintenanceCtrl, 'testNotification'],'admin');
+    // Housekeeping (formerly "Maintenance") – admin only; more-specific paths first
+    $router->addProtectedRoute('GET',  '/housekeeping',                              [$maintenanceCtrl, 'index'],           'admin');
+    $router->addProtectedRoute('POST', '/housekeeping/resync',                       [$maintenanceCtrl, 'resyncCrontab'],   'admin');
+    $router->addProtectedRoute('POST', '/housekeeping/executions/bulk',              [$maintenanceCtrl, 'bulkAction'],      'admin');
+    $router->addProtectedRoute('POST', '/housekeeping/executions/{id}/finish',       [$maintenanceCtrl, 'resolveExecution'],'admin');
+    $router->addProtectedRoute('POST', '/housekeeping/executions/{id}/delete',       [$maintenanceCtrl, 'deleteExecution'], 'admin');
+    $router->addProtectedRoute('POST', '/housekeeping/history/cleanup',              [$maintenanceCtrl, 'cleanHistory'],    'admin');
+    $router->addProtectedRoute('POST', '/housekeeping/once/cleanup',                 [$maintenanceCtrl, 'onceCleanup'],     'admin');
+    $router->addProtectedRoute('POST', '/housekeeping/logs/prune',                   [$maintenanceCtrl, 'pruneLogs'],       'admin');
+    $router->addProtectedRoute('POST', '/housekeeping/notification/test',            [$maintenanceCtrl, 'testNotification'],'admin');
 
     // -------------------------------------------------------------------------
     // Dispatch

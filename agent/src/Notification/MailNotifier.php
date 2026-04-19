@@ -87,6 +87,8 @@ final class MailNotifier
         string $startedAt,
         string $finishedAt,
         int    $notifyAfterFailures = 1,
+        string $target = '',
+        bool   $stillRunning = false,
     ): bool {
         // ------------------------------------------------------------------
         // Guard: respect the master mail.enabled switch
@@ -127,9 +129,10 @@ final class MailNotifier
             : $output;
 
         $subject = match (true) {
-            $exitCode === -2 => sprintf('[Cronmanager] Job #%d AUTO-KILLED (limit exceeded): %s', $jobId, $description),
-            $exitCode === -3 => sprintf('[Cronmanager] Job #%d LIMIT EXCEEDED (still running): %s', $jobId, $description),
-            default          => sprintf('[Cronmanager] Job #%d FAILED (exit %d): %s', $jobId, $exitCode, $description),
+            $exitCode === -2                    => sprintf('[Cronmanager] Job #%d AUTO-KILLED (limit exceeded): %s', $jobId, $description),
+            $exitCode === -3 && $stillRunning   => sprintf('[Cronmanager] Job #%d LIMIT EXCEEDED (still running): %s', $jobId, $description),
+            $exitCode === -3                    => sprintf('[Cronmanager] Job #%d LIMIT EXCEEDED (at finish): %s', $jobId, $description),
+            default                            => sprintf('[Cronmanager] Job #%d FAILED (exit %d): %s', $jobId, $exitCode, $description),
         };
 
         $plainBody = $this->buildPlainBody(
@@ -142,6 +145,8 @@ final class MailNotifier
             $startedAt,
             $finishedAt,
             $notifyAfterFailures,
+            $target,
+            $stillRunning,
         );
 
         $htmlBody = $this->buildHtmlBody(
@@ -154,6 +159,8 @@ final class MailNotifier
             $startedAt,
             $finishedAt,
             $notifyAfterFailures,
+            $target,
+            $stillRunning,
         );
 
         // ------------------------------------------------------------------
@@ -309,10 +316,14 @@ HTML;
      * @param callable $e  HTML-escape callable.
      * @return string
      */
-    private function exitCodeRow(int $exitCode, callable $e): string
+    private function exitCodeRow(int $exitCode, callable $e, bool $stillRunning = false): string
     {
         if ($exitCode === -3) {
-            return '<tr><th>Exit Code</th><td><em>N/A &ndash; job still running</em></td></tr>';
+            $text = $stillRunning
+                ? 'N/A &ndash; job still running'
+                : 'N/A &ndash; execution limit exceeded';
+
+            return sprintf('<tr><th>Exit Code</th><td><em>%s</em></td></tr>', $text);
         }
 
         return sprintf(
@@ -331,9 +342,9 @@ HTML;
      * @param callable $e           HTML-escape callable.
      * @return string
      */
-    private function finishedRow(int $exitCode, string $finishedAt, callable $e): string
+    private function finishedRow(int $exitCode, string $finishedAt, callable $e, bool $stillRunning = false): string
     {
-        $label = $exitCode === -3 ? 'Notified At' : 'Finished';
+        $label = ($exitCode === -3 && $stillRunning) ? 'Notified At' : 'Finished';
 
         return sprintf('<tr><th>%s</th><td>%s</td></tr>', $label, $e($finishedAt));
     }
@@ -366,19 +377,22 @@ HTML;
         string $startedAt,
         string $finishedAt,
         int    $notifyAfterFailures = 1,
+        string $target = '',
+        bool   $stillRunning = false,
     ): string {
         $headline = match (true) {
-            $exitCode === -2 => 'CRONMANAGER – JOB AUTO-KILLED (EXECUTION LIMIT EXCEEDED)',
-            $exitCode === -3 => 'CRONMANAGER – JOB EXECUTION LIMIT EXCEEDED',
-            default          => 'CRONMANAGER – JOB FAILURE ALERT',
+            $exitCode === -2                  => 'CRONMANAGER – JOB AUTO-KILLED (EXECUTION LIMIT EXCEEDED)',
+            $exitCode === -3 && $stillRunning => 'CRONMANAGER – JOB EXECUTION LIMIT EXCEEDED (STILL RUNNING)',
+            $exitCode === -3                  => 'CRONMANAGER – JOB EXECUTION LIMIT EXCEEDED (AT FINISH)',
+            default                          => 'CRONMANAGER – JOB FAILURE ALERT',
         };
 
-        // For limit-exceeded alerts the job is still running: there is no exit
-        // code yet and finishedAt is the notification time, not a finish time.
-        $exitCodeLine  = $exitCode === -3
-            ? 'Exit Code  : N/A (job still running)'
-            : sprintf('Exit Code  : %d', $exitCode);
-        $finishedLine  = $exitCode === -3
+        $exitCodeLine = match (true) {
+            $exitCode === -3 && $stillRunning => 'Exit Code  : N/A (job still running)',
+            $exitCode === -3                  => 'Exit Code  : N/A (execution limit exceeded)',
+            default                          => sprintf('Exit Code  : %d', $exitCode),
+        };
+        $finishedLine = ($exitCode === -3 && $stillRunning)
             ? sprintf('Notified At: %s', $finishedAt)
             : sprintf('Finished   : %s', $finishedAt);
 
@@ -408,6 +422,15 @@ HTML;
                 $notifyAfterFailures,
             );
             $lines[] = '      No further failure alerts will be sent until this job recovers.';
+            $lines[] = '';
+        }
+
+        $webUrl = (string) $this->config->get('notifications.web_url', '');
+        if ($webUrl !== '') {
+            $link = $stillRunning
+                ? rtrim($webUrl, '/') . '/crons/' . $jobId
+                : rtrim($webUrl, '/') . '/timeline?job_id=' . $jobId . '&target=' . urlencode($target) . '&status=failed&_direct=1';
+            $lines[] = 'View details: ' . $link;
             $lines[] = '';
         }
 
@@ -443,6 +466,8 @@ HTML;
         string $startedAt,
         string $finishedAt,
         int    $notifyAfterFailures = 1,
+        string $target = '',
+        bool   $stillRunning = false,
     ): string {
         // Helper: escape a value for safe HTML embedding
         $e = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -464,9 +489,14 @@ HTML;
                 'A managed cron job was automatically terminated because it exceeded its configured execution time limit.',
                 '#e67e22',
             ],
-            $exitCode === -3 => [
+            $exitCode === -3 && $stillRunning => [
                 '&#x23F0; Cron Job Execution Limit Exceeded',
                 'A managed cron job has been running longer than its configured execution time limit.',
+                '#8e44ad',
+            ],
+            $exitCode === -3 => [
+                '&#x23F0; Cron Job Execution Limit Exceeded (at Finish)',
+                'A managed cron job exceeded its configured execution time limit and has since finished.',
                 '#8e44ad',
             ],
             default => [
@@ -475,6 +505,18 @@ HTML;
                 '#c0392b',
             ],
         };
+
+        $webUrl  = (string) $this->config->get('notifications.web_url', '');
+        $linkHtml = '';
+        if ($webUrl !== '') {
+            $link     = $stillRunning
+                ? rtrim($webUrl, '/') . '/crons/' . $jobId
+                : rtrim($webUrl, '/') . '/timeline?job_id=' . $jobId . '&target=' . urlencode($target) . '&status=failed&_direct=1';
+            $linkHtml = sprintf(
+                '<p style="margin-top:16px;"><a href="%s" style="display:inline-block;padding:8px 16px;background:#2563eb;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;">&#x1F517; View in Cronmanager</a></p>',
+                $e($link),
+            );
+        }
 
         return <<<HTML
 <!DOCTYPE html>
@@ -504,15 +546,17 @@ HTML;
         <tr><th>Description</th> <td>{$e($description)}</td></tr>
         <tr><th>User</th>        <td>{$e($linuxUser)}</td></tr>
         <tr><th>Schedule</th>    <td>{$e($schedule)}</td></tr>
-        {$this->exitCodeRow($exitCode, $e)}
+        {$this->exitCodeRow($exitCode, $e, $stillRunning)}
         <tr><th>Started</th>     <td>{$e($startedAt)}</td></tr>
-        {$this->finishedRow($exitCode, $finishedAt, $e)}
+        {$this->finishedRow($exitCode, $finishedAt, $e, $stillRunning)}
     </table>
 
     <h2 style="font-size:15px; margin-bottom:6px;">Output</h2>
     <pre>{$outputHtml}</pre>
 
     {$noFurtherAlertsHtml}
+
+    {$linkHtml}
 
     <p class="footer">This message was generated automatically by Cronmanager.</p>
 </div>

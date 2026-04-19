@@ -439,6 +439,8 @@ final class ExecutionFinishEndpoint
                             startedAt:           $startedAt,
                             finishedAt:          $finishedAt,
                             notifyAfterFailures: $notifyAfterFailures,
+                            target:              $target ?? '',
+                            stillRunning:        false,
                         );
                     }
                 }
@@ -486,14 +488,16 @@ final class ExecutionFinishEndpoint
                             );
 
                             $notified = $this->dispatchNotification(
-                                jobId:       $jobId,
-                                description: $label,
-                                linuxUser:   (string) $job['linux_user'],
-                                schedule:    (string) $job['schedule'],
-                                exitCode:    -3,  // sentinel: -3 = limit exceeded
-                                output:      $limitOutput,
-                                startedAt:   $startedAt,
-                                finishedAt:  $finishedAt
+                                jobId:        $jobId,
+                                description:  $label,
+                                linuxUser:    (string) $job['linux_user'],
+                                schedule:     (string) $job['schedule'],
+                                exitCode:     -3,  // sentinel: -3 = limit exceeded
+                                output:       $limitOutput,
+                                startedAt:    $startedAt,
+                                finishedAt:   $finishedAt,
+                                target:       $target ?? '',
+                                stillRunning: false,
                             );
 
                             $this->logger->info('ExecutionFinishEndpoint: limit-exceeded notification dispatched at finish', [
@@ -785,6 +789,8 @@ final class ExecutionFinishEndpoint
         string $startedAt,
         string $finishedAt,
         int    $notifyAfterFailures = 1,
+        string $target = '',
+        bool   $stillRunning = false,
     ): bool {
         // Path: agent/src/Endpoints/ → up 2 levels → agent/ → bin/send-notification.php
         $notifyScript = dirname(__DIR__, 2) . '/bin/send-notification.php';
@@ -808,6 +814,8 @@ final class ExecutionFinishEndpoint
                 startedAt:           $startedAt,
                 finishedAt:          $finishedAt,
                 notifyAfterFailures: $notifyAfterFailures,
+                target:              $target,
+                stillRunning:        $stillRunning,
             );
             $telegramSent = $this->telegramNotifier->sendFailureAlert(
                 jobId:               $jobId,
@@ -819,6 +827,8 @@ final class ExecutionFinishEndpoint
                 startedAt:           $startedAt,
                 finishedAt:          $finishedAt,
                 notifyAfterFailures: $notifyAfterFailures,
+                target:              $target,
+                stillRunning:        $stillRunning,
             );
             return $mailSent || $telegramSent;
         }
@@ -838,6 +848,8 @@ final class ExecutionFinishEndpoint
                 startedAt:           $startedAt,
                 finishedAt:          $finishedAt,
                 notifyAfterFailures: $notifyAfterFailures,
+                target:              $target,
+                stillRunning:        $stillRunning,
             );
             $telegramSent = $this->telegramNotifier->sendFailureAlert(
                 jobId:               $jobId,
@@ -849,20 +861,24 @@ final class ExecutionFinishEndpoint
                 startedAt:           $startedAt,
                 finishedAt:          $finishedAt,
                 notifyAfterFailures: $notifyAfterFailures,
+                target:              $target,
+                stillRunning:        $stillRunning,
             );
             return $mailSent || $telegramSent;
         }
 
         $payload = json_encode([
-            'job_id'               => $jobId,
-            'description'          => $description,
-            'linux_user'           => $linuxUser,
-            'schedule'             => $schedule,
-            'exit_code'            => $exitCode,
-            'output'               => $output,
-            'started_at'           => $startedAt,
-            'finished_at'          => $finishedAt,
+            'job_id'                => $jobId,
+            'description'           => $description,
+            'linux_user'            => $linuxUser,
+            'schedule'              => $schedule,
+            'exit_code'             => $exitCode,
+            'output'                => $output,
+            'started_at'            => $startedAt,
+            'finished_at'           => $finishedAt,
             'notify_after_failures' => $notifyAfterFailures,
+            'target'                => $target,
+            'still_running'         => $stillRunning,
         ], JSON_UNESCAPED_UNICODE);
 
         if (file_put_contents($tempFile, $payload) === false) {
@@ -878,6 +894,8 @@ final class ExecutionFinishEndpoint
                 startedAt:           $startedAt,
                 finishedAt:          $finishedAt,
                 notifyAfterFailures: $notifyAfterFailures,
+                target:              $target,
+                stillRunning:        $stillRunning,
             );
             $telegramSent = $this->telegramNotifier->sendFailureAlert(
                 jobId:               $jobId,
@@ -889,6 +907,8 @@ final class ExecutionFinishEndpoint
                 startedAt:           $startedAt,
                 finishedAt:          $finishedAt,
                 notifyAfterFailures: $notifyAfterFailures,
+                target:              $target,
+                stillRunning:        $stillRunning,
             );
             return $mailSent || $telegramSent;
         }

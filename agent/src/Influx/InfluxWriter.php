@@ -197,9 +197,10 @@ final class InfluxWriter
      */
     private function formatFloat(float $value): string
     {
-        // Ensure at least one decimal place so InfluxDB treats it as a float field
+        // Ensure at least one decimal place so InfluxDB treats it as a float field.
+        // rtrim zeros may leave a trailing dot (e.g. "3.") – append "0" in that case.
         $str = rtrim(number_format($value, 6, '.', ''), '0');
-        return str_contains($str, '.') ? rtrim($str, '.') . '0' : $str . '.0';
+        return str_ends_with($str, '.') ? $str . '0' : $str;
     }
 
     /**

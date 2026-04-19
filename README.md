@@ -251,6 +251,13 @@ commented-out lines in `docker-compose-full.yml`.
 | `TELEGRAM_BOT_TOKEN` | _(empty)_ | Bot API token from @BotFather |
 | `TELEGRAM_CHAT_ID` | _(empty)_ | Target chat, channel, or group ID |
 | `TELEGRAM_TIMEOUT` | `15` | HTTP request timeout in seconds |
+| `WEB_URL` | _(empty)_ | Base URL of the web UI (e.g. `https://cronmanager.example.com`) — appended to alert notification links |
+| `INFLUXDB_ENABLED` | `false` | Enable InfluxDB 2.x metrics export |
+| `INFLUXDB_URL` | `http://influxdb:8086` | InfluxDB base URL |
+| `INFLUXDB_TOKEN` | _(empty)_ | InfluxDB API token |
+| `INFLUXDB_ORG` | _(empty)_ | InfluxDB organisation name |
+| `INFLUXDB_BUCKET` | `cronmanager` | InfluxDB bucket name |
+| `INFLUXDB_TIMEOUT` | `10` | HTTP write timeout in seconds |
 
 #### Web container optional variables
 
@@ -1021,6 +1028,72 @@ Messages are sent in HTML parse mode and include the job ID, description, user, 
 exit code, start/notification time, and the captured output (truncated to 2 000 characters).
 The same context-aware labels as email apply: jobs that are still running show
 "N/A – job still running" as the exit code and "Notified At" instead of "Finished".
+
+---
+
+## InfluxDB Metrics
+
+Cronmanager can write a data point to **InfluxDB 2.x** after every completed execution.
+This lets you build dashboards in Grafana (or any Flux-capable tool) showing execution
+history, success rates, durations, and failure trends across all your jobs.
+
+### What is written
+
+Every completed execution produces one `cron_execution` data point:
+
+| | Name | Type | Description |
+|---|---|---|---|
+| **Tag** | `job_id` | string | Numeric job ID |
+| **Tag** | `description` | string | Job description |
+| **Tag** | `linux_user` | string | Linux user that ran the job |
+| **Tag** | `target` | string | Execution target (`local` or SSH alias) |
+| **Tag** | `status` | string | `success`, `failed`, `killed`, `limit_exceeded`, `maintenance`, `interrupted` |
+| **Tag** | `job_tags` | string | Comma-separated job tags (omitted when empty) |
+| **Field** | `duration_seconds` | float | Elapsed wall-clock time in seconds |
+| **Field** | `exit_code` | int | Raw process exit code |
+| **Field** | `output_length` | int | Bytes of captured output |
+| **Field** | `during_maintenance` | int | `1` if a maintenance window was active, else `0` |
+
+Writes are dispatched in a **background process** (`send-influx.php`) so a slow or
+unreachable InfluxDB instance never blocks the agent's HTTP response.
+
+### Enable (Docker Compose / `.env`)
+
+```dotenv
+INFLUXDB_ENABLED=true
+INFLUXDB_URL=http://influxdb:8086
+INFLUXDB_TOKEN=your-api-token
+INFLUXDB_ORG=your-org
+INFLUXDB_BUCKET=cronmanager
+```
+
+After adding these variables, restart the agent container so the entrypoint regenerates
+`config.json`.
+
+### Grafana dashboard
+
+An importable Grafana dashboard is included at `grafana/cronmanager-overview.json`.
+
+**To import:**
+1. Grafana → **Dashboards → Import**
+2. Upload `grafana/cronmanager-overview.json` (or paste its JSON)
+3. Select your InfluxDB datasource when prompted for `DS_INFLUXDB`
+4. Set the `bucket` variable to your bucket name (default: `cronmanager`)
+
+**Panels included:**
+
+| Panel | Type |
+|---|---|
+| Total Executions | Stat |
+| Success Rate | Gauge |
+| Failed | Stat |
+| Avg Duration | Stat |
+| Maintenance Skipped | Stat |
+| Executions over Time by Status | Stacked time series |
+| Duration over Time by Job | Time series |
+| Executions by Job | Horizontal bar chart |
+| Avg Duration by Job | Horizontal bar chart |
+| Recent Failures (last 50) | Table |
 
 ---
 

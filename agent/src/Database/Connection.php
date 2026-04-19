@@ -47,6 +47,18 @@ final class Connection
     /** @var PDO Active PDO connection */
     private PDO $pdo;
 
+    /** @var array<int,mixed> PDO options reused on reconnect */
+    private array $pdoOptions = [];
+
+    /** @var string DSN reused on reconnect */
+    private string $dsn = '';
+
+    /** @var string DB user reused on reconnect */
+    private string $dbUser = '';
+
+    /** @var string DB password reused on reconnect */
+    private string $dbPassword = '';
+
     /** @var Logger Monolog logger */
     private Logger $logger;
 
@@ -98,12 +110,24 @@ final class Connection
     // -------------------------------------------------------------------------
 
     /**
-     * Return the active PDO instance.
+     * Return the active PDO instance, reconnecting if the connection was lost.
+     *
+     * Uses a lightweight ping (SELECT 1) to detect a stale connection caused by
+     * the database server restarting while the agent process is running.
+     * On failure it attempts one reconnect before throwing.
      *
      * @return PDO
+     * @throws PDOException When the connection cannot be re-established.
      */
     public function getPdo(): PDO
     {
+        try {
+            $this->pdo->query('SELECT 1');
+        } catch (\PDOException) {
+            $this->logger->warning('Database connection lost – attempting reconnect');
+            $this->createPdo();
+        }
+
         return $this->pdo;
     }
 
@@ -170,7 +194,7 @@ final class Connection
     }
 
     /**
-     * Establish the PDO connection to MariaDB.
+     * Read connection parameters from config and establish the initial PDO connection.
      *
      * Configuration keys used:
      *   database.host     – hostname or IP
@@ -189,44 +213,52 @@ final class Connection
      */
     private function connect(): void
     {
-        $host     = (string)  $this->config->get('database.host',     '127.0.0.1');
-        $port     = (int)     $this->config->get('database.port',     3306);
-        $dbName   = (string)  $this->config->get('database.name',     'cronmanager');
-        $user     = (string)  $this->config->get('database.user',     'cronmanager');
-        $password = (string)  $this->config->get('database.password', '');
+        $host     = (string) $this->config->get('database.host',     '127.0.0.1');
+        $port     = (int)    $this->config->get('database.port',     3306);
+        $dbName   = (string) $this->config->get('database.name',     'cronmanager');
 
-        $dsn = sprintf(
-            'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
-            $host,
-            $port,
-            $dbName
-        );
-
-        $options = [
+        $this->dsn        = sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $host, $port, $dbName);
+        $this->dbUser     = (string) $this->config->get('database.user',     'cronmanager');
+        $this->dbPassword = (string) $this->config->get('database.password', '');
+        $this->pdoOptions = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES   => false,
         ];
 
+        $this->createPdo($host, $port, $dbName);
+    }
+
+    /**
+     * Create (or recreate) the PDO instance from the stored DSN and credentials.
+     * Called on initial connect and on every automatic reconnect.
+     *
+     * @param string $host   Logged on success/failure (optional; empty string on reconnect).
+     * @param int    $port   Logged on success/failure.
+     * @param string $dbName Logged on success/failure.
+     *
+     * @throws PDOException On connection failure.
+     */
+    private function createPdo(string $host = '', int $port = 0, string $dbName = ''): void
+    {
         try {
-            $this->pdo = new PDO($dsn, $user, $password, $options);
+            $this->pdo = new PDO($this->dsn, $this->dbUser, $this->dbPassword, $this->pdoOptions);
 
             $this->logger->info('Database connection established', [
                 'host'   => $host,
                 'port'   => $port,
                 'dbname' => $dbName,
-                'user'   => $user,
+                'user'   => $this->dbUser,
             ]);
         } catch (PDOException $e) {
             $this->logger->error('Database connection failed', [
                 'host'    => $host,
                 'port'    => $port,
                 'dbname'  => $dbName,
-                'user'    => $user,
+                'user'    => $this->dbUser,
                 'message' => $e->getMessage(),
             ]);
 
-            // Re-throw so the caller can decide how to handle startup failure
             throw $e;
         }
     }

@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.8.5] – branch: `db-reconnect`
+
+### Fixed
+- **Database reconnect after container restart**: the agent's singleton PDO connection is now verified with a lightweight `SELECT 1` ping before every database operation. If the connection was lost (e.g. because the MariaDB container was stopped and restarted — such as during a database backup job managed by Cronmanager itself), the agent transparently re-establishes the connection. Previously the stale connection caused `POST /execution/finish` to fail with "MySQL server has gone away", leaving the execution permanently stuck as "running".
+
+---
+
 ## [2.8.4] – branch: `small-features`
 
 ### Added

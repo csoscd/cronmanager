@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.9.1] – branch: `fix-retry`
+
+### Fixed
+- **Auto-retry never fired**: the `INSERT … ON DUPLICATE KEY UPDATE` query that records pending retry state reused the same PDO named parameters (`:next_attempt`, `:root_id`, etc.) in both the `VALUES` and `UPDATE` clauses. PDO rejects this with `SQLSTATE[HY093]: Invalid parameter number`, causing every retry to be silently dropped. Fixed by using MariaDB's `VALUES(column_name)` syntax in the `ON DUPLICATE KEY UPDATE` clause so each named parameter appears exactly once.
+
+---
+
 ## [2.9.0] – branch: `influx-connection`
 
 ### Added

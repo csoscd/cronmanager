@@ -315,17 +315,19 @@ final class ExecutionFinishEndpoint
                             (int) $fireAt->format('n'),
                         );
 
-                        // Write pending retry state so ExecutionStartEndpoint can pick it up
+                        // Write pending retry state so ExecutionStartEndpoint can pick it up.
+                        // ON DUPLICATE KEY UPDATE uses VALUES() to avoid PDO named-parameter
+                        // reuse (SQLSTATE HY093 when the same placeholder appears twice).
                         $this->pdo->prepare(
                             'INSERT INTO job_retry_state
                                 (job_id, target, next_retry_attempt, root_execution_id,
                                  retry_delay_minutes, scheduled_at)
                              VALUES (:job_id, :target, :next_attempt, :root_id, :delay, :scheduled_at)
                              ON DUPLICATE KEY UPDATE
-                                next_retry_attempt  = :next_attempt,
-                                root_execution_id   = :root_id,
-                                retry_delay_minutes = :delay,
-                                scheduled_at        = :scheduled_at'
+                                next_retry_attempt  = VALUES(next_retry_attempt),
+                                root_execution_id   = VALUES(root_execution_id),
+                                retry_delay_minutes = VALUES(retry_delay_minutes),
+                                scheduled_at        = VALUES(scheduled_at)'
                         )->execute([
                             ':job_id'       => $jobId,
                             ':target'       => $effectiveTarget,

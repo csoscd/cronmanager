@@ -480,7 +480,25 @@ else
 fi
 
 # =============================================================================
-# 5b. Install execution-limit checker cron entry and start cron daemon
+# 5b. Startup orphan cleanup
+#     Marks any execution_log rows still in "running" state (finished_at IS NULL)
+#     as interrupted (exit_code = -5) so they do not remain stuck in the UI
+#     after an ungraceful agent shutdown or container restart.
+#     A 2-minute grace period prevents false positives for jobs just launched.
+# =============================================================================
+
+CLEANUP_SCRIPT="${AGENT_DIR}/bin/startup-cleanup.php"
+
+if [[ -f "$CLEANUP_SCRIPT" ]]; then
+    log_info "Running startup orphan cleanup..."
+    php "${CLEANUP_SCRIPT}" 2>&1 || true
+    log_info "Startup orphan cleanup done."
+else
+    log_warn "Startup cleanup script not found at ${CLEANUP_SCRIPT} – skipping."
+fi
+
+# =============================================================================
+# 5c. Install execution-limit checker cron entry and start cron daemon
 # =============================================================================
 
 LIMITS_CRON_FILE="/etc/cron.d/cronmanager-limits"

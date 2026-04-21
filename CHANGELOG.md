@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.9.2] – branch: `cleanup-fix`
+
+### Fixed
+- **Startup orphan cleanup skipped in Docker mode**: `startup-cleanup.php` was called by `start-agent.sh` (host-agent mode) but was never invoked by the Docker `entrypoint.sh`. After a container restart, any executions still marked as "running" were left stuck indefinitely in the UI. The entrypoint now calls `startup-cleanup.php` after the crontab resync, marking orphaned executions as exit code **-5** ("Interrupted") with the same 2-minute grace period as the host-agent mode.
+
+---
+
 ## [2.9.1] – branch: `fix-retry`
 
 ### Fixed

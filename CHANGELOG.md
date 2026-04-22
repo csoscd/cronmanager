@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.9.3] – branch: `cronwrapper-retry-loop`
+
+### Fixed
+- **Execution stuck as "running" after DB-interrupting backup jobs**: when a cron job (e.g. a MariaDB backup) stops and restarts the database container, `docker start` returns before MariaDB is ready to accept connections (~20 s initialization window). The cron-wrapper's single `/execution/finish` call landed inside this window and the agent returned HTTP 500, leaving the execution permanently stuck as "running". The wrapper now retries `/execution/finish` up to **10 times** with a **30-second interval** (covering up to ~5 minutes of DB unavailability). 5xx responses and curl transport errors trigger a retry; 4xx client errors abort immediately. Each retry attempt is logged to stderr.
+
+---
+
 ## [2.9.2] – branch: `cleanup-fix`
 
 ### Fixed

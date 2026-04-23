@@ -52,6 +52,8 @@ set -uo pipefail
 
 readonly CONFIG_FILE="/opt/cronmanager/agent/config/config.json"
 readonly MAX_OUTPUT_BYTES=50000   # Truncate captured output to this many bytes
+readonly FINISH_MAX_ATTEMPTS=10   # Total attempts for /execution/finish (1 initial + 9 retries)
+readonly FINISH_RETRY_INTERVAL=30 # Seconds between /execution/finish retry attempts
 
 # =============================================================================
 # Logging helpers (all output goes to stderr so it appears in the cron mail)
@@ -512,14 +514,46 @@ if [[ -z "${FINISH_BODY}" ]]; then
 elif [[ "$EXECUTION_ID" != "0" ]]; then
     log_info "Job ${JOB_ID}: notifying agent of execution finish (execution_id=${EXECUTION_ID})"
 
-    # Use a 60-second timeout for the finish call: the agent may need extra time
-    # to attempt SMTP delivery before responding (mail.smtp_timeout defaults to 15 s).
-    if ! agent_request "POST" "/execution/finish" "${FINISH_BODY}" 60 >/dev/null; then
-        log_warn "Job ${JOB_ID}: could not reach agent for /execution/finish (curl transport error)"
-    elif [[ "${_HTTP_CODE}" -lt 200 || "${_HTTP_CODE}" -ge 300 ]]; then
-        log_warn "Job ${JOB_ID}: agent returned HTTP ${_HTTP_CODE} for /execution/finish"
-    else
-        log_info "Job ${JOB_ID}: execution finish recorded (http_code=${_HTTP_CODE})"
+    # Retry loop for /execution/finish.
+    # The agent may temporarily return 5xx when the database is unavailable (e.g.
+    # during a backup that stops and restarts the DB container).  Docker's
+    # `docker start` returns before MariaDB is ready to accept connections, so
+    # a race window of ~20 s exists between the backup script exiting and the
+    # DB being connectable.  Retrying up to FINISH_MAX_ATTEMPTS times with
+    # FINISH_RETRY_INTERVAL second gaps covers that window and similar transient
+    # outages without requiring agent-side buffering.
+    # 4xx responses indicate a client-side error and are not retried.
+    # Use a 60-second curl timeout: the agent may need extra time to send the
+    # SMTP failure-alert before responding (mail.smtp_timeout defaults to 15 s).
+    _finish_attempt=0
+    _finish_ok=false
+    while [[ $_finish_attempt -lt $FINISH_MAX_ATTEMPTS ]]; do
+        _finish_attempt=$((_finish_attempt + 1))
+
+        if [[ $_finish_attempt -gt 1 ]]; then
+            log_info "Job ${JOB_ID}: retrying /execution/finish in ${FINISH_RETRY_INTERVAL}s (attempt ${_finish_attempt}/${FINISH_MAX_ATTEMPTS})..."
+            sleep "${FINISH_RETRY_INTERVAL}"
+        fi
+
+        if ! agent_request "POST" "/execution/finish" "${FINISH_BODY}" 60 >/dev/null; then
+            log_warn "Job ${JOB_ID}: could not reach agent for /execution/finish – curl transport error (attempt ${_finish_attempt}/${FINISH_MAX_ATTEMPTS})"
+            continue
+        fi
+
+        if [[ "${_HTTP_CODE}" -ge 200 && "${_HTTP_CODE}" -lt 300 ]]; then
+            log_info "Job ${JOB_ID}: execution finish recorded (http_code=${_HTTP_CODE}, attempt ${_finish_attempt})"
+            _finish_ok=true
+            break
+        elif [[ "${_HTTP_CODE}" -ge 400 && "${_HTTP_CODE}" -lt 500 ]]; then
+            log_warn "Job ${JOB_ID}: agent returned HTTP ${_HTTP_CODE} for /execution/finish – not retrying (client error)"
+            break
+        else
+            log_warn "Job ${JOB_ID}: agent returned HTTP ${_HTTP_CODE} for /execution/finish (attempt ${_finish_attempt}/${FINISH_MAX_ATTEMPTS})"
+        fi
+    done
+
+    if [[ "${_finish_ok}" == false ]]; then
+        log_error "Job ${JOB_ID}: failed to record execution finish after ${FINISH_MAX_ATTEMPTS} attempt(s) – execution may remain stuck as 'running'"
     fi
 else
     log_warn "Job ${JOB_ID}: skipping /execution/finish notification (no execution_id)"

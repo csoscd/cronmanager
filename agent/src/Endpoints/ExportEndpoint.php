@@ -221,9 +221,15 @@ final class ExportEndpoint
                     echo sprintf("# target: %s\n", $target);
                 }
 
-                // Build the effective command: local → as-is, remote → via SSH
+                // Build the effective command: local → as-is, remote → via SSH.
+                // The entire command is passed as a single escapeshellarg-quoted argument
+                // so that shell metacharacters (pipes, redirects, &&, etc.) are preserved
+                // and evaluated by the remote shell, not the local shell reading the crontab.
+                // Using "ssh host -- sh -c '...'" does NOT work because SSH joins all
+                // arguments with spaces before sending to the remote, stripping the
+                // quoting that made the sh -c argument a single token.
                 $effectiveCommand = $target !== 'local'
-                    ? sprintf('ssh -o BatchMode=yes %s -- %s', $target, $command)
+                    ? sprintf('ssh -o BatchMode=yes %s %s', $target, escapeshellarg($command))
                     : $command;
 
                 // Active/inactive marker for disabled jobs

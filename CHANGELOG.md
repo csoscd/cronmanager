@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.9.4] – branch: `fixes-for-v2.9.3`
+
+### Fixed
+- **Export download fails with 503 (Connection refused)**: the `ExportController::download()` action created its own Guzzle HTTP client without applying the `agent.ssl_verify` / `agent.ssl_ca_bundle` configuration, causing SSL certificate verification to default to `true`. Deployments using the agent's self-signed certificate (the default) failed with a `ConnectException` on every export request. The ad-hoc Guzzle client now uses the same TLS verification logic as `HostAgentClient`.
+
+### Documentation
+- **Docker log volume note**: clarified in `README.md` that with the default Docker-managed named volumes (`agent-log`, `web-log`), log files are not directly accessible on the host filesystem. Users who need host-path log access must replace the named volume with a bind mount; the commented-out alternatives in `docker-compose-full.yml` document exactly how to do this.
+
+---
+
 ## [2.9.3] – branch: `cronwrapper-retry-loop`
 
 ### Fixed

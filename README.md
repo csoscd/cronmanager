@@ -193,6 +193,8 @@ lets you create the initial admin account.
 
 All persistent data lives in **Docker-managed named volumes** (`db-data`, `agent-log`, `web-log`).
 
+> **Note:** With the default named volumes, log files live inside Docker-managed storage and are not directly readable on the host filesystem. To access them at a regular host path (e.g. for log forwarding or `tail -f`), replace the named volume with a bind mount. `docker-compose-full.yml` contains the required lines as commented-out alternatives — see the `volumes:` section of `cronmanager-agent` and `cronmanager-web`.
+
 ### Available image tags
 
 | Tag | Built from | Use for |
@@ -1656,6 +1658,9 @@ tail -f /opt/cronmanager/agent/log/cronmanager-agent.log
 docker exec cronmanager-agent tail -f /opt/cronmanager/agent/log/cronmanager-agent.log
 # or via docker logs (combines stdout + stderr):
 docker logs -f cronmanager-agent
+# Note: the above docker exec command is required when using the default named volume.
+# If you switched to a host bind mount (see docker-compose-full.yml), you can also use:
+# tail -f /opt/cronmanager/agent/log/cronmanager-agent.log
 
 # Temporarily increase verbosity (without restarting — change in config.json + restart)
 # In config.json: "logging": { "level": "debug" }

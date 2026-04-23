@@ -124,7 +124,11 @@ class ExportController extends BaseController
             $queryString = '?' . http_build_query($query);
             $signature   = hash_hmac('sha256', 'GET' . $path . '', $secret);
 
-            $guzzle   = new \GuzzleHttp\Client(['timeout' => $timeout, 'http_errors' => false]);
+            $sslVerify = (bool)   $this->config->get('agent.ssl_verify',    true);
+            $caBundle  = (string) $this->config->get('agent.ssl_ca_bundle', '');
+            $verify    = !$sslVerify ? false : ($caBundle !== '' ? $caBundle : true);
+
+            $guzzle   = new \GuzzleHttp\Client(['timeout' => $timeout, 'http_errors' => false, 'verify' => $verify]);
             $response = $guzzle->request('GET', $agentUrl . $path . $queryString, [
                 'headers' => [
                     'X-Agent-Signature' => $signature,

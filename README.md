@@ -64,6 +64,7 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Export** | Download a ready-to-use crontab file or JSON for all managed jobs |
 | **Email alerts** | Receive an email when a job exits with a non-zero status or exceeds its execution limit |
 | **Telegram alerts** | Receive a Telegram message for the same events via the Bot API |
+| **Recovery notifications** | Optionally receive an email and/or Telegram message when a job succeeds again after a failure streak that triggered an alert |
 | **Maintenance Windows** | Define per-target scheduled maintenance windows; jobs are either skipped (exit code −4) or executed silently depending on the per-job setting. A special **"Cronmanager Agent"** target blocks all executions host-wide (useful for VM maintenance cycles). Conflict icons (⚠ amber / ✕ red) appear in the job list and detail view |
 | **Startup orphan cleanup** | On agent restart, executions still marked as "running" with no live process are automatically resolved to exit code −5 ("Interrupted by system restart") |
 | **Housekeeping** | Crontab sync, stuck-execution cleanup, and history bulk-delete |

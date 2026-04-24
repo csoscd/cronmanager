@@ -449,11 +449,19 @@ Exit code `-5` is displayed in the UI with an "Interrupted" badge (grey). The sc
 
 ### MailNotifier
 
-`src/Notification/MailNotifier.php` sends failure alerts via SMTP using PHPMailer.
-It is invoked indirectly by `ExecutionFinishEndpoint` when:
+`src/Notification/MailNotifier.php` sends failure and recovery alerts via SMTP using PHPMailer.
+
+**Failure alert** (`sendFailureAlert`) fires when:
 - The job's `notify_on_failure` flag is `1`, and
-- The exit code is non-zero, and
+- The exit code is non-zero (or limit exceeded), and
 - `mail.enabled` is `true` in the agent config
+
+**Recovery alert** (`sendRecoveryAlert`) fires when:
+- The job succeeds (`exit_code = 0`), and
+- `notify_on_failure = 1` and `notify_on_recovery = 1`, and
+- The number of consecutive root-level failures immediately before this success is ≥ `notify_after_failures`
+
+Only root executions (`retry_attempt = 0`) count toward the consecutive-failure streak; retries within a chain count as one logical failure event.
 
 **Async dispatch:** because the PHP built-in server is single-threaded, a blocking SMTP
 call in the request handler would make the agent unresponsive for the duration of the
@@ -468,6 +476,10 @@ unavailable the endpoint falls back to synchronous sending.
 
 **Encryption:** use `"ssl"` for port 465 (SMTPS / implicit TLS) and `"tls"` for
 port 587 (STARTTLS). Mixing these causes the connection to hang.
+
+**Config keys used by both notifiers:**
+- `mail.from` / `mail.to` (not `mail.from_address` / `mail.to_address`)
+- `notifications.web_url` for the job link (populated by `WEB_URL` env var; `app.base_url` is not used)
 
 ### SshConfigParser
 
@@ -548,6 +560,7 @@ List all managed cron jobs.
             "description": "Data sync",
             "active": 1,
             "notify_on_failure": 1,
+            "notify_on_recovery": 1,
             "tags": ["sync", "prod"],
             "targets": ["local", "webserver01"],
             "created_at": "2026-03-01 09:00:00"
@@ -578,10 +591,11 @@ Create a new managed cron job.
     "schedule":          "*/5 * * * *",
     "command":           "/usr/bin/php /opt/scripts/sync.php",
     "description":       "Data sync",
-    "active":            1,
-    "notify_on_failure": 0,
-    "tags":              ["sync"],
-    "targets":           ["local"]
+    "active":             1,
+    "notify_on_failure":  0,
+    "notify_on_recovery": 0,
+    "tags":               ["sync"],
+    "targets":            ["local"]
 }
 ```
 
@@ -1232,7 +1246,8 @@ is stored in `$_SESSION['lang']`. Fallback is English if a key is missing.
 | `command` | TEXT | Command to execute |
 | `description` | VARCHAR(255) | Human-readable name |
 | `active` | TINYINT(1) | `1` = enabled |
-| `notify_on_failure` | TINYINT(1) | Send email on failure or limit exceeded |
+| `notify_on_failure` | TINYINT(1) | Send email/Telegram on failure or limit exceeded |
+| `notify_on_recovery` | TINYINT(1) | Send notification when job recovers after a notified failure streak; DEFAULT 0 (opt-in) |
 | `execution_limit_seconds` | INT UNSIGNED NULL | Maximum allowed runtime; NULL = no limit |
 | `auto_kill_on_limit` | TINYINT(1) | `1` = auto-kill when limit is exceeded |
 | `singleton` | TINYINT(1) | `1` = skip new execution if a previous instance is still running |

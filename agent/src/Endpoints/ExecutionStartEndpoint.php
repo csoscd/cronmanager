@@ -117,7 +117,8 @@ final class ExecutionStartEndpoint
             return;
         }
 
-        $jobId  = (int) $body['job_id'];
+        $jobId             = (int) $body['job_id'];
+        $isRetryInvocation = isset($body['is_retry_invocation']) && (bool) $body['is_retry_invocation'];
         $target = isset($body['target']) && is_string($body['target']) && $body['target'] !== ''
             ? $body['target']
             : null;
@@ -161,6 +162,30 @@ final class ExecutionStartEndpoint
 
             $effectiveTargetForRetry = $target ?? 'local';
             $isRetryExecution        = $this->hasPendingRetryForTarget($jobId, $effectiveTargetForRetry);
+
+            // ------------------------------------------------------------------
+            // 4a. Retry-pending guard: suppress regular-schedule runs while a
+            //     retry chain is active for this (job, target).
+            //
+            // The once-entry added by ExecutionFinishEndpoint carries
+            // is_retry_invocation=true; the regular recurring crontab entry
+            // always sends false.  Letting the regular tick through while a
+            // retry is pending would consume the retry slot and leave the
+            // once-entry as an orphan that starts a spurious new chain.
+            // ------------------------------------------------------------------
+
+            if ($isRetryExecution && !$isRetryInvocation) {
+                $this->logger->info('ExecutionStartEndpoint: regular run skipped – retry pending for this target', [
+                    'job_id' => $jobId,
+                    'target' => $effectiveTargetForRetry,
+                ]);
+                jsonResponse(409, [
+                    'error'   => 'Conflict',
+                    'message' => 'A retry is pending for this job and target; regular schedule run skipped.',
+                    'code'    => 409,
+                ]);
+                return;
+            }
 
             if ($this->isSingleton($jobId) && ($this->hasRunningExecution($jobId) || (!$isRetryExecution && $this->hasPendingRetry($jobId)))) {
                 $this->logger->info('ExecutionStartEndpoint: singleton job is busy (running or retry pending) – skipping', [

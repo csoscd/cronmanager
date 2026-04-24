@@ -278,10 +278,17 @@ EXECUTION_ID=""
 
 log_info "Job ${JOB_ID}: notifying agent of execution start"
 
+# is_retry_invocation tells the agent this call came from a once-only crontab
+# entry (a retry or Run Now), not from the regular recurring schedule.  The
+# agent uses this flag to suppress regular-schedule runs while a retry chain
+# is active, preventing the regular tick from consuming a retry slot.
+_IS_RETRY_INVOCATION="false"
+[[ "${RUN_ONCE}" == "--once" ]] && _IS_RETRY_INVOCATION="true"
+
 # Build the POST body safely through PHP
 START_BODY="$(php -r "
     echo json_encode(
-        ['job_id' => (int)'${JOB_ID}', 'started_at' => '${STARTED_AT}', 'target' => '${TARGET}'],
+        ['job_id' => (int)'${JOB_ID}', 'started_at' => '${STARTED_AT}', 'target' => '${TARGET}', 'is_retry_invocation' => ${_IS_RETRY_INVOCATION}],
         JSON_UNESCAPED_UNICODE
     );
 ")"
@@ -293,9 +300,10 @@ else
     log_warn "Job ${JOB_ID}: agent unreachable for /execution/start – continuing without tracking"
 fi
 
-# 409 Conflict = singleton job already running → skip this execution cleanly
+# 409 Conflict = job skipped (singleton busy, or regular run suppressed because
+# a retry is pending for this target) → exit cleanly without running the job.
 if [[ "${_HTTP_CODE}" == "409" ]]; then
-    log_info "Job ${JOB_ID}: skipped – singleton mode active and a previous instance is still running"
+    log_info "Job ${JOB_ID}: skipped – agent returned 409 (singleton busy or retry pending)"
     exit 0
 fi
 

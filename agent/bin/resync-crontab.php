@@ -156,6 +156,42 @@ if (!empty($errors)) {
 }
 
 // ---------------------------------------------------------------------------
+// Ghost-entry cleanup.
+//
+// The DB-driven loop above only processes job IDs that exist in the cronjobs
+// table.  If a job was deleted from the DB but its crontab entry was not
+// removed (e.g. due to a crash or mid-delete container restart), that entry
+// becomes a "ghost": it fires on schedule, gets 404 from the agent, and
+// produces no execution_log row — completely silent.
+//
+// Fix: read all cronmanager-managed entries from the live crontab and remove
+// any whose job_id is absent from the set of known DB job IDs.
+// ---------------------------------------------------------------------------
+
+$dbJobIds   = array_map('intval', array_column($jobs, 'id'));
+$ghostCount = 0;
+
+try {
+    foreach ($crontabManager->getManagedUsers() as $user) {
+        foreach ($crontabManager->getManagedEntries($user) as $jobId => $targets) {
+            if (!in_array($jobId, $dbJobIds, true)) {
+                $crontabManager->removeAllEntries($user, $jobId);
+                $ghostCount++;
+
+                $logger->warning('resync-crontab: removed ghost crontab entry for deleted job', [
+                    'job_id' => $jobId,
+                    'user'   => $user,
+                ]);
+            }
+        }
+    }
+} catch (\Throwable $e) {
+    $logger->warning('resync-crontab: ghost-entry cleanup failed', [
+        'message' => $e->getMessage(),
+    ]);
+}
+
+// ---------------------------------------------------------------------------
 // Restore once-only retry crontab entries lost during container restart.
 //
 // Once-only entries written by ExecutionFinishEndpoint are not stored in the
@@ -254,9 +290,10 @@ foreach ($retryRows as $row) {
 }
 
 echo sprintf(
-    "[resync-crontab] Done: %d active synced, %d inactive removed, %d errors, %d retries restored (of %d total jobs)\n",
+    "[resync-crontab] Done: %d active synced, %d inactive removed, %d ghost(s) removed, %d errors, %d retries restored (of %d total jobs)\n",
     $synced,
     $removed,
+    $ghostCount,
     count($errors),
     $restoredRetries,
     $total,

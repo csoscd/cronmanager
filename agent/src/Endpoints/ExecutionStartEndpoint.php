@@ -117,7 +117,8 @@ final class ExecutionStartEndpoint
             return;
         }
 
-        $jobId  = (int) $body['job_id'];
+        $jobId             = (int) $body['job_id'];
+        $isRetryInvocation = isset($body['is_retry_invocation']) && (bool) $body['is_retry_invocation'];
         $target = isset($body['target']) && is_string($body['target']) && $body['target'] !== ''
             ? $body['target']
             : null;
@@ -151,9 +152,42 @@ final class ExecutionStartEndpoint
 
             // ------------------------------------------------------------------
             // 4. Singleton guard: reject if another instance is already running
+            //
+            // Pre-check whether this invocation IS the pending retry for this
+            // (job, target) pair.  If so, the hasPendingRetry() branch of the
+            // guard must not block it — the retry would deadlock itself because
+            // its own job_retry_state row is still present at this point (it
+            // will be consumed in step 6 below).
             // ------------------------------------------------------------------
 
-            if ($this->isSingleton($jobId) && ($this->hasRunningExecution($jobId) || $this->hasPendingRetry($jobId))) {
+            $effectiveTargetForRetry = $target ?? 'local';
+            $isRetryExecution        = $this->hasPendingRetryForTarget($jobId, $effectiveTargetForRetry);
+
+            // ------------------------------------------------------------------
+            // 4a. Retry-pending guard: suppress regular-schedule runs while a
+            //     retry chain is active for this (job, target).
+            //
+            // The once-entry added by ExecutionFinishEndpoint carries
+            // is_retry_invocation=true; the regular recurring crontab entry
+            // always sends false.  Letting the regular tick through while a
+            // retry is pending would consume the retry slot and leave the
+            // once-entry as an orphan that starts a spurious new chain.
+            // ------------------------------------------------------------------
+
+            if ($isRetryExecution && !$isRetryInvocation) {
+                $this->logger->info('ExecutionStartEndpoint: regular run skipped – retry pending for this target', [
+                    'job_id' => $jobId,
+                    'target' => $effectiveTargetForRetry,
+                ]);
+                jsonResponse(409, [
+                    'error'   => 'Conflict',
+                    'message' => 'A retry is pending for this job and target; regular schedule run skipped.',
+                    'code'    => 409,
+                ]);
+                return;
+            }
+
+            if ($this->isSingleton($jobId) && ($this->hasRunningExecution($jobId) || (!$isRetryExecution && $this->hasPendingRetry($jobId)))) {
                 $this->logger->info('ExecutionStartEndpoint: singleton job is busy (running or retry pending) – skipping', [
                     'job_id' => $jobId,
                 ]);
@@ -262,7 +296,6 @@ final class ExecutionStartEndpoint
 
             $retryAttempt          = 0;
             $retryRootExecutionId  = null;
-            $effectiveTargetForRetry = $target ?? 'local';
 
             $retryStmt = $this->pdo->prepare(
                 'SELECT next_retry_attempt, root_execution_id
@@ -472,6 +505,30 @@ final class ExecutionStartEndpoint
             'SELECT 1 FROM job_retry_state WHERE job_id = :id LIMIT 1'
         );
         $stmt->execute([':id' => $jobId]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * Return true when a retry is pending for the given (job, target) pair.
+     *
+     * Unlike hasPendingRetry(), this method matches the exact target so the
+     * singleton guard can detect that the current wrapper invocation IS the
+     * retry and must not be blocked by its own pending state.
+     *
+     * @param int    $jobId  The job ID to check.
+     * @param string $target Effective execution target (e.g. "local", SSH alias).
+     *
+     * @return bool
+     *
+     * @throws PDOException On database errors.
+     */
+    private function hasPendingRetryForTarget(int $jobId, string $target): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT 1 FROM job_retry_state WHERE job_id = :id AND target = :target LIMIT 1'
+        );
+        $stmt->execute([':id' => $jobId, ':target' => $target]);
 
         return $stmt->fetchColumn() !== false;
     }

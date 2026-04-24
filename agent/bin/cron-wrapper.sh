@@ -278,10 +278,17 @@ EXECUTION_ID=""
 
 log_info "Job ${JOB_ID}: notifying agent of execution start"
 
+# is_retry_invocation tells the agent this call came from a once-only crontab
+# entry (a retry or Run Now), not from the regular recurring schedule.  The
+# agent uses this flag to suppress regular-schedule runs while a retry chain
+# is active, preventing the regular tick from consuming a retry slot.
+_IS_RETRY_INVOCATION="false"
+[[ "${RUN_ONCE}" == "--once" ]] && _IS_RETRY_INVOCATION="true"
+
 # Build the POST body safely through PHP
 START_BODY="$(php -r "
     echo json_encode(
-        ['job_id' => (int)'${JOB_ID}', 'started_at' => '${STARTED_AT}', 'target' => '${TARGET}'],
+        ['job_id' => (int)'${JOB_ID}', 'started_at' => '${STARTED_AT}', 'target' => '${TARGET}', 'is_retry_invocation' => ${_IS_RETRY_INVOCATION}],
         JSON_UNESCAPED_UNICODE
     );
 ")"
@@ -293,9 +300,10 @@ else
     log_warn "Job ${JOB_ID}: agent unreachable for /execution/start – continuing without tracking"
 fi
 
-# 409 Conflict = singleton job already running → skip this execution cleanly
+# 409 Conflict = job skipped (singleton busy, or regular run suppressed because
+# a retry is pending for this target) → exit cleanly without running the job.
 if [[ "${_HTTP_CODE}" == "409" ]]; then
-    log_info "Job ${JOB_ID}: skipped – singleton mode active and a previous instance is still running"
+    log_info "Job ${JOB_ID}: skipped – agent returned 409 (singleton busy or retry pending)"
     exit 0
 fi
 
@@ -480,11 +488,46 @@ rm -f "${TMP_OUTPUT}"
 
 log_info "Job ${JOB_ID}: command exited with code ${JOB_EXIT_CODE}"
 
-# =============================================================================
-# Step 4: Notify agent – execution finish
-# =============================================================================
-
 FINISHED_AT="$(date -Iseconds)"
+
+# =============================================================================
+# Step 4 (once-only): Remove the temporary crontab entry
+# =============================================================================
+#
+# Must happen BEFORE /execution/finish.  When a retry is scheduled,
+# ExecutionFinishEndpoint writes a new once-entry for the next attempt.  If
+# cleanup ran after finish it would remove that freshly written entry too,
+# because removeOnceEntries() strips every line matching the marker regardless
+# of schedule.  Running cleanup first removes only the already-fired entry;
+# finish then appends the next retry's entry with no interference.
+#
+# When invoked with "--once" the job was scheduled via the Run Now feature or
+# a retry.  Notify the agent cleanup endpoint so the temporary crontab entry
+# is removed immediately.  This is best-effort: if it fails the entry will
+# fire at most once per year due to its full-date schedule.
+
+if [[ "${RUN_ONCE}" == "--once" ]]; then
+    log_info "Job ${JOB_ID}: removing once-only crontab entry (target=${TARGET})"
+
+    CLEANUP_PATH="/crons/${JOB_ID}/execute/cleanup"
+    CLEANUP_BODY="$(php -r "
+        echo json_encode(['target' => '${TARGET}'], JSON_UNESCAPED_UNICODE);
+    ")"
+
+    if agent_request "POST" "${CLEANUP_PATH}" "${CLEANUP_BODY}" >/dev/null; then
+        if [[ "${_HTTP_CODE}" -ge 200 && "${_HTTP_CODE}" -lt 300 ]]; then
+            log_info "Job ${JOB_ID}: once-entry removed from crontab (http_code=${_HTTP_CODE})"
+        else
+            log_warn "Job ${JOB_ID}: cleanup returned HTTP ${_HTTP_CODE} – once-entry may remain in crontab (harmless, expires next year)"
+        fi
+    else
+        log_warn "Job ${JOB_ID}: could not reach agent for cleanup – once-entry may remain in crontab (harmless, expires next year)"
+    fi
+fi
+
+# =============================================================================
+# Step 5: Notify agent – execution finish
+# =============================================================================
 
 # Truncate output to MAX_OUTPUT_BYTES to avoid oversized POST request bodies
 TRUNCATED_OUTPUT="${RAW_OUTPUT:0:${MAX_OUTPUT_BYTES}}"
@@ -557,34 +600,6 @@ elif [[ "$EXECUTION_ID" != "0" ]]; then
     fi
 else
     log_warn "Job ${JOB_ID}: skipping /execution/finish notification (no execution_id)"
-fi
-
-# =============================================================================
-# Step 5 (once-only): Remove the temporary crontab entry
-# =============================================================================
-#
-# When invoked with "--once" the job was scheduled via the Run Now feature.
-# Notify the agent cleanup endpoint so the temporary crontab entry is removed
-# immediately.  This is best-effort: if it fails the entry will fire at most
-# once per year due to its full-date schedule.
-
-if [[ "${RUN_ONCE}" == "--once" ]]; then
-    log_info "Job ${JOB_ID}: removing once-only crontab entry (target=${TARGET})"
-
-    CLEANUP_PATH="/crons/${JOB_ID}/execute/cleanup"
-    CLEANUP_BODY="$(php -r "
-        echo json_encode(['target' => '${TARGET}'], JSON_UNESCAPED_UNICODE);
-    ")"
-
-    if agent_request "POST" "${CLEANUP_PATH}" "${CLEANUP_BODY}" >/dev/null; then
-        if [[ "${_HTTP_CODE}" -ge 200 && "${_HTTP_CODE}" -lt 300 ]]; then
-            log_info "Job ${JOB_ID}: once-entry removed from crontab (http_code=${_HTTP_CODE})"
-        else
-            log_warn "Job ${JOB_ID}: cleanup returned HTTP ${_HTTP_CODE} – once-entry may remain in crontab (harmless, expires next year)"
-        fi
-    else
-        log_warn "Job ${JOB_ID}: could not reach agent for cleanup – once-entry may remain in crontab (harmless, expires next year)"
-    fi
 fi
 
 # =============================================================================

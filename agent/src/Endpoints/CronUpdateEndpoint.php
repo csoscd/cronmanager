@@ -151,6 +151,15 @@ final class CronUpdateEndpoint
         /** @var string[] $mergedTargets */
         $mergedTargets = $merged['targets'];
 
+        // Targets that existed before this update but are absent from the new
+        // list: their job_retry_state rows must be removed so that no stale
+        // pending-retry entries block future executions or clutter the table.
+        $existingTargetsRaw = isset($existing['targets']) && $existing['targets'] !== null
+            ? (string) $existing['targets']
+            : '';
+        $existingTargets = $existingTargetsRaw !== '' ? explode(',', $existingTargetsRaw) : [];
+        $removedTargets  = array_values(array_diff($existingTargets, $mergedTargets));
+
         // Derive legacy columns from targets for backward compat wrapper calls
         [$executionMode, $sshHost] = $this->deriveLegacyFields($mergedTargets);
 
@@ -210,6 +219,16 @@ final class CronUpdateEndpoint
             $this->pdo->prepare('DELETE FROM job_targets WHERE job_id = :id')
                        ->execute([':id' => $jobId]);
             $this->syncTargets($jobId, $mergedTargets);
+
+            // Remove pending retry state for any targets that were just removed
+            if ($removedTargets !== []) {
+                $delRetry = $this->pdo->prepare(
+                    'DELETE FROM job_retry_state WHERE job_id = :job_id AND target = :target'
+                );
+                foreach ($removedTargets as $removedTarget) {
+                    $delRetry->execute([':job_id' => $jobId, ':target' => $removedTarget]);
+                }
+            }
 
             // Sync crontab
             $this->syncCrontab(

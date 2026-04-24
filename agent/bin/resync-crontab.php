@@ -155,11 +155,147 @@ if (!empty($errors)) {
     // Partial success is still exit 0 – the agent should still start
 }
 
+// ---------------------------------------------------------------------------
+// Ghost-entry cleanup.
+//
+// The DB-driven loop above only processes job IDs that exist in the cronjobs
+// table.  If a job was deleted from the DB but its crontab entry was not
+// removed (e.g. due to a crash or mid-delete container restart), that entry
+// becomes a "ghost": it fires on schedule, gets 404 from the agent, and
+// produces no execution_log row — completely silent.
+//
+// Fix: read all cronmanager-managed entries from the live crontab and remove
+// any whose job_id is absent from the set of known DB job IDs.
+// ---------------------------------------------------------------------------
+
+$dbJobIds   = array_map('intval', array_column($jobs, 'id'));
+$ghostCount = 0;
+
+try {
+    foreach ($crontabManager->getManagedUsers() as $user) {
+        foreach ($crontabManager->getManagedEntries($user) as $jobId => $targets) {
+            if (!in_array($jobId, $dbJobIds, true)) {
+                $crontabManager->removeAllEntries($user, $jobId);
+                $ghostCount++;
+
+                $logger->warning('resync-crontab: removed ghost crontab entry for deleted job', [
+                    'job_id' => $jobId,
+                    'user'   => $user,
+                ]);
+            }
+        }
+    }
+} catch (\Throwable $e) {
+    $logger->warning('resync-crontab: ghost-entry cleanup failed', [
+        'message' => $e->getMessage(),
+    ]);
+}
+
+// ---------------------------------------------------------------------------
+// Restore once-only retry crontab entries lost during container restart.
+//
+// Once-only entries written by ExecutionFinishEndpoint are not stored in the
+// database – they exist only in the live crontab.  On restart the crontab is
+// rebuilt from scratch, silently dropping any pending retry entries.
+// The job_retry_state table is the authoritative record of pending retries;
+// this pass re-adds the corresponding once-only crontab entries.
+// ---------------------------------------------------------------------------
+
+$restoredRetries = 0;
+
+$systemTz = 'UTC';
+$envTz    = getenv('TZ');
+if ($envTz !== false && $envTz !== '') {
+    $systemTz = $envTz;
+} elseif (is_link('/etc/localtime')) {
+    $link = @readlink('/etc/localtime');
+    if ($link !== false) {
+        $pos = strpos($link, 'zoneinfo/');
+        if ($pos !== false) {
+            $candidate = substr($link, $pos + strlen('zoneinfo/'));
+            if ($candidate !== '') {
+                $systemTz = $candidate;
+            }
+        }
+    }
+} elseif (is_readable('/etc/timezone')) {
+    $candidate = trim((string) file_get_contents('/etc/timezone'));
+    if ($candidate !== '') {
+        $systemTz = $candidate;
+    }
+}
+
+try {
+    $retryStmt = $pdo->query(
+        'SELECT jrs.job_id, jrs.target, jrs.retry_delay_minutes, jrs.scheduled_at,
+                c.linux_user
+           FROM job_retry_state jrs
+           JOIN cronjobs c ON c.id = jrs.job_id
+          WHERE c.active = 1'
+    );
+    $retryRows = $retryStmt->fetchAll(\PDO::FETCH_ASSOC);
+} catch (\Throwable $e) {
+    $logger->warning('resync-crontab: could not query job_retry_state', [
+        'message' => $e->getMessage(),
+    ]);
+    $retryRows = [];
+}
+
+foreach ($retryRows as $row) {
+    $jobId     = (int)    $row['job_id'];
+    $linuxUser = (string) $row['linux_user'];
+    $target    = (string) $row['target'];
+
+    try {
+        if ($crontabManager->hasOnceEntry($linuxUser, $jobId, $target)) {
+            $logger->debug('resync-crontab: once-entry already present, skipping restore', [
+                'job_id' => $jobId,
+                'target' => $target,
+            ]);
+            continue;
+        }
+
+        $timezone    = new \DateTimeZone($systemTz);
+        $scheduledAt = new \DateTime($row['scheduled_at'], $timezone);
+        $fireAt      = (clone $scheduledAt)->modify('+' . (int) $row['retry_delay_minutes'] . ' minutes');
+
+        // If the original fire time has already passed, schedule for next minute
+        if ($fireAt <= new \DateTime('now', $timezone)) {
+            $fireAt = new \DateTime('+1 minute', $timezone);
+        }
+
+        $schedule = sprintf(
+            '%d %d %d %d *',
+            (int) $fireAt->format('i'),
+            (int) $fireAt->format('G'),
+            (int) $fireAt->format('j'),
+            (int) $fireAt->format('n'),
+        );
+
+        $crontabManager->addOnceEntry($linuxUser, $jobId, $schedule, $wrapperScript, $target);
+        $restoredRetries++;
+
+        $logger->info('resync-crontab: restored pending retry once-entry', [
+            'job_id'   => $jobId,
+            'target'   => $target,
+            'schedule' => $schedule,
+        ]);
+    } catch (\Throwable $e) {
+        $logger->warning('resync-crontab: failed to restore pending retry once-entry', [
+            'job_id'  => $jobId,
+            'target'  => $target,
+            'message' => $e->getMessage(),
+        ]);
+    }
+}
+
 echo sprintf(
-    "[resync-crontab] Done: %d active synced, %d inactive removed, %d errors (of %d total jobs)\n",
+    "[resync-crontab] Done: %d active synced, %d inactive removed, %d ghost(s) removed, %d errors, %d retries restored (of %d total jobs)\n",
     $synced,
     $removed,
+    $ghostCount,
     count($errors),
+    $restoredRetries,
     $total,
 );
 

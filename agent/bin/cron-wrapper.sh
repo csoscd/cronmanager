@@ -480,11 +480,46 @@ rm -f "${TMP_OUTPUT}"
 
 log_info "Job ${JOB_ID}: command exited with code ${JOB_EXIT_CODE}"
 
-# =============================================================================
-# Step 4: Notify agent – execution finish
-# =============================================================================
-
 FINISHED_AT="$(date -Iseconds)"
+
+# =============================================================================
+# Step 4 (once-only): Remove the temporary crontab entry
+# =============================================================================
+#
+# Must happen BEFORE /execution/finish.  When a retry is scheduled,
+# ExecutionFinishEndpoint writes a new once-entry for the next attempt.  If
+# cleanup ran after finish it would remove that freshly written entry too,
+# because removeOnceEntries() strips every line matching the marker regardless
+# of schedule.  Running cleanup first removes only the already-fired entry;
+# finish then appends the next retry's entry with no interference.
+#
+# When invoked with "--once" the job was scheduled via the Run Now feature or
+# a retry.  Notify the agent cleanup endpoint so the temporary crontab entry
+# is removed immediately.  This is best-effort: if it fails the entry will
+# fire at most once per year due to its full-date schedule.
+
+if [[ "${RUN_ONCE}" == "--once" ]]; then
+    log_info "Job ${JOB_ID}: removing once-only crontab entry (target=${TARGET})"
+
+    CLEANUP_PATH="/crons/${JOB_ID}/execute/cleanup"
+    CLEANUP_BODY="$(php -r "
+        echo json_encode(['target' => '${TARGET}'], JSON_UNESCAPED_UNICODE);
+    ")"
+
+    if agent_request "POST" "${CLEANUP_PATH}" "${CLEANUP_BODY}" >/dev/null; then
+        if [[ "${_HTTP_CODE}" -ge 200 && "${_HTTP_CODE}" -lt 300 ]]; then
+            log_info "Job ${JOB_ID}: once-entry removed from crontab (http_code=${_HTTP_CODE})"
+        else
+            log_warn "Job ${JOB_ID}: cleanup returned HTTP ${_HTTP_CODE} – once-entry may remain in crontab (harmless, expires next year)"
+        fi
+    else
+        log_warn "Job ${JOB_ID}: could not reach agent for cleanup – once-entry may remain in crontab (harmless, expires next year)"
+    fi
+fi
+
+# =============================================================================
+# Step 5: Notify agent – execution finish
+# =============================================================================
 
 # Truncate output to MAX_OUTPUT_BYTES to avoid oversized POST request bodies
 TRUNCATED_OUTPUT="${RAW_OUTPUT:0:${MAX_OUTPUT_BYTES}}"
@@ -557,34 +592,6 @@ elif [[ "$EXECUTION_ID" != "0" ]]; then
     fi
 else
     log_warn "Job ${JOB_ID}: skipping /execution/finish notification (no execution_id)"
-fi
-
-# =============================================================================
-# Step 5 (once-only): Remove the temporary crontab entry
-# =============================================================================
-#
-# When invoked with "--once" the job was scheduled via the Run Now feature.
-# Notify the agent cleanup endpoint so the temporary crontab entry is removed
-# immediately.  This is best-effort: if it fails the entry will fire at most
-# once per year due to its full-date schedule.
-
-if [[ "${RUN_ONCE}" == "--once" ]]; then
-    log_info "Job ${JOB_ID}: removing once-only crontab entry (target=${TARGET})"
-
-    CLEANUP_PATH="/crons/${JOB_ID}/execute/cleanup"
-    CLEANUP_BODY="$(php -r "
-        echo json_encode(['target' => '${TARGET}'], JSON_UNESCAPED_UNICODE);
-    ")"
-
-    if agent_request "POST" "${CLEANUP_PATH}" "${CLEANUP_BODY}" >/dev/null; then
-        if [[ "${_HTTP_CODE}" -ge 200 && "${_HTTP_CODE}" -lt 300 ]]; then
-            log_info "Job ${JOB_ID}: once-entry removed from crontab (http_code=${_HTTP_CODE})"
-        else
-            log_warn "Job ${JOB_ID}: cleanup returned HTTP ${_HTTP_CODE} – once-entry may remain in crontab (harmless, expires next year)"
-        fi
-    else
-        log_warn "Job ${JOB_ID}: could not reach agent for cleanup – once-entry may remain in crontab (harmless, expires next year)"
-    fi
 fi
 
 # =============================================================================

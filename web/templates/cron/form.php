@@ -48,6 +48,7 @@ $jobId         = ($isEdit && !$isCopy) ? (string) ($job['id'] ?? '') : '';
 $formAction    = ($isEdit && $jobId !== '') ? '/crons/' . rawurlencode($jobId) . '/edit' : '/crons';
 $isActiveVal   = $job !== null ? !empty($job['active']) : true;
 $isNotifyVal   = $job !== null ? !empty($job['notify_on_failure']) : true;
+$isRecoveryVal = $job !== null ? !empty($job['notify_on_recovery']) : true;
 $isAutoKillVal        = $job !== null ? !empty($job['auto_kill_on_limit']) : false;
 $isSingletonVal       = $job !== null ? !empty($job['singleton']) : false;
 $isRunInMaintVal      = $job !== null ? !empty($job['run_in_maintenance']) : false;
@@ -63,6 +64,7 @@ $advancedOpen  = $isAutoKillVal
 
 // Auto-expand the notify tab when any notify setting deviates from the default.
 $notifyOpen    = !$isNotifyVal
+    || !$isRecoveryVal
     || (int) $val('notify_after_failures', '1') > 1
     || (int) $val('notify_after_limit_exceeded', '1') > 1;
 
@@ -479,6 +481,25 @@ foreach ($tags as $tag) {
                     </p>
                 </div>
 
+                <!-- Recovery notification -->
+                <div class="mb-6" id="recovery-notification-row">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="notify_on_recovery" value="1"
+                               id="notify_on_recovery"
+                               <?= $isRecoveryVal ? 'checked' : '' ?>
+                               <?= !$isNotifyVal ? 'disabled' : '' ?>
+                               class="w-4 h-4 text-blue-600 border-gray-300 rounded
+                                      focus:ring-blue-500 cursor-pointer
+                                      disabled:opacity-40 disabled:cursor-not-allowed">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300" id="recovery-label">
+                            <?= htmlspecialchars($t('cron_notify_on_recovery'), ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                    </label>
+                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500 ml-6">
+                        <?= htmlspecialchars($t('cron_notify_on_recovery_hint'), ENT_QUOTES, 'UTF-8') ?>
+                    </p>
+                </div>
+
                 <!-- Notify after N consecutive failures -->
                 <div class="mb-6">
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -850,5 +871,23 @@ function updateTargetCheckboxes(user) {
     if (scheduleInput.value.trim() !== '') {
         checkConflicts();
     }
+})();
+
+// notify_on_failure ↔ notify_on_recovery coupling
+(function () {
+    const failureBox  = document.getElementById('notify_on_failure');
+    const recoveryBox = document.getElementById('notify_on_recovery');
+
+    if (!failureBox || !recoveryBox) { return; }
+
+    failureBox.addEventListener('change', function () {
+        if (this.checked) {
+            recoveryBox.disabled = false;
+            recoveryBox.checked  = true;   // auto-enable on activation
+        } else {
+            recoveryBox.checked  = false;
+            recoveryBox.disabled = true;
+        }
+    });
 })();
 </script>

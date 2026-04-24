@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS cronjobs (
     description       VARCHAR(255)                   COMMENT 'Human-readable job description',
     active            TINYINT(1)   DEFAULT 1          COMMENT '1 = enabled, 0 = disabled',
     notify_on_failure        TINYINT(1)   DEFAULT 1          COMMENT '1 = send alert mail on non-zero exit',
+    notify_on_recovery       TINYINT(1)   NOT NULL DEFAULT 0  COMMENT '1 = send recovery notification when job succeeds after a notified failure streak',
     execution_limit_seconds  INT UNSIGNED NULL              COMMENT 'Maximum allowed runtime in seconds; NULL = no limit',
     auto_kill_on_limit       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = auto-kill when execution_limit_seconds is exceeded',
     singleton                TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = skip new execution if a previous instance is still running',

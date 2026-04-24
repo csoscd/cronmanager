@@ -210,6 +210,105 @@ final class TelegramNotifier
         }
     }
 
+    /**
+     * Send a recovery notification via Telegram when a job succeeds after a
+     * notified failure streak.
+     *
+     * @param int    $jobId               The cron job ID.
+     * @param string $description         Job description or command.
+     * @param string $linuxUser           Linux user the job runs as.
+     * @param string $schedule            Cron schedule expression.
+     * @param int    $consecutiveFailures Number of consecutive failures before this recovery.
+     * @param string $startedAt           Start timestamp of the successful execution.
+     * @param string $finishedAt          Finish timestamp of the successful execution.
+     * @param string $target              Execution target.
+     *
+     * @return bool True if the message was sent, false otherwise.
+     */
+    public function sendRecoveryAlert(
+        int    $jobId,
+        string $description,
+        string $linuxUser,
+        string $schedule,
+        int    $consecutiveFailures,
+        string $startedAt,
+        string $finishedAt,
+        string $target = '',
+    ): bool {
+        $enabled = (bool) $this->config->get('telegram.enabled', false);
+
+        if (!$enabled) {
+            $this->logger->debug('TelegramNotifier: disabled in config, skipping recovery alert', [
+                'job_id' => $jobId,
+            ]);
+            return false;
+        }
+
+        $botToken = (string) $this->config->get('telegram.bot_token', '');
+        $chatId   = (string) $this->config->get('telegram.chat_id',   '');
+        $timeout  = (int)    $this->config->get('telegram.timeout',   15);
+        $baseUrl  = rtrim((string) $this->config->get('notifications.web_url', ''), '/');
+
+        if ($botToken === '' || $chatId === '') {
+            $this->logger->warning('TelegramNotifier: bot_token or chat_id not configured, skipping recovery alert', [
+                'job_id' => $jobId,
+            ]);
+            return false;
+        }
+
+        $targetLine = ($target !== '' && $target !== 'local')
+            ? "\n&#x1F3AF; <b>Target:</b> " . htmlspecialchars($target, ENT_QUOTES, 'UTF-8')
+            : '';
+
+        $linkLine = $baseUrl !== ''
+            ? sprintf("\n\n<a href=\"%s/crons/%d\">&#x1F517; View in Cronmanager</a>", htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8'), $jobId)
+            : '';
+
+        $text = sprintf(
+            "&#x2705; <b>Job Recovered</b>\n\n"
+            . "&#x1F194; <b>Job #%d:</b> %s\n"
+            . "&#x1F464; <b>User:</b> %s\n"
+            . "&#x23F0; <b>Schedule:</b> %s%s\n"
+            . "&#x2705; <b>Recovered at:</b> %s\n"
+            . "&#x1F4CA; <b>Previous failures:</b> %d consecutive failure(s)%s",
+            $jobId,
+            htmlspecialchars($description, ENT_QUOTES, 'UTF-8'),
+            htmlspecialchars($linuxUser, ENT_QUOTES, 'UTF-8'),
+            htmlspecialchars($schedule, ENT_QUOTES, 'UTF-8'),
+            $targetLine,
+            htmlspecialchars($finishedAt, ENT_QUOTES, 'UTF-8'),
+            $consecutiveFailures,
+            $linkLine,
+        );
+
+        if (\mb_strlen($text) > self::MAX_MESSAGE_LENGTH) {
+            $text = \mb_substr($text, 0, self::MAX_MESSAGE_LENGTH - 3) . '...';
+        }
+
+        try {
+            $client = new Client(['timeout' => $timeout]);
+            $client->post(self::API_BASE . $botToken . '/sendMessage', [
+                'json' => [
+                    'chat_id'    => $chatId,
+                    'text'       => $text,
+                    'parse_mode' => 'HTML',
+                ],
+            ]);
+
+            $this->logger->info('TelegramNotifier: recovery alert sent', [
+                'job_id' => $jobId,
+            ]);
+
+            return true;
+        } catch (GuzzleException $e) {
+            $this->logger->error('TelegramNotifier: failed to send recovery alert', [
+                'job_id'  => $jobId,
+                'message' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Test API
     // -------------------------------------------------------------------------

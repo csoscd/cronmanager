@@ -405,7 +405,7 @@ final class ExecutionFinishEndpoint
                     $notifyOutput = $output;
                     if ($retryCount > 0 && $currentAttempt > 0) {
                         $notifyOutput = sprintf(
-                            '[Attempt %d/%d failed]\n\n%s',
+                            "[Attempt %d/%d failed]\n\n%s",
                             $currentAttempt + 1,
                             $retryCount + 1,
                             $output,
@@ -519,6 +519,56 @@ final class ExecutionFinishEndpoint
         } catch (\Throwable $e) {
             // Notification failure must never prevent a successful 200 response
             $this->logger->error('ExecutionFinishEndpoint: unexpected error during notification', [
+                'execution_id' => $executionId,
+                'job_id'       => $jobId,
+                'message'      => $e->getMessage(),
+            ]);
+        }
+
+        // ------------------------------------------------------------------
+        // 5b. Recovery notification
+        //
+        // Sent when the job succeeds after a failure streak that was large
+        // enough to have triggered a failure alert.  Only fires once per
+        // recovery (the streak resets on success, so the next failure starts
+        // a fresh count and the condition cannot re-trigger immediately).
+        // ------------------------------------------------------------------
+
+        try {
+            if ($exitCode === 0
+                && $job !== null
+                && (bool) ($job['notify_on_failure'] ?? false)
+                && (bool) ($job['notify_on_recovery'] ?? false)
+            ) {
+                $label               = ($job['description'] !== null && $job['description'] !== '')
+                    ? (string) $job['description']
+                    : (string) $job['command'];
+                $notifyAfterFailures = max(1, (int) ($job['notify_after_failures'] ?? 1));
+                $startedAt           = $this->fetchStartedAt($executionId);
+
+                $prevFailures = $this->countConsecutiveFailedRunsBefore($jobId, $target, $startedAt);
+
+                if ($prevFailures >= $notifyAfterFailures) {
+                    $this->dispatchRecoveryNotification(
+                        jobId:               $jobId,
+                        description:         $label,
+                        linuxUser:           (string) $job['linux_user'],
+                        schedule:            (string) $job['schedule'],
+                        consecutiveFailures: $prevFailures,
+                        startedAt:           $startedAt,
+                        finishedAt:          $finishedAt,
+                        target:              $target ?? '',
+                    );
+
+                    $this->logger->info('ExecutionFinishEndpoint: recovery notification dispatched', [
+                        'job_id'              => $jobId,
+                        'consecutive_failures' => $prevFailures,
+                        'target'              => $target,
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            $this->logger->error('ExecutionFinishEndpoint: unexpected error during recovery notification', [
                 'execution_id' => $executionId,
                 'job_id'       => $jobId,
                 'message'      => $e->getMessage(),
@@ -642,7 +692,7 @@ final class ExecutionFinishEndpoint
     {
         $stmt = $this->pdo->prepare(
             'SELECT id, linux_user, schedule, command, description, notify_on_failure,
-                    execution_limit_seconds, retry_count, retry_delay_minutes,
+                    notify_on_recovery, execution_limit_seconds, retry_count, retry_delay_minutes,
                     notify_after_failures, notify_after_limit_exceeded
                FROM cronjobs
               WHERE id = :id
@@ -1229,5 +1279,130 @@ final class ExecutionFinishEndpoint
         $value = $stmt->fetchColumn();
 
         return $value !== false ? (string) $value : '';
+    }
+
+    /**
+     * Count consecutive failed original runs that completed BEFORE a given timestamp.
+     *
+     * Used for recovery notification: the current successful execution is already
+     * in the DB when notifications are dispatched, so querying without an upper
+     * bound would return 0 (the success resets the streak).  Passing the current
+     * execution's started_at as $before gives the pre-recovery streak length.
+     *
+     * Logic mirrors countConsecutiveFailedRuns() but adds an upper-bound filter.
+     *
+     * @param int         $jobId  Cron job ID.
+     * @param string|null $target Execution target.
+     * @param string      $before Upper-bound timestamp (exclusive).
+     *
+     * @return int Number of consecutive failed runs before $before.
+     */
+    private function countConsecutiveFailedRunsBefore(int $jobId, ?string $target, string $before): int
+    {
+        $lastSuccessStmt = $this->pdo->prepare(
+            'SELECT MAX(started_at)
+               FROM execution_log
+              WHERE cronjob_id = :job_id
+                AND (:target1 IS NULL AND target IS NULL OR target = :target2)
+                AND exit_code = 0
+                AND finished_at IS NOT NULL
+                AND started_at < :before'
+        );
+        $lastSuccessStmt->execute([
+            ':job_id'  => $jobId,
+            ':target1' => $target,
+            ':target2' => $target,
+            ':before'  => $before,
+        ]);
+        $lastSuccess = $lastSuccessStmt->fetchColumn();
+
+        $countStmt = $this->pdo->prepare(
+            'SELECT COUNT(*)
+               FROM execution_log
+              WHERE cronjob_id = :job_id
+                AND (:target1 IS NULL AND target IS NULL OR target = :target2)
+                AND retry_attempt = 0
+                AND finished_at IS NOT NULL
+                AND exit_code != 0
+                AND exit_code != -4
+                AND started_at > COALESCE(:last_success, \'1970-01-01 00:00:00\')
+                AND started_at < :before'
+        );
+        $countStmt->execute([
+            ':job_id'       => $jobId,
+            ':target1'      => $target,
+            ':target2'      => $target,
+            ':last_success' => ($lastSuccess !== false && $lastSuccess !== null) ? (string) $lastSuccess : null,
+            ':before'       => $before,
+        ]);
+
+        return (int) $countStmt->fetchColumn();
+    }
+
+    /**
+     * Dispatch a recovery notification via a detached background process.
+     *
+     * @param int    $jobId
+     * @param string $description
+     * @param string $linuxUser
+     * @param string $schedule
+     * @param int    $consecutiveFailures Number of consecutive failures before this recovery.
+     * @param string $startedAt
+     * @param string $finishedAt
+     * @param string $target
+     *
+     * @return bool True if dispatched successfully.
+     */
+    private function dispatchRecoveryNotification(
+        int    $jobId,
+        string $description,
+        string $linuxUser,
+        string $schedule,
+        int    $consecutiveFailures,
+        string $startedAt,
+        string $finishedAt,
+        string $target = '',
+    ): bool {
+        $notifyScript  = dirname(__DIR__, 2) . '/bin/send-notification.php';
+        $execAvailable = function_exists('exec')
+            && !in_array('exec', array_map('trim', explode(',', (string) ini_get('disable_functions'))), true);
+
+        $payload = [
+            'type'                => 'recovery',
+            'job_id'              => $jobId,
+            'description'         => $description,
+            'linux_user'          => $linuxUser,
+            'schedule'            => $schedule,
+            'consecutive_failures' => $consecutiveFailures,
+            'started_at'          => $startedAt,
+            'finished_at'         => $finishedAt,
+            'target'              => $target,
+        ];
+
+        if (!file_exists($notifyScript) || !$execAvailable) {
+            $this->logger->warning('ExecutionFinishEndpoint: falling back to synchronous recovery notification');
+            $mailSent     = $this->mailNotifier->sendRecoveryAlert(...$payload + ['jobId' => $jobId]);
+            $telegramSent = $this->telegramNotifier->sendRecoveryAlert(...$payload + ['jobId' => $jobId]);
+            return $mailSent || $telegramSent;
+        }
+
+        $tmpFile = tempnam(sys_get_temp_dir(), 'cmgr_notify_');
+        if ($tmpFile === false || file_put_contents($tmpFile, (string) json_encode($payload)) === false) {
+            $this->logger->error('ExecutionFinishEndpoint: could not write recovery notification temp file');
+            return false;
+        }
+
+        $cmd = sprintf(
+            'php %s %s > /dev/null 2>&1 &',
+            escapeshellarg($notifyScript),
+            escapeshellarg($tmpFile)
+        );
+        exec($cmd);
+
+        $this->logger->info('ExecutionFinishEndpoint: recovery notification dispatched to background process', [
+            'job_id' => $jobId,
+        ]);
+
+        return true;
     }
 }

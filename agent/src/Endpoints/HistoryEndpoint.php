@@ -203,9 +203,11 @@ final class HistoryEndpoint
         }
 
         if ($search !== null) {
-            // Match against both description and command (case-insensitive LIKE)
-            $conditions[]              = '(j.description LIKE :search OR j.command LIKE :search)';
-            $queryParams[':search']    = '%' . $search . '%';
+            // PDO named parameters may not be reused in a single statement;
+            // use :search1/:search2 to avoid SQLSTATE[HY093].
+            $conditions[]               = '(j.description LIKE :search1 OR j.command LIKE :search2)';
+            $queryParams[':search1']    = '%' . $search . '%';
+            $queryParams[':search2']    = '%' . $search . '%';
         }
 
         if ($from !== null) {

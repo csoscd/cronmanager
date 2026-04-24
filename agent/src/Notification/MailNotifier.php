@@ -223,6 +223,92 @@ final class MailNotifier
      *
      * @return array{success: true}|array{success: false, message: string}
      */
+
+    /**
+     * Send a recovery notification when a job succeeds after a notified failure streak.
+     *
+     * @param int    $jobId               The cron job ID.
+     * @param string $description         Job description or command.
+     * @param string $linuxUser           Linux user the job runs as.
+     * @param string $schedule            Cron schedule expression.
+     * @param int    $consecutiveFailures Number of consecutive failures before this recovery.
+     * @param string $startedAt           Start timestamp of the successful execution.
+     * @param string $finishedAt          Finish timestamp of the successful execution.
+     * @param string $target              Execution target.
+     *
+     * @return bool True if the mail was submitted, false if mail is disabled or an error occurred.
+     */
+    public function sendRecoveryAlert(
+        int    $jobId,
+        string $description,
+        string $linuxUser,
+        string $schedule,
+        int    $consecutiveFailures,
+        string $startedAt,
+        string $finishedAt,
+        string $target = '',
+    ): bool {
+        $enabled = (bool) $this->config->get('mail.enabled', false);
+
+        if (!$enabled) {
+            $this->logger->debug('MailNotifier: mail disabled in config, skipping recovery alert', [
+                'job_id' => $jobId,
+            ]);
+            return false;
+        }
+
+        $host        = (string) $this->config->get('mail.host',         'smtp.example.com');
+        $port        = (int)    $this->config->get('mail.port',         587);
+        $user        = (string) $this->config->get('mail.username',     '');
+        $pass        = (string) $this->config->get('mail.password',     '');
+        $fromAddr    = (string) $this->config->get('mail.from',      'cronmanager@example.com');
+        $fromName    = (string) $this->config->get('mail.from_name', 'Cronmanager');
+        $toAddr      = (string) $this->config->get('mail.to',        '');
+        $encryption  = (string) $this->config->get('mail.encryption',   'tls');
+        $baseUrl     = rtrim((string) $this->config->get('notifications.web_url', ''), '/');
+
+        try {
+            $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
+            $mail->isSMTP();
+            $mail->Host       = $host;
+            $mail->SMTPAuth   = ($user !== '');
+            $mail->Username   = $user;
+            $mail->Password   = $pass;
+            $mail->SMTPSecure = $encryption === 'ssl'
+                ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS
+                : \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port       = $port;
+            $mail->CharSet    = 'UTF-8';
+            $mail->Timeout    = (int) $this->config->get('mail.smtp_timeout', 15);
+
+            $mail->setFrom($fromAddr, $fromName);
+            $mail->addAddress($toAddr);
+            $mail->Subject = sprintf('[Cronmanager] Job #%d RECOVERED: %s', $jobId, $description);
+
+            $e = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+
+            $mail->Body    = $this->buildRecoveryHtmlBody($jobId, $description, $linuxUser, $schedule,
+                                 $consecutiveFailures, $startedAt, $finishedAt, $target, $baseUrl, $e);
+            $mail->AltBody = $this->buildRecoveryPlainBody($jobId, $description, $linuxUser, $schedule,
+                                 $consecutiveFailures, $startedAt, $finishedAt, $target, $baseUrl);
+            $mail->isHTML(true);
+            $mail->send();
+
+            $this->logger->info('MailNotifier: recovery alert sent', [
+                'job_id' => $jobId,
+                'to'     => $toAddr,
+            ]);
+
+            return true;
+        } catch (\Throwable $ex) {
+            $this->logger->error('MailNotifier: failed to send recovery alert', [
+                'job_id'  => $jobId,
+                'message' => $ex->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
     public function sendTest(): array
     {
         $host        = (string) $this->config->get('mail.host',         'smtp.example.com');
@@ -559,6 +645,102 @@ HTML;
     {$linkHtml}
 
     <p class="footer">This message was generated automatically by Cronmanager.</p>
+</div>
+</body>
+</html>
+HTML;
+    }
+
+    private function buildRecoveryPlainBody(
+        int      $jobId,
+        string   $description,
+        string   $linuxUser,
+        string   $schedule,
+        int      $consecutiveFailures,
+        string   $startedAt,
+        string   $finishedAt,
+        string   $target,
+        string   $baseUrl,
+    ): string {
+        $lines = [
+            'CRONMANAGER – JOB RECOVERED',
+            str_repeat('=', 60),
+            '',
+            sprintf('Job ID      : %d', $jobId),
+            sprintf('Description : %s', $description),
+            sprintf('User        : %s', $linuxUser),
+            sprintf('Schedule    : %s', $schedule),
+        ];
+
+        if ($target !== '' && $target !== 'local') {
+            $lines[] = sprintf('Target      : %s', $target);
+        }
+
+        $lines[] = sprintf('Recovered   : %s', $finishedAt);
+        $lines[] = sprintf('Previous failures: %d consecutive failure(s) before this successful run.', $consecutiveFailures);
+        $lines[] = '';
+
+        if ($baseUrl !== '') {
+            $lines[] = sprintf('View in Cronmanager: %s/crons/%d', $baseUrl, $jobId);
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function buildRecoveryHtmlBody(
+        int      $jobId,
+        string   $description,
+        string   $linuxUser,
+        string   $schedule,
+        int      $consecutiveFailures,
+        string   $startedAt,
+        string   $finishedAt,
+        string   $target,
+        string   $baseUrl,
+        callable $e,
+    ): string {
+        $targetRow = ($target !== '' && $target !== 'local')
+            ? "<tr><th>Target</th><td>{$e($target)}</td></tr>"
+            : '';
+
+        $linkHtml = $baseUrl !== ''
+            ? sprintf(
+                '<p style="margin-top:16px;"><a href="%s/crons/%d" style="display:inline-block;padding:8px 16px;background:#16a34a;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;">&#x1F517; View in Cronmanager</a></p>',
+                $e($baseUrl),
+                $jobId
+            )
+            : '';
+
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cronmanager – Job Recovered</title>
+    <style>
+        body{font-family:Arial,sans-serif;font-size:14px;color:#333;background:#f4f4f4;margin:0;padding:20px}
+        .card{background:#fff;border-radius:6px;padding:24px;max-width:600px;margin:0 auto;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+        h1{font-size:20px;margin-top:0;color:#15803d}
+        table{border-collapse:collapse;width:100%;margin-top:12px}
+        th{text-align:left;width:38%;padding:6px 8px;background:#f0fdf4;font-weight:600;color:#166534;border-bottom:1px solid #bbf7d0}
+        td{padding:6px 8px;border-bottom:1px solid #e5e7eb}
+        .footer{font-size:11px;color:#999;margin-top:20px}
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>&#x2705; Job Recovered</h1>
+    <table>
+        <tr><th>Job ID</th>      <td>{$e((string)$jobId)}</td></tr>
+        <tr><th>Description</th> <td>{$e($description)}</td></tr>
+        <tr><th>User</th>        <td>{$e($linuxUser)}</td></tr>
+        <tr><th>Schedule</th>    <td>{$e($schedule)}</td></tr>
+        {$targetRow}
+        <tr><th>Recovered at</th><td>{$e($finishedAt)}</td></tr>
+        <tr><th>Previous failures</th><td>{$e((string)$consecutiveFailures)} consecutive failure(s)</td></tr>
+    </table>
+    {$linkHtml}
+    <p class="footer">Cronmanager – automated job monitoring</p>
 </div>
 </body>
 </html>

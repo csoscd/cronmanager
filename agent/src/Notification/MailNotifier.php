@@ -261,11 +261,11 @@ final class MailNotifier
         $port        = (int)    $this->config->get('mail.port',         587);
         $user        = (string) $this->config->get('mail.username',     '');
         $pass        = (string) $this->config->get('mail.password',     '');
-        $fromAddr    = (string) $this->config->get('mail.from_address', 'cronmanager@example.com');
-        $fromName    = (string) $this->config->get('mail.from_name',    'Cronmanager');
-        $toAddr      = (string) $this->config->get('mail.to_address',   '');
+        $fromAddr    = (string) $this->config->get('mail.from',      'cronmanager@example.com');
+        $fromName    = (string) $this->config->get('mail.from_name', 'Cronmanager');
+        $toAddr      = (string) $this->config->get('mail.to',        '');
         $encryption  = (string) $this->config->get('mail.encryption',   'tls');
-        $baseUrl     = rtrim((string) $this->config->get('app.base_url', ''), '/');
+        $baseUrl     = rtrim((string) $this->config->get('notifications.web_url', ''), '/');
 
         try {
             $mail = new \PHPMailer\PHPMailer\PHPMailer(true);

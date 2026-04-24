@@ -175,6 +175,7 @@ final class CronGetEndpoint
                 j.description,
                 j.active,
                 j.notify_on_failure,
+                j.notify_on_recovery,
                 j.execution_limit_seconds,
                 j.auto_kill_on_limit,
                 j.singleton,
@@ -253,6 +254,7 @@ final class CronGetEndpoint
             'description'              => isset($row['description']) ? (string) $row['description'] : null,
             'active'                   => (bool)   $row['active'],
             'notify_on_failure'        => (bool)   $row['notify_on_failure'],
+            'notify_on_recovery'       => (bool)  ($row['notify_on_recovery'] ?? false),
             'execution_limit_seconds'  => isset($row['execution_limit_seconds']) && $row['execution_limit_seconds'] !== null
                 ? (int) $row['execution_limit_seconds']
                 : null,

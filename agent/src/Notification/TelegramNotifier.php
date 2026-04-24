@@ -247,7 +247,7 @@ final class TelegramNotifier
         $botToken = (string) $this->config->get('telegram.bot_token', '');
         $chatId   = (string) $this->config->get('telegram.chat_id',   '');
         $timeout  = (int)    $this->config->get('telegram.timeout',   15);
-        $baseUrl  = rtrim((string) $this->config->get('app.base_url', ''), '/');
+        $baseUrl  = rtrim((string) $this->config->get('notifications.web_url', ''), '/');
 
         if ($botToken === '' || $chatId === '') {
             $this->logger->warning('TelegramNotifier: bot_token or chat_id not configured, skipping recovery alert', [

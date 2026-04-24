@@ -405,7 +405,7 @@ final class ExecutionFinishEndpoint
                     $notifyOutput = $output;
                     if ($retryCount > 0 && $currentAttempt > 0) {
                         $notifyOutput = sprintf(
-                            '[Attempt %d/%d failed]\n\n%s',
+                            "[Attempt %d/%d failed]\n\n%s",
                             $currentAttempt + 1,
                             $retryCount + 1,
                             $output,

@@ -108,6 +108,8 @@ return [
     'cron_inactive'           => 'Inaktiv',
     'cron_notify_on_failure'        => 'Benachrichtigungen bei Fehler / Limit-Überschreitung aktivieren',
     'cron_notify_on_failure_hint'   => 'Alerts senden, wenn dieser Job fehlschlägt oder das Laufzeitlimit überschreitet.',
+    'cron_notify_on_recovery'       => 'Wiederherstellungs-Benachrichtigung senden',
+    'cron_notify_on_recovery_hint'  => 'Eine Benachrichtigung senden, wenn der Job nach einer Fehlerserie, die einen Alert ausgelöst hat, wieder erfolgreich läuft. Erfordert aktivierte Fehlerbenachrichtigungen.',
     'cron_execution_limit'          => 'Ausführungslimit',
     'cron_execution_limit_hint'     => 'Maximale Laufzeit in Sekunden. Leer lassen für kein Limit.',
     'cron_execution_limit_seconds'  => 'Sekunden',

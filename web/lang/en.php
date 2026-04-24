@@ -108,6 +108,8 @@ return [
     'cron_inactive'           => 'Inactive',
     'cron_notify_on_failure'        => 'Enable failure / limit-exceeded notifications',
     'cron_notify_on_failure_hint'   => 'Send alerts when this job fails or exceeds its runtime limit.',
+    'cron_notify_on_recovery'       => 'Send recovery notification',
+    'cron_notify_on_recovery_hint'  => 'Send a notification when the job succeeds after a failure streak that triggered an alert. Requires failure notifications to be enabled.',
     'cron_execution_limit'          => 'Execution Limit',
     'cron_execution_limit_hint'     => 'Maximum runtime in seconds. Leave empty for no limit.',
     'cron_execution_limit_seconds'  => 'seconds',

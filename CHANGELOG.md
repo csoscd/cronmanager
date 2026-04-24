@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.10.0] – branch: `feature/recovery-notification`
+
+### Added
+- **Recovery notification**: jobs with failure notifications enabled now offer an opt-in "Send recovery notification" option in the Notify tab. When active, a notification (email and/or Telegram) is sent the first time the job succeeds after a failure streak that was large enough to have triggered a failure alert. The notification includes the number of preceding consecutive failures. Enabling failure notifications on a new job automatically enables recovery notifications; the two settings can be toggled independently. Pre-v2.10.0 jobs default to disabled — existing users must opt in explicitly. Requires DB migration `010_notify_on_recovery.sql`.
+
+---
+
 ## [2.9.5] – branch: `retry-fix-for-2.9.4`
 
 ### Fixed

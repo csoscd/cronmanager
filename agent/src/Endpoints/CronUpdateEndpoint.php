@@ -175,6 +175,7 @@ final class CronUpdateEndpoint
                      description = :description,
                      active = :active,
                      notify_on_failure = :notify_on_failure,
+                     notify_on_recovery = :notify_on_recovery,
                      execution_limit_seconds = :execution_limit_seconds,
                      auto_kill_on_limit = :auto_kill_on_limit,
                      singleton = :singleton,
@@ -195,6 +196,7 @@ final class CronUpdateEndpoint
                 ':description'             => $merged['description'],
                 ':active'                  => (int) $isActive,
                 ':notify_on_failure'       => (int) $merged['notify_on_failure'],
+                ':notify_on_recovery'      => (int) ($merged['notify_on_recovery'] ?? false),
                 ':execution_limit_seconds' => $merged['execution_limit_seconds'],
                 ':auto_kill_on_limit'      => (int) ($merged['auto_kill_on_limit']   ?? false),
                 ':singleton'               => (int) ($merged['singleton']             ?? false),
@@ -320,7 +322,8 @@ final class CronUpdateEndpoint
             'command'                  => array_key_exists('command',           $body) ? $body['command']           : $existing['command'],
             'description'              => array_key_exists('description',       $body) ? $body['description']       : $existing['description'],
             'active'                   => array_key_exists('active',            $body) ? $body['active']            : (bool) $existing['active'],
-            'notify_on_failure'        => array_key_exists('notify_on_failure', $body) ? $body['notify_on_failure'] : (bool) $existing['notify_on_failure'],
+            'notify_on_failure'        => array_key_exists('notify_on_failure',  $body) ? $body['notify_on_failure']  : (bool) $existing['notify_on_failure'],
+            'notify_on_recovery'       => array_key_exists('notify_on_recovery', $body) ? $body['notify_on_recovery'] : (bool) ($existing['notify_on_recovery'] ?? false),
             'execution_limit_seconds'  => $mergedLimit,
             'auto_kill_on_limit'       => array_key_exists('auto_kill_on_limit', $body)
                 ? (bool) $body['auto_kill_on_limit']
@@ -420,6 +423,11 @@ final class CronUpdateEndpoint
         // notify_on_failure
         if (!is_bool($data['notify_on_failure'])) {
             $errors['notify_on_failure'] = 'Must be a boolean.';
+        }
+
+        // notify_on_recovery
+        if (!is_bool($data['notify_on_recovery'])) {
+            $errors['notify_on_recovery'] = 'Must be a boolean.';
         }
 
         // singleton
@@ -613,6 +621,7 @@ final class CronUpdateEndpoint
                 j.description,
                 j.active,
                 j.notify_on_failure,
+                j.notify_on_recovery,
                 j.execution_limit_seconds,
                 j.auto_kill_on_limit,
                 j.singleton,
@@ -671,6 +680,7 @@ final class CronUpdateEndpoint
             'description'              => isset($row['description']) ? (string) $row['description'] : null,
             'active'                   => (bool)   $row['active'],
             'notify_on_failure'        => (bool)   $row['notify_on_failure'],
+            'notify_on_recovery'       => (bool)  ($row['notify_on_recovery'] ?? false),
             'execution_limit_seconds'  => isset($row['execution_limit_seconds']) && $row['execution_limit_seconds'] !== null
                 ? (int) $row['execution_limit_seconds']
                 : null,

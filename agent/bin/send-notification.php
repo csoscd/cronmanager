@@ -97,43 +97,72 @@ try {
     $linuxUser           = (string) ($data['linux_user']          ?? '');
     $schedule            = (string) ($data['schedule']            ?? '');
     $exitCode            = (int)    ($data['exit_code']           ?? 1);
-    $output              = (string) ($data['output']              ?? '');
-    $startedAt           = (string) ($data['started_at']          ?? '');
-    $finishedAt          = (string) ($data['finished_at']         ?? '');
-    $notifyAfterFailures = max(1, (int) ($data['notify_after_failures'] ?? 1));
-    $target              = (string) ($data['target']              ?? '');
-    $stillRunning        = (bool)   ($data['still_running']       ?? false);
+    $type      = (string) ($data['type'] ?? 'failure');
+    $startedAt = (string) ($data['started_at']  ?? '');
+    $finishedAt= (string) ($data['finished_at'] ?? '');
+    $target    = (string) ($data['target']      ?? '');
 
     $mailNotifier     = new MailNotifier($logger, $config);
     $telegramNotifier = new TelegramNotifier($logger, $config);
 
-    $mailNotifier->sendFailureAlert(
-        jobId:               $jobId,
-        description:         $description,
-        linuxUser:           $linuxUser,
-        schedule:            $schedule,
-        exitCode:            $exitCode,
-        output:              $output,
-        startedAt:           $startedAt,
-        finishedAt:          $finishedAt,
-        notifyAfterFailures: $notifyAfterFailures,
-        target:              $target,
-        stillRunning:        $stillRunning,
-    );
+    if ($type === 'recovery') {
+        $consecutiveFailures = (int) ($data['consecutive_failures'] ?? 0);
 
-    $telegramNotifier->sendFailureAlert(
-        jobId:               $jobId,
-        description:         $description,
-        linuxUser:           $linuxUser,
-        schedule:            $schedule,
-        exitCode:            $exitCode,
-        output:              $output,
-        startedAt:           $startedAt,
-        finishedAt:          $finishedAt,
-        notifyAfterFailures: $notifyAfterFailures,
-        target:              $target,
-        stillRunning:        $stillRunning,
-    );
+        $mailNotifier->sendRecoveryAlert(
+            jobId:               $jobId,
+            description:         $description,
+            linuxUser:           $linuxUser,
+            schedule:            $schedule,
+            consecutiveFailures: $consecutiveFailures,
+            startedAt:           $startedAt,
+            finishedAt:          $finishedAt,
+            target:              $target,
+        );
+
+        $telegramNotifier->sendRecoveryAlert(
+            jobId:               $jobId,
+            description:         $description,
+            linuxUser:           $linuxUser,
+            schedule:            $schedule,
+            consecutiveFailures: $consecutiveFailures,
+            startedAt:           $startedAt,
+            finishedAt:          $finishedAt,
+            target:              $target,
+        );
+    } else {
+        $output              = (string) ($data['output']              ?? '');
+        $notifyAfterFailures = max(1, (int) ($data['notify_after_failures'] ?? 1));
+        $stillRunning        = (bool)   ($data['still_running']       ?? false);
+        $exitCode            = (int)    ($data['exit_code']           ?? 1);
+
+        $mailNotifier->sendFailureAlert(
+            jobId:               $jobId,
+            description:         $description,
+            linuxUser:           $linuxUser,
+            schedule:            $schedule,
+            exitCode:            $exitCode,
+            output:              $output,
+            startedAt:           $startedAt,
+            finishedAt:          $finishedAt,
+            notifyAfterFailures: $notifyAfterFailures,
+            target:              $target,
+            stillRunning:        $stillRunning,
+        );
+
+        $telegramNotifier->sendFailureAlert(
+            jobId:               $jobId,
+            description:         $description,
+            linuxUser:           $linuxUser,
+            schedule:            $schedule,
+            exitCode:            $exitCode,
+            output:              $output,
+            startedAt:           $startedAt,
+            finishedAt:          $finishedAt,
+            notifyAfterFailures: $notifyAfterFailures,
+            target:              $target,
+            stillRunning:        $stillRunning,
+        );
+    }
 
 } catch (\Throwable $e) {
     error_log(sprintf(

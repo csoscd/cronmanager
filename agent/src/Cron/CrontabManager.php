@@ -725,6 +725,29 @@ final class CrontabManager
      * @throws InvalidArgumentException When $user contains disallowed characters.
      * @throws RuntimeException         When writing the crontab fails.
      */
+    /**
+     * Return true when a once-only crontab entry already exists for the given
+     * job ID and target.
+     *
+     * Used by resync-crontab.php to avoid adding duplicate once-entries when
+     * restoring pending retries after a container restart.
+     *
+     * @param string $user   Linux user name.
+     * @param int    $jobId  Cronmanager job ID.
+     * @param string $target Execution target to match.
+     *
+     * @return bool
+     *
+     * @throws InvalidArgumentException When $user contains disallowed characters.
+     */
+    public function hasOnceEntry(string $user, int $jobId, string $target): bool
+    {
+        $this->validateUser($user);
+        $marker = self::ONCE_MARKER_PREFIX . $jobId . ':' . $target;
+
+        return str_contains($this->readCrontab($user), $marker);
+    }
+
     public function addOnceEntry(
         string $user,
         int    $jobId,

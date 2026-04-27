@@ -36,8 +36,8 @@ $t = static fn(string $key, array $r = []): string => isset($translator) ? $tran
 $lang = isset($translator) ? $translator->getLang() : 'en';
 
 // The language to switch to is always the other one
-$otherLang  = $lang === 'de' ? 'en' : 'de';
-$langLabel  = $t('lang_switch');
+$otherLang = $lang === 'de' ? 'en' : 'de';
+$langLabel = $t('lang_switch');
 
 // Build role badge label and colour – always from the session user
 $roleLabel = '';
@@ -53,14 +53,35 @@ if ($user !== null) {
     };
 }
 
-// Helper to generate active nav class
+// Returns the sidebar nav-item CSS classes for a given path
 $navClass = static function (string $path) use ($currentPath): string {
     $isActive = ($currentPath === $path)
         || ($path !== '/' && str_starts_with($currentPath, $path));
 
     return $isActive
-        ? 'cm-nav-active px-3 py-2 rounded-md text-sm font-medium'
-        : 'cm-nav-link px-3 py-2 rounded-md text-sm font-medium';
+        ? 'cm-sidebar-item cm-sidebar-item--active'
+        : 'cm-sidebar-item';
+};
+
+// Renders an inline SVG icon (20×20, stroke-based, Heroicons-style)
+$icon = static function (string $name): string {
+    $paths = [
+        'dashboard' => '<path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v9a1 1 0 001 1h3m10-10l2 2m-2-2v9a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>',
+        'list'      => '<rect x="3" y="3" width="14" height="14" rx="2"/><line x1="7" y1="7" x2="13" y2="7"/><line x1="7" y1="10" x2="13" y2="10"/><line x1="7" y1="13" x2="11" y2="13"/>',
+        'plus'      => '<circle cx="10" cy="10" r="7"/><line x1="10" y1="7" x2="10" y2="13"/><line x1="7" y1="10" x2="13" y2="10"/>',
+        'import'    => '<line x1="10" y1="3" x2="10" y2="12"/><polyline points="6,8 10,12 14,8"/><line x1="4" y1="15" x2="16" y2="15"/>',
+        'calendar'  => '<rect x="3" y="4" width="14" height="13" rx="2"/><line x1="3" y1="8" x2="17" y2="8"/><line x1="7" y1="4" x2="7" y2="8"/><line x1="13" y1="4" x2="13" y2="8"/>',
+        'swimlane'  => '<line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/><line x1="7" y1="3" x2="7" y2="17"/><line x1="13" y1="3" x2="13" y2="17"/>',
+        'clock'     => '<circle cx="10" cy="10" r="7"/><polyline points="10,7 10,10 12.5,12.5"/>',
+        'cog'       => '<circle cx="10" cy="10" r="3"/><path stroke-linecap="round" d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.22 4.22l1.06 1.06M14.72 14.72l1.06 1.06M4.22 15.78l1.06-1.06M14.72 5.28l1.06-1.06"/>',
+        'users'     => '<circle cx="7" cy="7" r="3"/><path stroke-linecap="round" d="M1 18c0-3.3 2.7-6 6-6"/><circle cx="15" cy="9" r="2.5"/><path stroke-linecap="round" d="M11 18c0-2.8 1.8-5 4-5s4 2.2 4 5"/>',
+        'export'    => '<line x1="10" y1="12" x2="10" y2="3"/><polyline points="6,7 10,3 14,7"/><line x1="4" y1="15" x2="16" y2="15"/>',
+    ];
+    $d = $paths[$name] ?? '';
+    return sprintf(
+        '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">%s</svg>',
+        $d
+    );
 };
 ?>
 <!DOCTYPE html>
@@ -68,6 +89,7 @@ $navClass = static function (string $path) use ($currentPath): string {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
     <title><?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?> – <?= htmlspecialchars($t('app_name'), ENT_QUOTES, 'UTF-8') ?></title>
 
     <!-- Theme IIFE: must run before any CSS paints to prevent flash -->
@@ -77,106 +99,224 @@ $navClass = static function (string $path) use ($currentPath): string {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="/assets/css/brand.css">
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="bg-gray-100">
 
 <?php if ($user !== null): ?>
-    <!-- ------------------------------------------------------------------ -->
-    <!-- Top Navigation Bar                                                  -->
-    <!-- ------------------------------------------------------------------ -->
-    <nav class="bg-gray-800 border-b border-gray-700">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
 
-                <!-- Left: App name + nav links -->
-                <div class="flex items-center space-x-4">
-                    <!-- App name / logo -->
-                    <a href="/dashboard" class="flex-shrink-0">
-                        <span class="cm-app-name"><?= htmlspecialchars($t('app_name'), ENT_QUOTES, 'UTF-8') ?></span>
+<div class="cm-app-shell">
+
+    <!-- Mobile: backdrop closes sidebar when tapped.                      -->
+    <!-- Must be inside cm-app-shell so it shares the same stacking        -->
+    <!-- context as the sidebar (z-index 40 > backdrop z-index 35).        -->
+    <div id="cm-sidebar-backdrop" onclick="cmCloseSidebar()"></div>
+
+    <!-- ================================================================ -->
+    <!-- Sidebar                                                           -->
+    <!-- ================================================================ -->
+    <aside id="cm-sidebar" class="cm-sidebar"
+           aria-label="<?= htmlspecialchars($t('app_name'), ENT_QUOTES, 'UTF-8') ?> navigation">
+
+        <!-- Logo / app name -->
+        <div class="cm-sidebar-logo">
+            <a href="/dashboard" class="cm-sidebar-logo-link">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+                    <rect width="28" height="28" rx="8" fill="url(#cm-logo-grad)"/>
+                    <defs>
+                        <linearGradient id="cm-logo-grad" x1="0" y1="0" x2="28" y2="28">
+                            <stop offset="0%"   stop-color="#c084fc"/>
+                            <stop offset="50%"  stop-color="#818cf8"/>
+                            <stop offset="100%" stop-color="#38bdf8"/>
+                        </linearGradient>
+                    </defs>
+                    <text x="5" y="20" font-size="13" font-weight="800" fill="white" font-family="monospace">CM</text>
+                </svg>
+                <span class="cm-app-name"><?= htmlspecialchars($t('app_name'), ENT_QUOTES, 'UTF-8') ?></span>
+            </a>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="cm-sidebar-nav">
+
+            <!-- OVERVIEW -->
+            <div class="cm-sidebar-group">
+                <div class="cm-sidebar-group-label">
+                    <?= htmlspecialchars($t('nav_section_overview'), ENT_QUOTES, 'UTF-8') ?>
+                </div>
+                <a href="/dashboard" class="<?= $navClass('/dashboard') ?>">
+                    <?= $icon('dashboard') ?>
+                    <?= htmlspecialchars($t('nav_dashboard'), ENT_QUOTES, 'UTF-8') ?>
+                </a>
+            </div>
+
+            <div class="cm-sidebar-divider"></div>
+
+            <!-- JOBS -->
+            <div class="cm-sidebar-group">
+                <div class="cm-sidebar-group-label">
+                    <?= htmlspecialchars($t('nav_section_jobs'), ENT_QUOTES, 'UTF-8') ?>
+                </div>
+                <a href="/crons" class="<?= $navClass('/crons') ?>">
+                    <?= $icon('list') ?>
+                    <?= htmlspecialchars($t('nav_crons'), ENT_QUOTES, 'UTF-8') ?>
+                </a>
+                <?php if (SessionManager::hasRole('admin')): ?>
+                    <a href="/crons/new" class="<?= $navClass('/crons/new') ?>">
+                        <?= $icon('plus') ?>
+                        <?= htmlspecialchars($t('nav_new_job'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
+                    <a href="/crons/import" class="<?= $navClass('/crons/import') ?>">
+                        <?= $icon('import') ?>
+                        <?= htmlspecialchars($t('nav_import'), ENT_QUOTES, 'UTF-8') ?>
+                    </a>
+                <?php endif; ?>
+            </div>
 
-                    <!-- Nav links -->
-                    <div class="hidden md:flex items-center space-x-1 ml-6">
-                        <a href="/dashboard" class="<?= $navClass('/dashboard') ?>">
-                            <?= htmlspecialchars($t('nav_dashboard'), ENT_QUOTES, 'UTF-8') ?>
-                        </a>
-                        <a href="/crons" class="<?= $navClass('/crons') ?>">
-                            <?= htmlspecialchars($t('nav_crons'), ENT_QUOTES, 'UTF-8') ?>
-                        </a>
-                        <a href="/timeline" class="<?= $navClass('/timeline') ?>">
-                            <?= htmlspecialchars($t('nav_timeline'), ENT_QUOTES, 'UTF-8') ?>
-                        </a>
-                        <a href="/swimlane" class="<?= $navClass('/swimlane') ?>">
-                            <?= htmlspecialchars($t('nav_swimlane'), ENT_QUOTES, 'UTF-8') ?>
-                        </a>
-                        <a href="/export" class="<?= $navClass('/export') ?>">
-                            <?= htmlspecialchars($t('nav_export'), ENT_QUOTES, 'UTF-8') ?>
-                        </a>
-                        <?php if (SessionManager::hasRole('admin')): ?>
-                            <a href="/users" class="<?= $navClass('/users') ?>">
-                                <?= htmlspecialchars($t('nav_users'), ENT_QUOTES, 'UTF-8') ?>
-                            </a>
-                            <a href="/maintenance" class="<?= $navClass('/maintenance') ?>">
-                                <?= htmlspecialchars($t('nav_maintenance'), ENT_QUOTES, 'UTF-8') ?>
-                            </a>
-                            <a href="/housekeeping" class="<?= $navClass('/housekeeping') ?>">
-                                <?= htmlspecialchars($t('nav_housekeeping'), ENT_QUOTES, 'UTF-8') ?>
-                            </a>
-                        <?php endif; ?>
+            <div class="cm-sidebar-divider"></div>
+
+            <!-- MONITORING -->
+            <div class="cm-sidebar-group">
+                <div class="cm-sidebar-group-label">
+                    <?= htmlspecialchars($t('nav_section_monitoring'), ENT_QUOTES, 'UTF-8') ?>
+                </div>
+                <a href="/timeline" class="<?= $navClass('/timeline') ?>">
+                    <?= $icon('calendar') ?>
+                    <?= htmlspecialchars($t('nav_timeline'), ENT_QUOTES, 'UTF-8') ?>
+                </a>
+                <a href="/swimlane" class="<?= $navClass('/swimlane') ?>">
+                    <?= $icon('swimlane') ?>
+                    <?= htmlspecialchars($t('nav_swimlane'), ENT_QUOTES, 'UTF-8') ?>
+                </a>
+            </div>
+
+            <?php if (SessionManager::hasRole('admin')): ?>
+
+                <div class="cm-sidebar-divider"></div>
+
+                <!-- CONFIGURATION -->
+                <div class="cm-sidebar-group">
+                    <div class="cm-sidebar-group-label">
+                        <?= htmlspecialchars($t('nav_section_configuration'), ENT_QUOTES, 'UTF-8') ?>
                     </div>
-                </div>
-
-                <!-- Right: theme toggle, language switch, username, role badge, logout -->
-                <div class="flex items-center space-x-2">
-
-                    <!-- Theme toggle -->
-                    <button onclick="cmToggleTheme()" aria-label="Theme wechseln" class="cm-theme-toggle">
-                        <span class="icon-sun">☀️</span>
-                        <span class="icon-moon">🌙</span>
-                    </button>
-
-                    <!-- Language switch -->
-                    <a href="/lang/<?= htmlspecialchars($otherLang, ENT_QUOTES, 'UTF-8') ?>"
-                       title="<?= htmlspecialchars($langLabel, ENT_QUOTES, 'UTF-8') ?>"
-                       class="cm-nav-btn px-2.5 py-1.5 text-xs font-semibold tracking-wider">
-                        <?= htmlspecialchars($langLabel, ENT_QUOTES, 'UTF-8') ?>
+                    <a href="/maintenance" class="<?= $navClass('/maintenance') ?>">
+                        <?= $icon('clock') ?>
+                        <?= htmlspecialchars($t('nav_maintenance'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
-
-                    <span class="text-gray-300 text-sm hidden sm:inline ml-1">
-                        <?= htmlspecialchars((string) ($user['username'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
-                    </span>
-                    <span class="<?= $roleBadge ?>">
-                        <?= htmlspecialchars($roleLabel, ENT_QUOTES, 'UTF-8') ?>
-                    </span>
-                    <a href="/logout" class="cm-nav-link px-3 py-2 rounded-md text-sm font-medium">
-                        <?= htmlspecialchars($t('logout'), ENT_QUOTES, 'UTF-8') ?>
+                    <a href="/housekeeping" class="<?= $navClass('/housekeeping') ?>">
+                        <?= $icon('cog') ?>
+                        <?= htmlspecialchars($t('nav_housekeeping'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
                 </div>
+
+                <div class="cm-sidebar-divider"></div>
+
+                <!-- ADMINISTRATION -->
+                <div class="cm-sidebar-group">
+                    <div class="cm-sidebar-group-label">
+                        <?= htmlspecialchars($t('nav_section_admin'), ENT_QUOTES, 'UTF-8') ?>
+                    </div>
+                    <a href="/users" class="<?= $navClass('/users') ?>">
+                        <?= $icon('users') ?>
+                        <?= htmlspecialchars($t('nav_users'), ENT_QUOTES, 'UTF-8') ?>
+                    </a>
+                </div>
+
+            <?php endif; ?>
+
+            <div class="cm-sidebar-divider"></div>
+
+            <!-- TOOLS -->
+            <div class="cm-sidebar-group">
+                <div class="cm-sidebar-group-label">
+                    <?= htmlspecialchars($t('nav_section_tools'), ENT_QUOTES, 'UTF-8') ?>
+                </div>
+                <a href="/export" class="<?= $navClass('/export') ?>">
+                    <?= $icon('export') ?>
+                    <?= htmlspecialchars($t('nav_export'), ENT_QUOTES, 'UTF-8') ?>
+                </a>
+            </div>
+
+        </nav>
+
+        <!-- Footer: user info, theme toggle, language, logout -->
+        <div class="cm-sidebar-footer">
+            <div class="cm-sidebar-user">
+                <span class="cm-sidebar-username">
+                    <?= htmlspecialchars((string) ($user['username'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                </span>
+                <span class="<?= $roleBadge ?>">
+                    <?= htmlspecialchars($roleLabel, ENT_QUOTES, 'UTF-8') ?>
+                </span>
+            </div>
+            <div class="cm-sidebar-footer-actions">
+                <button onclick="cmToggleTheme()"
+                        aria-label="<?= htmlspecialchars($t('dark_mode_toggle'), ENT_QUOTES, 'UTF-8') ?>"
+                        class="cm-theme-toggle">
+                    <span class="icon-sun">☀️</span>
+                    <span class="icon-moon">🌙</span>
+                </button>
+                <a href="/lang/<?= htmlspecialchars($otherLang, ENT_QUOTES, 'UTF-8') ?>"
+                   title="<?= htmlspecialchars($langLabel, ENT_QUOTES, 'UTF-8') ?>"
+                   class="cm-nav-btn px-2.5 py-1.5 text-xs font-semibold tracking-wider">
+                    <?= htmlspecialchars($langLabel, ENT_QUOTES, 'UTF-8') ?>
+                </a>
+                <a href="/logout" class="cm-nav-btn px-2.5 py-1.5 text-xs font-semibold tracking-wider">
+                    <?= htmlspecialchars($t('logout'), ENT_QUOTES, 'UTF-8') ?>
+                </a>
             </div>
         </div>
 
-        <!-- Mobile menu (simple stack) -->
-        <div class="md:hidden border-t border-gray-700 px-4 pb-3 pt-2 flex flex-wrap gap-2">
-            <a href="/dashboard" class="<?= $navClass('/dashboard') ?>"><?= htmlspecialchars($t('nav_dashboard'), ENT_QUOTES, 'UTF-8') ?></a>
-            <a href="/crons"     class="<?= $navClass('/crons') ?>"><?= htmlspecialchars($t('nav_crons'), ENT_QUOTES, 'UTF-8') ?></a>
-            <a href="/timeline"  class="<?= $navClass('/timeline') ?>"><?= htmlspecialchars($t('nav_timeline'), ENT_QUOTES, 'UTF-8') ?></a>
-            <a href="/swimlane"  class="<?= $navClass('/swimlane') ?>"><?= htmlspecialchars($t('nav_swimlane'), ENT_QUOTES, 'UTF-8') ?></a>
-            <a href="/export"    class="<?= $navClass('/export') ?>"><?= htmlspecialchars($t('nav_export'), ENT_QUOTES, 'UTF-8') ?></a>
-            <?php if (SessionManager::hasRole('admin')): ?>
-                <a href="/users"        class="<?= $navClass('/users') ?>"><?= htmlspecialchars($t('nav_users'), ENT_QUOTES, 'UTF-8') ?></a>
-                <a href="/maintenance" class="<?= $navClass('/maintenance') ?>"><?= htmlspecialchars($t('nav_maintenance'), ENT_QUOTES, 'UTF-8') ?></a>
-                <a href="/housekeeping" class="<?= $navClass('/housekeeping') ?>"><?= htmlspecialchars($t('nav_housekeeping'), ENT_QUOTES, 'UTF-8') ?></a>
-            <?php endif; ?>
-        </div>
-    </nav>
-<?php endif; ?>
+    </aside>
 
-<!-- -------------------------------------------------------------------- -->
-<!-- Main content area                                                      -->
-<!-- -------------------------------------------------------------------- -->
+    <!-- ================================================================ -->
+    <!-- Main column                                                       -->
+    <!-- ================================================================ -->
+    <div class="cm-main-col">
+
+        <!-- Topbar: hamburger (mobile only) + page title -->
+        <div class="cm-topbar">
+            <button id="cm-hamburger"
+                    class="cm-hamburger"
+                    onclick="cmOpenSidebar()"
+                    aria-label="Open navigation"
+                    aria-expanded="false"
+                    aria-controls="cm-sidebar">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none"
+                     stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <line x1="1.5" y1="4"  x2="16.5" y2="4"/>
+                    <line x1="1.5" y1="9"  x2="16.5" y2="9"/>
+                    <line x1="1.5" y1="14" x2="16.5" y2="14"/>
+                </svg>
+            </button>
+            <span class="cm-topbar-title">
+                <?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?>
+            </span>
+        </div>
+
+        <!-- Page content (templates render inside max-w-7xl for readability) -->
+        <main class="cm-content">
+            <div class="max-w-7xl mx-auto">
+                <?= $content ?>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="cm-layout-footer">
+            <span>Web: <?= htmlspecialchars((string) ($webVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?>, Container: <?= htmlspecialchars((string) ($webContainerVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?></span>
+            <span>Agent: <?= htmlspecialchars((string) ($agentVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?>, Container: <?= htmlspecialchars((string) ($agentContainerVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?></span>
+        </footer>
+
+    </div><!-- /cm-main-col -->
+
+</div><!-- /cm-app-shell -->
+
+<?php else: ?>
+
+<!-- Unauthenticated fallback (setup page, error pages) -->
 <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <?= $content ?>
 </main>
 
+<?php endif; ?>
 
 <script>
 function cmToggleTheme() {
@@ -186,17 +326,26 @@ function cmToggleTheme() {
     el.classList.toggle('theme-light',  isDark);
     localStorage.setItem('cm-theme', isDark ? 'light' : 'dark');
 }
-</script>
 
-<!-- -------------------------------------------------------------------- -->
-<!-- Footer                                                                 -->
-<!-- -------------------------------------------------------------------- -->
-<footer class="mt-8 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-end gap-x-6 gap-y-1
-                text-xs text-gray-400 dark:text-gray-500">
-        <span>Web: <?= htmlspecialchars((string) ($webVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?>, Container: <?= htmlspecialchars((string) ($webContainerVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?></span>
-        <span>Agent: <?= htmlspecialchars((string) ($agentVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?>, Container: <?= htmlspecialchars((string) ($agentContainerVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?></span>
-    </div>
-</footer>
+function cmOpenSidebar() {
+    document.getElementById('cm-sidebar').classList.add('cm-sidebar--open');
+    document.getElementById('cm-sidebar-backdrop').classList.add('cm-backdrop--visible');
+    document.getElementById('cm-hamburger').setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+}
+
+function cmCloseSidebar() {
+    var sidebar = document.getElementById('cm-sidebar');
+    if (!sidebar) return;
+    sidebar.classList.remove('cm-sidebar--open');
+    document.getElementById('cm-sidebar-backdrop').classList.remove('cm-backdrop--visible');
+    document.getElementById('cm-hamburger').setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') cmCloseSidebar(); });
+</script>
+<script src="/assets/js/cm-fetch.js"></script>
+
 </body>
 </html>

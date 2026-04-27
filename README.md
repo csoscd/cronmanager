@@ -54,8 +54,9 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Execution limits** | Optional maximum runtime per job; alert and/or auto-kill when the limit is exceeded |
 | **Kill running execution** | Admins can terminate a running job mid-flight from the detail page (local: SIGTERM; SSH: remote kill) |
 | **Singleton mode** | Flag a job so that new executions are silently skipped while a previous instance is still running |
-| **Job monitor** | Per-job statistics page with KPI cards (success rate, avg/min/max duration, alerts), an execution duration line chart, and a stacked bar chart – selectable time window from 1 hour to 1 year |
-| **Dashboard** | At-a-glance view of total jobs, active/inactive counts, and recent failures |
+| **Job monitor** | Per-job statistics page with KPI cards (success rate, avg/min/max duration, alerts), an execution duration line chart, and a stacked bar chart – selectable time window from 1 hour to 1 year; period and target switching updates in-place via AJAX with auto-refresh for short windows |
+| **Dashboard** | At-a-glance view of total jobs, active/inactive counts, and recent failures; KPI cards refresh every 60 s via AJAX |
+| **Bulk operations** | Select multiple jobs on the list page to activate, deactivate, delete, or re-tag them in a single action; running executions block bulk delete with a clear error message |
 | **Timeline** | Filterable, paginated history of all executions across all jobs |
 | **Swimlane** | Visual schedule overview: planned fire times per job across a time-of-day axis, filterable by hour range, day of week, tag, and target |
 | **Multi-host execution** | A single job can run on multiple targets (local + remote SSH) in parallel |

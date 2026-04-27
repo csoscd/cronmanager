@@ -31,6 +31,7 @@ $filterUser   = isset($filterUser)   ? (string) $filterUser     : '';
 $filterTarget = isset($filterTarget) ? (string) $filterTarget   : '';
 $filterSearch = isset($filterSearch) ? (string) $filterSearch   : '';
 $filterResult = isset($filterResult) ? (string) $filterResult   : '';
+$filterActive = isset($filterActive) ? (string) $filterActive   : '';
 $isAdmin               = isset($isAdmin)              && (bool)  $isAdmin;
 $targetsInMaintenance  = isset($targetsInMaintenance) && is_array($targetsInMaintenance)
     ? $targetsInMaintenance : [];
@@ -49,19 +50,50 @@ $showTo   = $pageSize > 0 ? min($currentPage * $pageSize, $totalJobs) : $totalJo
  *
  * @param int $targetPage The page number for the link.
  */
-$pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filterTarget, $filterSearch, $filterResult, $pageSize): string {
+$pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filterTarget, $filterSearch, $filterResult, $filterActive, $pageSize): string {
     $params = array_filter([
         'tag'    => $filterTag,
         'user'   => $filterUser,
         'target' => $filterTarget,
         'search' => $filterSearch,
         'result' => $filterResult,
+        'active' => $filterActive,
         'limit'  => $pageSize > 0 ? (string) $pageSize : '0',
         'page'   => (string) $targetPage,
     ], static fn(string $v): bool => $v !== '');
     return '/crons?' . http_build_query($params);
 };
+
+// Flash messages (bulk action results)
+$flashSuccess = \Cronmanager\Web\Session\SessionManager::flash('_flash_success');
+$flashError   = \Cronmanager\Web\Session\SessionManager::flash('_flash_error');
+
+// Fetch all tag names for the bulk re-tag dropdown
+$allTagNames = array_map(
+    static fn(array $tag): string => (string) ($tag['name'] ?? $tag),
+    isset($tags) && is_array($tags) ? $tags : []
+);
 ?>
+
+<!-- ======================================================================
+     Flash messages
+     ====================================================================== -->
+<?php if ($flashSuccess !== null): ?>
+<div class="mb-4 flex items-center gap-3 px-4 py-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 text-green-800 dark:text-green-300 text-sm">
+    <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <span><?= htmlspecialchars($flashSuccess, ENT_QUOTES, 'UTF-8') ?></span>
+</div>
+<?php endif; ?>
+<?php if ($flashError !== null): ?>
+<div class="mb-4 flex items-center gap-3 px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-800 dark:text-red-300 text-sm">
+    <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+    </svg>
+    <span><?= htmlspecialchars($flashError, ENT_QUOTES, 'UTF-8') ?></span>
+</div>
+<?php endif; ?>
 
 <!-- ======================================================================
      Page header
@@ -206,6 +238,25 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
             </select>
         </div>
 
+        <!-- Active / inactive filter -->
+        <div class="flex-1 min-w-36">
+            <label for="filter-active" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                <?= htmlspecialchars($t('filter_active'), ENT_QUOTES, 'UTF-8') ?>
+            </label>
+            <select id="filter-active" name="active"
+                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                           focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value=""><?= htmlspecialchars($t('filter_active_all'), ENT_QUOTES, 'UTF-8') ?></option>
+                <option value="active"<?= $filterActive === 'active' ? ' selected' : '' ?>>
+                    <?= htmlspecialchars($t('filter_active_yes'), ENT_QUOTES, 'UTF-8') ?>
+                </option>
+                <option value="inactive"<?= $filterActive === 'inactive' ? ' selected' : '' ?>>
+                    <?= htmlspecialchars($t('filter_active_no'), ENT_QUOTES, 'UTF-8') ?>
+                </option>
+            </select>
+        </div>
+
         <!-- Page size selector -->
         <div class="flex-1 min-w-28">
             <label for="filter-limit" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -236,7 +287,7 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
             </button>
         </div>
 
-        <?php if ($filterTag !== '' || $filterUser !== '' || $filterTarget !== '' || $filterSearch !== '' || $filterResult !== ''): ?>
+        <?php if ($filterTag !== '' || $filterUser !== '' || $filterTarget !== '' || $filterSearch !== '' || $filterResult !== '' || $filterActive !== ''): ?>
             <div>
                 <a href="/crons?_reset=1"
                    class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white underline py-2 block">
@@ -247,6 +298,93 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
 
     </form>
 </div>
+
+<!-- ======================================================================
+     Bulk action toolbar (admin only, visible when ≥1 row is checked)
+     ====================================================================== -->
+<?php if ($isAdmin): ?>
+<div id="cm-bulk-bar"
+     class="hidden mb-4 flex flex-wrap items-center gap-2 px-4 py-3 rounded-lg
+            bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700">
+    <span id="cm-bulk-count" class="text-sm font-medium text-blue-800 dark:text-blue-300 mr-2"></span>
+
+    <form id="cm-bulk-form" method="POST" action="/crons/bulk">
+        <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
+        <div id="cm-bulk-ids"></div><!-- hidden job ID inputs injected by JS -->
+        <input type="hidden" name="action" id="cm-bulk-action" value="">
+        <input type="hidden" name="tag"    id="cm-bulk-tag-value" value="">
+    </form>
+
+    <button type="button" onclick="cmBulkSubmit('activate')"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition
+                   bg-green-100 hover:bg-green-200 text-green-800 dark:bg-green-900/40 dark:hover:bg-green-900/70 dark:text-green-300">
+        <?= htmlspecialchars($t('bulk_activate'), ENT_QUOTES, 'UTF-8') ?>
+    </button>
+    <button type="button" onclick="cmBulkSubmit('deactivate')"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition
+                   bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200">
+        <?= htmlspecialchars($t('bulk_deactivate'), ENT_QUOTES, 'UTF-8') ?>
+    </button>
+
+    <!-- Re-tag group -->
+    <div class="flex items-center gap-1">
+        <select id="cm-bulk-tag-select"
+                class="border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1.5 text-xs
+                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                       focus:outline-none focus:ring-1 focus:ring-blue-500">
+            <option value=""><?= htmlspecialchars($t('bulk_tag_select'), ENT_QUOTES, 'UTF-8') ?></option>
+            <?php foreach ($allTagNames as $tn): ?>
+                <option value="<?= htmlspecialchars($tn, ENT_QUOTES, 'UTF-8') ?>">
+                    <?= htmlspecialchars($tn, ENT_QUOTES, 'UTF-8') ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <button type="button" onclick="cmBulkSubmit('tag_add')"
+                class="px-3 py-1.5 rounded-md text-xs font-semibold transition
+                       bg-purple-100 hover:bg-purple-200 text-purple-800 dark:bg-purple-900/40 dark:hover:bg-purple-900/70 dark:text-purple-300">
+            <?= htmlspecialchars($t('bulk_tag_add'), ENT_QUOTES, 'UTF-8') ?>
+        </button>
+        <button type="button" onclick="cmBulkSubmit('tag_remove')"
+                class="px-3 py-1.5 rounded-md text-xs font-semibold transition
+                       bg-purple-100 hover:bg-purple-200 text-purple-800 dark:bg-purple-900/40 dark:hover:bg-purple-900/70 dark:text-purple-300">
+            <?= htmlspecialchars($t('bulk_tag_remove'), ENT_QUOTES, 'UTF-8') ?>
+        </button>
+    </div>
+
+    <button type="button" onclick="cmBulkSubmit('delete')"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition
+                   bg-red-100 hover:bg-red-200 text-red-800 dark:bg-red-900/40 dark:hover:bg-red-900/70 dark:text-red-300">
+        <?= htmlspecialchars($t('bulk_delete'), ENT_QUOTES, 'UTF-8') ?>
+    </button>
+
+    <button type="button" onclick="cmBulkDeselectAll()"
+            class="ml-auto text-xs text-gray-500 dark:text-gray-400 hover:underline">
+        <?= htmlspecialchars($t('bulk_deselect'), ENT_QUOTES, 'UTF-8') ?>
+    </button>
+</div>
+
+<!-- Delete confirmation modal -->
+<div id="cm-bulk-modal"
+     class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 p-6 max-w-md w-full mx-4">
+        <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">
+            <?= htmlspecialchars($t('bulk_delete'), ENT_QUOTES, 'UTF-8') ?>
+        </h2>
+        <p id="cm-bulk-modal-text" class="text-sm text-gray-600 dark:text-gray-300 mb-5"></p>
+        <div class="flex justify-end gap-3">
+            <button type="button" onclick="cmBulkModalCancel()"
+                    class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600
+                           text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                <?= htmlspecialchars($t('bulk_confirm_cancel'), ENT_QUOTES, 'UTF-8') ?>
+            </button>
+            <button type="button" onclick="cmBulkModalConfirm()"
+                    class="px-4 py-2 rounded-lg text-sm font-semibold bg-red-600 hover:bg-red-700 text-white transition">
+                <?= htmlspecialchars($t('bulk_confirm_yes'), ENT_QUOTES, 'UTF-8') ?>
+            </button>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- ======================================================================
      Jobs table
@@ -275,6 +413,14 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
             <table class="min-w-full divide-y divide-gray-100 dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-700">
                     <tr>
+                        <?php if ($isAdmin): ?>
+                        <th class="px-3 py-3 w-8">
+                            <input type="checkbox" id="cm-select-all"
+                                   class="rounded border-gray-300 dark:border-gray-600 text-blue-600
+                                          focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+                                   title="Select all">
+                        </th>
+                        <?php endif; ?>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             <?= htmlspecialchars($t('cron_schedule'), ENT_QUOTES, 'UTF-8') ?>
                         </th>
@@ -342,7 +488,16 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">' . $safeCode . '</span>';
                             }
                         ?>
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" data-job-id="<?= htmlspecialchars($jobId, ENT_QUOTES, 'UTF-8') ?>">
+
+                            <?php if ($isAdmin): ?>
+                            <td class="px-3 py-3 w-8">
+                                <input type="checkbox"
+                                       class="cm-row-check rounded border-gray-300 dark:border-gray-600
+                                              text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+                                       value="<?= htmlspecialchars($jobId, ENT_QUOTES, 'UTF-8') ?>">
+                            </td>
+                            <?php endif; ?>
 
                             <!-- Schedule -->
                             <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
@@ -561,6 +716,143 @@ $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filt
 <?php endif; ?>
 
 <script>
+<?php if ($isAdmin): ?>
+/**
+ * Bulk selection + action toolbar.
+ *
+ * State is a plain Set of job ID strings.  The toolbar appears as soon as one
+ * row is checked and hides again when the selection becomes empty.
+ */
+(function () {
+    'use strict';
+
+    var selected   = new Set();
+    var bar        = document.getElementById('cm-bulk-bar');
+    var countEl    = document.getElementById('cm-bulk-count');
+    var idsEl      = document.getElementById('cm-bulk-ids');
+    var actionEl   = document.getElementById('cm-bulk-action');
+    var tagValEl   = document.getElementById('cm-bulk-tag-value');
+    var tagSelect  = document.getElementById('cm-bulk-tag-select');
+    var selectAll  = document.getElementById('cm-select-all');
+    var modal      = document.getElementById('cm-bulk-modal');
+    var modalText  = document.getElementById('cm-bulk-modal-text');
+    var pendingAction = null;
+
+    var LABEL_SELECTED     = <?= json_encode($t('bulk_selected')) ?>;
+    var LABEL_CONFIRM_DEL  = <?= json_encode($t('bulk_confirm_delete')) ?>;
+    var LABEL_NO_TAG       = <?= json_encode($t('bulk_error_no_tag')) ?>;
+
+    function updateBar() {
+        var n = selected.size;
+        if (n > 0) {
+            bar.classList.remove('hidden');
+            countEl.textContent = LABEL_SELECTED.replace('{n}', n);
+        } else {
+            bar.classList.add('hidden');
+        }
+        // Sync select-all checkbox indeterminate state
+        var allBoxes = document.querySelectorAll('.cm-row-check');
+        if (selectAll) {
+            if (n === 0) {
+                selectAll.checked       = false;
+                selectAll.indeterminate = false;
+            } else if (n === allBoxes.length) {
+                selectAll.checked       = true;
+                selectAll.indeterminate = false;
+            } else {
+                selectAll.checked       = false;
+                selectAll.indeterminate = true;
+            }
+        }
+    }
+
+    // Row checkbox events
+    document.querySelectorAll('.cm-row-check').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+            if (cb.checked) { selected.add(cb.value); } else { selected.delete(cb.value); }
+            updateBar();
+        });
+    });
+
+    // Select-all checkbox
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            document.querySelectorAll('.cm-row-check').forEach(function (cb) {
+                cb.checked = selectAll.checked;
+                if (selectAll.checked) { selected.add(cb.value); } else { selected.delete(cb.value); }
+            });
+            updateBar();
+        });
+    }
+
+    // Build hidden ID inputs and submit the shared form
+    function populateForm(action, tag) {
+        actionEl.value = action;
+        tagValEl.value = tag || '';
+        idsEl.innerHTML = '';
+        selected.forEach(function (id) {
+            var inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = 'ids[]';
+            inp.value = id;
+            idsEl.appendChild(inp);
+        });
+        document.getElementById('cm-bulk-form').submit();
+    }
+
+    window.cmBulkSubmit = function (action) {
+        if (selected.size === 0) { return; }
+
+        if (action === 'tag_add' || action === 'tag_remove') {
+            var tagName = tagSelect ? tagSelect.value : '';
+            if (!tagName) { alert(LABEL_NO_TAG); return; }
+            populateForm(action, tagName);
+            return;
+        }
+
+        if (action === 'delete') {
+            pendingAction = action;
+            modalText.textContent = LABEL_CONFIRM_DEL.replace('{n}', selected.size);
+            modal.classList.remove('hidden');
+            return;
+        }
+
+        populateForm(action, '');
+    };
+
+    window.cmBulkModalConfirm = function () {
+        modal.classList.add('hidden');
+        if (pendingAction) { populateForm(pendingAction, ''); }
+    };
+
+    window.cmBulkModalCancel = function () {
+        modal.classList.add('hidden');
+        pendingAction = null;
+    };
+
+    window.cmBulkDeselectAll = function () {
+        selected.clear();
+        document.querySelectorAll('.cm-row-check').forEach(function (cb) { cb.checked = false; });
+        if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
+        updateBar();
+    };
+
+    // Close modal on backdrop click
+    if (modal) {
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) { cmBulkModalCancel(); }
+        });
+    }
+
+    // Close modal on Escape
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+            cmBulkModalCancel();
+        }
+    });
+}());
+<?php endif; ?>
+
 /**
  * Async maintenance-conflict severity check for per-target badges.
  *

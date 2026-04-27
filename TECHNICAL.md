@@ -133,6 +133,9 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │           ├── CronCreateEndpoint.php
 │           ├── CronUpdateEndpoint.php
 │           ├── CronDeleteEndpoint.php
+│           ├── CronBulkStatusEndpoint.php
+│           ├── CronBulkDeleteEndpoint.php
+│           ├── CronBulkTagEndpoint.php
 │           ├── CronUsersEndpoint.php
 │           ├── CronUnmanagedEndpoint.php
 │           ├── ExecutionStartEndpoint.php
@@ -161,6 +164,13 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 └── web/                       ← web application source
     ├── index.php              ← front controller
     ├── config/config.json     ← web configuration (deployed to conf/)
+    ├── assets/
+    │   ├── css/
+    │   │   └── brand.css          ← custom CSS variables and component styles
+    │   └── js/
+    │       ├── tailwind.min.js    ← Tailwind CSS runtime (downloaded by deploy.sh)
+    │       ├── chart.min.js       ← Chart.js 4 UMD build (downloaded by deploy.sh)
+    │       └── cm-fetch.js        ← shared AJAX utilities (cmFetch, cmToast, cmPoll)
     ├── lang/
     │   ├── en.php
     │   └── de.php
@@ -622,6 +632,59 @@ Update an existing job. Body is the same as POST /crons.
 Delete a job and remove its crontab entries.
 
 **Response:** HTTP 204 No Content.
+
+---
+
+### POST /crons/bulk/status
+
+Activate or deactivate a set of jobs in one call. The crontab is updated only for jobs whose `active` state actually changes.
+
+**Request body:**
+```json
+{ "ids": [1, 4, 7], "active": true }
+```
+
+**Response:**
+```json
+{ "updated": 3 }
+```
+
+---
+
+### POST /crons/bulk/delete
+
+Delete a set of jobs and remove their crontab entries.
+
+Returns **HTTP 409 Conflict** if any of the specified jobs has a currently running execution (`finished_at IS NULL`). All jobs are left unchanged in that case.
+
+**Request body:**
+```json
+{ "ids": [1, 4, 7] }
+```
+
+**Response:**
+```json
+{ "deleted": 3 }
+```
+
+---
+
+### POST /crons/bulk/tag
+
+Add or remove a named tag from a set of jobs.
+
+- `add`: creates the tag via `INSERT IGNORE` if it does not exist, then links each job.
+- `remove`: deletes the `cronjob_tags` link rows; orphaned tag rows are left for housekeeping.
+
+**Request body:**
+```json
+{ "ids": [1, 4, 7], "tag": "backup", "action": "add" }
+```
+
+**Response:**
+```json
+{ "updated": 3 }
+```
 
 ---
 
@@ -1110,12 +1173,25 @@ after `extract()`, avoid defining variables named `$user`, `$content`, `$title`,
 The layout always uses `SessionManager::getUser()` / `SessionManager::hasRole()` directly
 for security-sensitive checks such as navigation visibility.
 
+#### JSON mode (`?_json=1`)
+
+`BaseController` provides two helpers for AJAX responses without requiring separate routes:
+
+```php
+protected function isJsonRequest(): bool   // true when $_GET['_json'] === '1'
+protected function jsonResponse(array $data, int $status = 200): void
+```
+
+Controllers call `isJsonRequest()` before `render()` and return early with `jsonResponse()` when detected. This lets the same URL serve both the full HTML page and a JSON payload for polling — no route duplication needed.
+
+Currently used by `DashboardController::index()` (returns stats array) and `CronController::monitor()` (returns chart/KPI data). The JavaScript utility `cmFetch` in `cm-fetch.js` appends `?_json=1` automatically for AJAX callers.
+
 | Controller | Routes | Min role |
 |---|---|---|
 | `AuthController` | `GET/POST /login`, `GET /logout`, `GET /auth/callback`, `GET /auth/oidc` | public |
 | `SetupController` | `GET/POST /setup` | public |
 | `DashboardController` | `GET /dashboard` | view |
-| `CronController` | `GET /crons`, `GET /crons/{id}`, `GET /crons/{id}/monitor`, `GET/POST /crons/new`, `GET/POST /crons/{id}/edit`, `POST /crons/{id}/delete`, `GET/POST /crons/import` | view/admin |
+| `CronController` | `GET /crons`, `POST /crons/bulk` (admin), `GET /crons/{id}`, `GET /crons/{id}/monitor`, `GET/POST /crons/new`, `GET/POST /crons/{id}/edit`, `POST /crons/{id}/delete`, `GET/POST /crons/import` | view/admin |
 | `TimelineController` | `GET /timeline` | view |
 | `SwimlaneController` | `GET /swimlane`, `GET /swimlane?debug=1` | view |
 | `ExportController` | `GET /export`, `GET /export/download` | view |
@@ -1892,6 +1968,12 @@ since all their changes are already included in the baseline schema.
 | `002_add_job_targets.sql` | Added `job_targets` table for multi-host support |
 | `003_add_target_to_execution_log.sql` | Added `target` column to `execution_log` |
 | `004_kill_and_limits.sql` | Added `pid`, `pid_file`, `notified_limit_exceeded` to `execution_log`; added `execution_limit_seconds`, `auto_kill_on_limit` to `cronjobs` |
+| `005_singleton.sql` | Added `singleton` column to `cronjobs` |
+| `006_maintenance_windows.sql` | Added `maintenance_windows` table; added `run_in_maintenance` and `during_maintenance` columns |
+| `007_retention_and_retry.sql` | Added `retention_days`, `retry_count`, `retry_delay_minutes` to `cronjobs`; added `retry_attempt`, `retry_root_execution_id` to `execution_log`; created `job_retry_state` table |
+| `008_notify_after_failures.sql` | Added `notify_after_failures` column to `cronjobs` |
+| `009_notify_after_limit_exceeded.sql` | Added `notify_after_limit_exceeded` column to `cronjobs` |
+| `010_notify_on_recovery.sql` | Added `notify_on_recovery` column to `cronjobs` |
 
 Always apply migrations in order. The full schema in `agent/sql/schema.sql` reflects
 the current state after all migrations and is used for fresh installations.

@@ -177,12 +177,20 @@ try {
     $cronDelete  = new \Cronmanager\Agent\Endpoints\CronDeleteEndpoint($pdo, $logger, $crontabManager);
     $cronMonitor = new \Cronmanager\Agent\Endpoints\MonitorEndpoint($pdo, $logger);
 
-    $cronUnmanaged = new \Cronmanager\Agent\Endpoints\CronUnmanagedEndpoint($logger, $crontabManager);
-    $cronUsers     = new \Cronmanager\Agent\Endpoints\CronUsersEndpoint($logger, $crontabManager);
+    $cronUnmanaged   = new \Cronmanager\Agent\Endpoints\CronUnmanagedEndpoint($logger, $crontabManager);
+    $cronUsers       = new \Cronmanager\Agent\Endpoints\CronUsersEndpoint($logger, $crontabManager);
+    $cronBulkStatus  = new \Cronmanager\Agent\Endpoints\CronBulkStatusEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
+    $cronBulkDelete  = new \Cronmanager\Agent\Endpoints\CronBulkDeleteEndpoint($pdo, $logger, $crontabManager);
+    $cronBulkTag     = new \Cronmanager\Agent\Endpoints\CronBulkTagEndpoint($pdo, $logger);
 
     $router->addRoute('GET',    '/crons',                [$cronList,      'handle']);
     $router->addRoute('GET',    '/crons/users',          [$cronUsers,     'handle']);
     $router->addRoute('GET',    '/crons/unmanaged',      [$cronUnmanaged, 'handle']);
+    // Bulk endpoints must be registered before /crons/{id} so the static path
+    // segments are matched first and not consumed as an ID parameter.
+    $router->addRoute('POST',   '/crons/bulk/status',    [$cronBulkStatus, 'handle']);
+    $router->addRoute('POST',   '/crons/bulk/delete',    [$cronBulkDelete, 'handle']);
+    $router->addRoute('POST',   '/crons/bulk/tag',       [$cronBulkTag,    'handle']);
     // /crons/{id}/monitor must be registered before /crons/{id} so the router
     // tries the more specific pattern first and does not mis-route the request.
     $executeNow     = new \Cronmanager\Agent\Endpoints\ExecuteNowEndpoint($pdo, $logger, $crontabManager, $wrapperScript);

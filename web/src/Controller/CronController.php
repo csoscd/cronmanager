@@ -1192,6 +1192,10 @@ class CronController extends BaseController
             ? (int) $rawRetryDelay
             : 1;
 
+        // restart_on_exitcodes: optional expression string; empty → null (any non-zero)
+        $rawRestartOnExitcodes = trim((string) ($post['restart_on_exitcodes'] ?? ''));
+        $restartOnExitcodes    = $rawRestartOnExitcodes !== '' ? $rawRestartOnExitcodes : null;
+
         // notify_after_failures: positive integer, default 1
         $rawNotifyAfter = trim((string) ($post['notify_after_failures'] ?? ''));
         $notifyAfterFailures = ($rawNotifyAfter !== '' && ctype_digit($rawNotifyAfter) && (int) $rawNotifyAfter >= 1)
@@ -1220,6 +1224,7 @@ class CronController extends BaseController
             'retention_days'           => $retentionDays,
             'retry_count'              => $retryCount,
             'retry_delay_minutes'      => $retryDelayMinutes,
+            'restart_on_exitcodes'     => $restartOnExitcodes,
             'notify_after_failures'       => $notifyAfterFailures,
             'notify_after_limit_exceeded' => $notifyAfterLimitExceeded,
             'targets'                     => $targets,

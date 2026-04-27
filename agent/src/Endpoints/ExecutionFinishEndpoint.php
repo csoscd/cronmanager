@@ -50,6 +50,7 @@ namespace Cronmanager\Agent\Endpoints;
 
 use Cronmanager\Agent\Cron\CrontabManager;
 use Cronmanager\Agent\Notification\MailNotifier;
+use Cronmanager\Agent\Util\ExitCodeMatcher;
 use Cronmanager\Agent\Notification\TelegramNotifier;
 use Monolog\Logger;
 use PDO;
@@ -288,7 +289,7 @@ final class ExecutionFinishEndpoint
             try {
                 $job = $this->fetchJob($jobId);
 
-                if ($job !== null) {
+                if ($job !== null && ExitCodeMatcher::matches($job['restart_on_exitcodes'] ?? null, $exitCode)) {
                     $retryCount        = (int)  ($job['retry_count']         ?? 0);
                     $retryDelayMinutes = max(1, (int) ($job['retry_delay_minutes'] ?? 1));
 
@@ -693,7 +694,7 @@ final class ExecutionFinishEndpoint
         $stmt = $this->pdo->prepare(
             'SELECT id, linux_user, schedule, command, description, notify_on_failure,
                     notify_on_recovery, execution_limit_seconds, retry_count, retry_delay_minutes,
-                    notify_after_failures, notify_after_limit_exceeded
+                    restart_on_exitcodes, notify_after_failures, notify_after_limit_exceeded
                FROM cronjobs
               WHERE id = :id
               LIMIT 1'

@@ -126,6 +126,7 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │       ├── Cron/CrontabManager.php
 │       ├── Notification/MailNotifier.php
 │       ├── Ssh/SshConfigParser.php
+│       ├── Util/ExitCodeMatcher.php
 │       ├── Repository/MaintenanceWindowRepository.php
 │       └── Endpoints/
 │           ├── CronListEndpoint.php
@@ -486,6 +487,19 @@ unavailable the endpoint falls back to synchronous sending.
 
 **Encryption:** use `"ssl"` for port 465 (SMTPS / implicit TLS) and `"tls"` for
 port 587 (STARTTLS). Mixing these causes the connection to hang.
+
+### ExitCodeMatcher
+
+`src/Util/ExitCodeMatcher.php` is a stateless utility class that parses and evaluates the per-job `restart_on_exitcodes` expression.
+
+**Expression format:** comma-separated tokens; each token is either a single integer (`0`–`255`) or a range `N-M` (`N < M`, both `0`–`255`). Whitespace around tokens is trimmed. Null or empty string = "any non-zero" (default, backward-compatible).
+
+| Method | Signature | Purpose |
+|---|---|---|
+| `matches` | `static (string\|null $expression, int $exitCode): bool` | Returns `true` when the exit code should trigger a retry |
+| `validate` | `static (string $expression): ?string` | Returns `null` on success, or an error message string on failure; used by create/update endpoints before persisting |
+
+`ExecutionFinishEndpoint` calls `ExitCodeMatcher::matches($job['restart_on_exitcodes'], $exitCode)` in step 5a instead of the former bare `$exitCode !== 0` check. When `retry_count = 0` the retry block is still skipped regardless of the expression result.
 
 **Config keys used by both notifiers:**
 - `mail.from` / `mail.to` (not `mail.from_address` / `mail.to_address`)
@@ -1328,6 +1342,12 @@ is stored in `$_SESSION['lang']`. Fallback is English if a key is missing.
 | `auto_kill_on_limit` | TINYINT(1) | `1` = auto-kill when limit is exceeded |
 | `singleton` | TINYINT(1) | `1` = skip new execution if a previous instance is still running |
 | `run_in_maintenance` | TINYINT(1) | `1` = execute during maintenance window (failures reported normally); `0` = skip with exit code `−4` |
+| `retention_days` | SMALLINT UNSIGNED NULL | Keep execution logs for this many days; NULL = keep forever |
+| `retry_count` | TINYINT UNSIGNED | Max automatic retry attempts on failure; `0` = no retry |
+| `retry_delay_minutes` | SMALLINT UNSIGNED | Minutes between retry attempts (minimum 1) |
+| `restart_on_exitcodes` | VARCHAR(255) NULL | Exit-code expression that triggers auto-retry, e.g. `1-5,10,255`; NULL = any non-zero code |
+| `notify_after_failures` | SMALLINT UNSIGNED | Send failure alert only after this many consecutive failures (default 1) |
+| `notify_after_limit_exceeded` | SMALLINT UNSIGNED | Send limit-exceeded alert only after this many consecutive limit breaches (default 1) |
 | `execution_mode` | ENUM('local','remote') | Legacy; superseded by `job_targets` |
 | `ssh_host` | VARCHAR(255) NULL | Legacy; superseded by `job_targets` |
 | `created_at` | DATETIME | |
@@ -1974,6 +1994,7 @@ since all their changes are already included in the baseline schema.
 | `008_notify_after_failures.sql` | Added `notify_after_failures` column to `cronjobs` |
 | `009_notify_after_limit_exceeded.sql` | Added `notify_after_limit_exceeded` column to `cronjobs` |
 | `010_notify_on_recovery.sql` | Added `notify_on_recovery` column to `cronjobs` |
+| `011_restart_on_exitcodes.sql` | Added `restart_on_exitcodes` column to `cronjobs` for per-job exit-code filter on auto-retry |
 
 Always apply migrations in order. The full schema in `agent/sql/schema.sql` reflects
 the current state after all migrations and is used for fresh installations.

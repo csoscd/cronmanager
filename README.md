@@ -63,6 +63,8 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Tags** | Label jobs to enable filtering and grouped export |
 | **Crontab import** | Detect and import existing unmanaged crontab entries |
 | **Export** | Download a ready-to-use crontab file or JSON for all managed jobs |
+| **Auto-retry on failure** | Automatically re-run a failed job up to N times with a configurable delay between attempts; notification is suppressed until all retries are exhausted |
+| **Exit-code filter for restart** | Optionally restrict which exit codes trigger an automatic retry using a flexible expression such as `1-5,10,255`; empty (default) means any non-zero code |
 | **Email alerts** | Receive an email when a job exits with a non-zero status or exceeds its execution limit |
 | **Telegram alerts** | Receive a Telegram message for the same events via the Bot API |
 | **Recovery notifications** | Optionally receive an email and/or Telegram message when a job succeeds again after a failure streak that triggered an alert |

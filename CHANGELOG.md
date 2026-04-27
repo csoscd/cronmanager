@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `<meta name="csrf-token">` added to `layout.php` for AJAX CSRF availability.
   - **Dashboard**: KPI cards (total, active, inactive, tag count, recent-failure badge) refresh every 60 seconds via AJAX without a full page reload.
   - **Monitor page**: period and target switching uses AJAX instead of full-page reloads; the URL is updated via `history.pushState` for bookmarkability; Chart.js instances are destroyed and recreated on each AJAX update; short periods (1h / 6h / 12h / 24h) auto-refresh via `cmPoll`.
+- **Exit-code filter for auto-restart** (issue #83): new per-job field `restart_on_exitcodes` defines which exit codes trigger an automatic retry. Accepts a comma-separated expression of individual values and ranges (0–255), e.g. `1-5,10,255`. Empty/null (default) preserves the original behaviour — any non-zero exit code triggers a restart. Validated at the API level with HTTP 422 on invalid input. Existing jobs with `NULL` are fully backward-compatible. DB migration `011_restart_on_exitcodes.sql`. New utility class `ExitCodeMatcher` handles parsing and evaluation.
 
 ### Changed
 - `BaseController` gains two helpers used by the AJAX layer: `isJsonRequest()` (returns `true` when `?_json=1` is present) and `jsonResponse(array $data, int $status)` (emits `Content-Type: application/json` and the JSON body). No new routes are required — controllers detect the flag and branch to JSON output before the normal `render()` call.

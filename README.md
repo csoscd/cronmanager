@@ -69,6 +69,7 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Telegram alerts** | Receive a Telegram message for the same events via the Bot API |
 | **Recovery notifications** | Optionally receive an email and/or Telegram message when a job succeeds again after a failure streak that triggered an alert |
 | **Maintenance Windows** | Define per-target scheduled maintenance windows; jobs are either skipped (exit code −4) or executed silently depending on the per-job setting. A special **"Cronmanager Agent"** target blocks all executions host-wide (useful for VM maintenance cycles). Conflict icons (⚠ amber / ✕ red) appear in the job list and detail view |
+| **SSH connectivity test** | A **Test** button on the Maintenance Windows page verifies that the agent can reach an SSH target via key-based auth (`BatchMode=yes`, 10 s timeout). The result (Connected / Failed) is shown inline without a page reload |
 | **Startup orphan cleanup** | On agent restart, executions still marked as "running" with no live process are automatically resolved to exit code −5 ("Interrupted by system restart") |
 | **Housekeeping** | Crontab sync, stuck-execution cleanup, and history bulk-delete |
 | **Local & SSO auth** | Username/password accounts or OAuth 2.0 / OpenID Connect (OIDC) via Authentik |

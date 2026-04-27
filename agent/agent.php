@@ -238,8 +238,10 @@ try {
 
     $sshHosts        = new \Cronmanager\Agent\Endpoints\SshHostsEndpoint($logger);
     $importSshTargets = new \Cronmanager\Agent\Endpoints\ImportSshTargetsEndpoint($logger);
-    $router->addRoute('GET', '/ssh-hosts',            [$sshHosts,         'handle']);
-    $router->addRoute('GET', '/import/ssh-targets',   [$importSshTargets, 'handle']);
+    $sshTest          = new \Cronmanager\Agent\Endpoints\SshTestEndpoint($logger);
+    $router->addRoute('GET',  '/ssh-hosts',            [$sshHosts,         'handle']);
+    $router->addRoute('GET',  '/import/ssh-targets',   [$importSshTargets, 'handle']);
+    $router->addRoute('POST', '/ssh/test',             [$sshTest,          'handle']);
 
     // -- History --------------------------------------------------------------
 

@@ -300,6 +300,51 @@ class TargetController extends BaseController
     }
 
     /**
+     * Proxy POST /maintenance/ssh/test to the agent SSH test endpoint.
+     *
+     * Returns the agent's JSON response directly so the browser JS can consume
+     * it without a full page reload.
+     *
+     * Expected POST field:
+     *   host (string) – SSH host alias to probe.
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function testSsh(array $params): void
+    {
+        $host = trim((string) ($_POST['host'] ?? ''));
+
+        if ($host === '') {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => false,
+                'output'  => 'Missing host parameter.',
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
+        try {
+            $result = $this->agentClient()->post('/ssh/test', ['host' => $host]);
+        } catch (\RuntimeException $e) {
+            $this->logger->warning('TargetController::testSsh: agent request failed', [
+                'host'    => $host,
+                'message' => $e->getMessage(),
+            ]);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => false,
+                'output'  => 'Agent unreachable: ' . $e->getMessage(),
+            ], JSON_UNESCAPED_UNICODE);
+            return;
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode($result, JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
      * Delete a maintenance window.
      *
      * @param array<string, string> $params Path parameters: ['id' => string].

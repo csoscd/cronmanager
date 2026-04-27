@@ -147,6 +147,8 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │           ├── TagCreateEndpoint.php
 │           ├── TagDeleteEndpoint.php
 │           ├── SshHostsEndpoint.php
+│           ├── ImportSshTargetsEndpoint.php
+│           ├── SshTestEndpoint.php
 │           ├── HistoryEndpoint.php
 │           ├── ExportEndpoint.php
 │           ├── MonitorEndpoint.php
@@ -511,6 +513,10 @@ port 587 (STARTTLS). Mixing these causes the connection to hang.
 returns the list of named `Host` entries (excluding wildcard `*` entries).
 These are offered in the web UI's target selector when creating or editing a job.
 
+`ImportSshTargetsEndpoint` (`GET /import/ssh-targets`) uses `SshConfigParser` across all candidate users (root + UID ≥ 1000) to build an aggregated, deduplicated list of SSH hosts without requiring a `?user=` parameter.
+
+`SshTestEndpoint` (`POST /ssh/test`) uses the same aggregation as a **whitelist check** before running the SSH probe. This prevents the endpoint from being used to probe arbitrary hostnames — only aliases already known to the agent are accepted.
+
 ### InfluxWriter / send-influx.php
 
 `src/Influx/InfluxWriter.php` writes a single `cron_execution` data point to
@@ -858,6 +864,39 @@ List SSH host aliases available to a Linux user (parsed from `~/.ssh/config`).
 **Response:**
 ```json
 { "data": ["webserver01", "db01", "backup01"] }
+```
+
+---
+
+### GET /import/ssh-targets
+
+Aggregate SSH host aliases from all candidate Linux users (root + UID ≥ 1000) without requiring a specific `?user=` parameter. Used by the Maintenance Windows page to populate the list of known SSH targets.
+
+**Response:**
+```json
+{ "data": ["homeserver", "webhost"], "count": 2 }
+```
+
+---
+
+### POST /ssh/test
+
+Test SSH connectivity to a named host alias. The host must exist in at least one candidate user's `~/.ssh/config` (whitelist check). Runs `ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new <host> echo ok`.
+
+**Request body:**
+```json
+{ "host": "myserver" }
+```
+
+**Response (HTTP 200):**
+```json
+{ "success": true,  "output": "ok" }
+{ "success": false, "output": "ssh: connect to host myserver port 22: Connection refused" }
+```
+
+**Response (HTTP 422)** — invalid host format or host not found in any SSH config:
+```json
+{ "error": "Unknown SSH host", "message": "..." }
 ```
 
 ---
@@ -1211,7 +1250,7 @@ Currently used by `DashboardController::index()` (returns stats array) and `Cron
 | `ExportController` | `GET /export`, `GET /export/download` | view |
 | `UserController` | `GET /users`, `POST /users/{id}/role`, `POST /users/{id}/delete` | admin |
 | `MaintenanceController` | `GET /housekeeping`, `POST /housekeeping/crontab/resync`, `POST /housekeeping/executions/{id}/finish`, `DELETE /housekeeping/executions/{id}`, `POST /housekeeping/executions/bulk`, `POST /housekeeping/history/cleanup` | admin |
-| `TargetController` | `GET /maintenance`, `POST /maintenance`, `GET /maintenance/{target}/edit`, `POST /maintenance/{target}`, `DELETE /maintenance/{target}`, `GET /maintenance/windows/conflict` | admin |
+| `TargetController` | `GET /maintenance`, `GET /maintenance/{target}/windows/new`, `POST /maintenance/{target}/windows`, `GET /maintenance/windows/{id}/edit`, `POST /maintenance/windows/{id}/edit`, `POST /maintenance/windows/{id}/delete`, `GET /maintenance/windows/conflict`, `POST /maintenance/ssh/test` | admin |
 
 ### HostAgentClient
 

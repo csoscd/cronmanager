@@ -218,6 +218,7 @@ try {
     $router->addProtectedRoute('POST', '/maintenance/windows/{id}/delete',           [$targetCtrl, 'deleteWindow'], 'admin');
     $router->addProtectedRoute('GET',  '/maintenance/{target}/windows/new',          [$targetCtrl, 'newWindow'],    'admin');
     $router->addProtectedRoute('POST', '/maintenance/{target}/windows',              [$targetCtrl, 'storeWindow'],  'admin');
+    $router->addProtectedRoute('POST', '/maintenance/ssh/test',                      [$targetCtrl, 'testSsh'],      'admin');
     $router->addProtectedRoute('GET',  '/maintenance',                               [$targetCtrl, 'index'],        'admin');
 
     // Housekeeping (formerly "Maintenance") – admin only; more-specific paths first

@@ -26,6 +26,7 @@ declare(strict_types=1);
 namespace Cronmanager\Agent\Endpoints;
 
 use Cronmanager\Agent\Cron\CrontabManager;
+use Cronmanager\Agent\Util\ExitCodeMatcher;
 use Cron\CronExpression;
 use Monolog\Logger;
 use PDO;
@@ -183,6 +184,7 @@ final class CronUpdateEndpoint
                      retention_days = :retention_days,
                      retry_count = :retry_count,
                      retry_delay_minutes = :retry_delay_minutes,
+                     restart_on_exitcodes = :restart_on_exitcodes,
                      notify_after_failures = :notify_after_failures,
                      notify_after_limit_exceeded = :notify_after_limit_exceeded,
                      execution_mode = :execution_mode,
@@ -204,6 +206,9 @@ final class CronUpdateEndpoint
                 ':retention_days'          => $merged['retention_days'],
                 ':retry_count'             => (int) ($merged['retry_count']            ?? 0),
                 ':retry_delay_minutes'     => max(1, (int) ($merged['retry_delay_minutes'] ?? 1)),
+                ':restart_on_exitcodes'    => isset($merged['restart_on_exitcodes']) && (string) $merged['restart_on_exitcodes'] !== ''
+                    ? (string) $merged['restart_on_exitcodes']
+                    : null,
                 ':notify_after_failures'        => max(1, (int) ($merged['notify_after_failures']        ?? 1)),
                 ':notify_after_limit_exceeded'  => max(1, (int) ($merged['notify_after_limit_exceeded']  ?? 1)),
                 ':execution_mode'               => $executionMode,
@@ -343,6 +348,13 @@ final class CronUpdateEndpoint
             'retry_delay_minutes'      => array_key_exists('retry_delay_minutes', $body)
                 ? max(1, (int) $body['retry_delay_minutes'])
                 : max(1, (int) ($existing['retry_delay_minutes'] ?? 1)),
+            'restart_on_exitcodes'     => array_key_exists('restart_on_exitcodes', $body)
+                ? (is_string($body['restart_on_exitcodes']) && trim($body['restart_on_exitcodes']) !== ''
+                    ? trim($body['restart_on_exitcodes'])
+                    : null)
+                : (isset($existing['restart_on_exitcodes']) && $existing['restart_on_exitcodes'] !== ''
+                    ? (string) $existing['restart_on_exitcodes']
+                    : null),
             'notify_after_failures'       => array_key_exists('notify_after_failures', $body)
                 ? max(1, (int) $body['notify_after_failures'])
                 : max(1, (int) ($existing['notify_after_failures'] ?? 1)),
@@ -463,6 +475,14 @@ final class CronUpdateEndpoint
                     $errors['tags'] = sprintf('Element at index %d must be a non-empty string.', $i);
                     break;
                 }
+            }
+        }
+
+        // restart_on_exitcodes: optional, validated via ExitCodeMatcher
+        if (isset($data['restart_on_exitcodes']) && $data['restart_on_exitcodes'] !== null) {
+            $exitcodesError = ExitCodeMatcher::validate((string) $data['restart_on_exitcodes']);
+            if ($exitcodesError !== null) {
+                $errors['restart_on_exitcodes'] = $exitcodesError;
             }
         }
 
@@ -629,6 +649,7 @@ final class CronUpdateEndpoint
                 j.retention_days,
                 j.retry_count,
                 j.retry_delay_minutes,
+                j.restart_on_exitcodes,
                 j.notify_after_failures,
                 j.notify_after_limit_exceeded,
                 j.execution_mode,
@@ -692,6 +713,9 @@ final class CronUpdateEndpoint
                 : null,
             'retry_count'              => (int) ($row['retry_count']          ?? 0),
             'retry_delay_minutes'      => max(1, (int) ($row['retry_delay_minutes'] ?? 1)),
+            'restart_on_exitcodes'     => isset($row['restart_on_exitcodes']) && (string) $row['restart_on_exitcodes'] !== ''
+                ? (string) $row['restart_on_exitcodes']
+                : null,
             'notify_after_failures'       => max(1, (int) ($row['notify_after_failures']        ?? 1)),
             'notify_after_limit_exceeded' => max(1, (int) ($row['notify_after_limit_exceeded']  ?? 1)),
             'targets'                     => $targets,

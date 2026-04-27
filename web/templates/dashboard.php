@@ -74,7 +74,7 @@ $byUser        = (array) ($stats['byUser']      ?? []);
         </div>
         <div>
             <p class="text-sm text-gray-500 dark:text-gray-400"><?= htmlspecialchars($t('dashboard_total_jobs'), ENT_QUOTES, 'UTF-8') ?></p>
-            <p class="text-2xl font-bold text-gray-900 dark:text-gray-100"><?= $total ?></p>
+            <p id="cm-dash-total" class="text-2xl font-bold text-gray-900 dark:text-gray-100"><?= $total ?></p>
         </div>
     </div>
 
@@ -88,7 +88,7 @@ $byUser        = (array) ($stats['byUser']      ?? []);
         </div>
         <div>
             <p class="text-sm text-gray-500 dark:text-gray-400"><?= htmlspecialchars($t('dashboard_active'), ENT_QUOTES, 'UTF-8') ?></p>
-            <p class="text-2xl font-bold text-gray-900 dark:text-gray-100"><?= $active ?></p>
+            <p id="cm-dash-active" class="text-2xl font-bold text-gray-900 dark:text-gray-100"><?= $active ?></p>
         </div>
     </div>
 
@@ -102,7 +102,7 @@ $byUser        = (array) ($stats['byUser']      ?? []);
         </div>
         <div>
             <p class="text-sm text-gray-500 dark:text-gray-400"><?= htmlspecialchars($t('dashboard_inactive'), ENT_QUOTES, 'UTF-8') ?></p>
-            <p class="text-2xl font-bold text-gray-900 dark:text-gray-100"><?= $inactive ?></p>
+            <p id="cm-dash-inactive" class="text-2xl font-bold text-gray-900 dark:text-gray-100"><?= $inactive ?></p>
         </div>
     </div>
 
@@ -116,7 +116,7 @@ $byUser        = (array) ($stats['byUser']      ?? []);
         </div>
         <div>
             <p class="text-sm text-gray-500 dark:text-gray-400"><?= htmlspecialchars($t('nav_export') !== 'nav_export' ? $t('cron_tags') : 'Tags', ENT_QUOTES, 'UTF-8') ?></p>
-            <p class="text-2xl font-bold text-gray-900 dark:text-gray-100"><?= $tagsCount ?></p>
+            <p id="cm-dash-tags" class="text-2xl font-bold text-gray-900 dark:text-gray-100"><?= $tagsCount ?></p>
         </div>
     </div>
 
@@ -133,11 +133,9 @@ $byUser        = (array) ($stats['byUser']      ?? []);
             <h2 class="text-base font-semibold text-gray-800 dark:text-gray-200">
                 <?= htmlspecialchars($t('dashboard_recent_failures'), ENT_QUOTES, 'UTF-8') ?>
             </h2>
-            <?php if ($failedLast24h > 0): ?>
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                    <?= $failedLast24h ?> <?= htmlspecialchars($t('filter_status_failed'), ENT_QUOTES, 'UTF-8') ?> (24h)
-                </span>
-            <?php endif; ?>
+            <span id="cm-dash-fail-badge" class="<?= $failedLast24h > 0 ? '' : 'hidden' ?> inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                <span id="cm-dash-fail-count"><?= $failedLast24h ?></span>&nbsp;<?= htmlspecialchars($t('filter_status_failed'), ENT_QUOTES, 'UTF-8') ?> (24h)
+            </span>
         </div>
 
         <?php if (empty($recentFailures)): ?>
@@ -235,7 +233,7 @@ $byUser        = (array) ($stats['byUser']      ?? []);
     </div>
 
     <!-- Jobs by user ------------------------------------------------------- -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+    <div id="cm-dash-by-user" class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
         <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
             <h2 class="text-base font-semibold text-gray-800 dark:text-gray-200">
                 <?= htmlspecialchars($t('dashboard_jobs_by_user'), ENT_QUOTES, 'UTF-8') ?>
@@ -284,3 +282,37 @@ $byUser        = (array) ($stats['byUser']      ?? []);
     </div>
 
 </div>
+
+<script>
+(function () {
+    'use strict';
+
+    function set(id, text) {
+        var el = document.getElementById(id);
+        if (el) { el.textContent = String(text); }
+    }
+
+    function refresh() {
+        cmFetch('/dashboard?_json=1')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var s = data.stats || {};
+                set('cm-dash-total',   s.total    || 0);
+                set('cm-dash-active',  s.active   || 0);
+                set('cm-dash-inactive',s.inactive || 0);
+                set('cm-dash-tags',    s.tagsCount || 0);
+
+                var badge     = document.getElementById('cm-dash-fail-badge');
+                var failCount = document.getElementById('cm-dash-fail-count');
+                var n         = parseInt(s.failedLast24h || 0, 10);
+                if (badge) { badge.classList.toggle('hidden', n === 0); }
+                if (failCount) { failCount.textContent = String(n); }
+            })
+            .catch(function () {
+                /* silent — stale data is acceptable on transient errors */
+            });
+    }
+
+    cmPoll(refresh, 60000);
+}());
+</script>

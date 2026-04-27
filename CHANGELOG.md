@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.0.0] – branch: `feature/v2.11`
+
+### Added
+- **Sidebar navigation redesign** (issue #81): replaced the top navigation bar with a persistent left sidebar. Pages are grouped into Overview, Jobs, Views, Export, and Admin sections, each with an SVG icon. A mobile overlay with a hamburger trigger is included for narrow viewports. All layout CSS for the sidebar lives in a new section (§18) of `web/assets/css/brand.css`.
+- **Active/Inactive filter on cron list** (issue #69): new "Active" dropdown filter with options All / Active / Inactive. Filter value is persisted via the `cronmgr_crons_active` cookie alongside the other existing filters. The reset-filters link clears it together with the other filters.
+- **Bulk operations on cron list** (issue #68): a bulk toolbar appears when one or more jobs are selected via per-row checkboxes. Supported actions: **Activate**, **Deactivate**, **Delete** (with confirmation modal), and **Re-tag** (add or remove a named tag from all selected jobs at once). Selection state is tracked with a JavaScript `Set`; a "Select All" header checkbox toggles every visible row. Flash banners confirm success or surface agent errors (including HTTP 409 when a running execution blocks bulk delete). Three new protected admin routes and agent endpoints implement the backend.
+- **Progressive AJAX & auto-refresh** (issue #82):
+  - `web/assets/js/cm-fetch.js`: shared JavaScript utilities (`cmFetch`, `cmToast`, `cmPoll`) loaded globally via `layout.php`. `cmPoll` uses the Page Visibility API to pause polling when the tab is hidden.
+  - `<meta name="csrf-token">` added to `layout.php` for AJAX CSRF availability.
+  - **Dashboard**: KPI cards (total, active, inactive, tag count, recent-failure badge) refresh every 60 seconds via AJAX without a full page reload.
+  - **Monitor page**: period and target switching uses AJAX instead of full-page reloads; the URL is updated via `history.pushState` for bookmarkability; Chart.js instances are destroyed and recreated on each AJAX update; short periods (1h / 6h / 12h / 24h) auto-refresh via `cmPoll`.
+- **Exit-code filter for auto-restart** (issue #83): new per-job field `restart_on_exitcodes` defines which exit codes trigger an automatic retry. Accepts a comma-separated expression of individual values and ranges (0–255), e.g. `1-5,10,255`. Empty/null (default) preserves the original behaviour — any non-zero exit code triggers a restart. Validated at the API level with HTTP 422 on invalid input. Existing jobs with `NULL` are fully backward-compatible. DB migration `011_restart_on_exitcodes.sql`. New utility class `ExitCodeMatcher` handles parsing and evaluation.
+- **SSH connectivity test button** (issue #77): each SSH target header on the Maintenance Windows page now shows a "Test" button. Clicking it sends a POST to `/maintenance/ssh/test` which proxies to the new agent endpoint `POST /ssh/test`. The agent verifies the host exists in a known `~/.ssh/config` (whitelist check), then runs `ssh -o BatchMode=yes -o ConnectTimeout=10 <host> echo ok`. The result is shown inline as a green "Connected" or red "Failed: …" label without a page reload.
+
+### Changed
+- `BaseController` gains two helpers used by the AJAX layer: `isJsonRequest()` (returns `true` when `?_json=1` is present) and `jsonResponse(array $data, int $status)` (emits `Content-Type: application/json` and the JSON body). No new routes are required — controllers detect the flag and branch to JSON output before the normal `render()` call.
+
+### Technical
+- Three new agent bulk endpoints, registered before `{id}` route patterns to prevent mis-routing:
+  - `POST /crons/bulk/status` (`CronBulkStatusEndpoint`) — activate or deactivate a set of job IDs; crontab is synced only for jobs whose `active` state actually changes.
+  - `POST /crons/bulk/delete` (`CronBulkDeleteEndpoint`) — delete a set of jobs; returns HTTP 409 Conflict if any job has a currently running execution.
+  - `POST /crons/bulk/tag` (`CronBulkTagEndpoint`) — add or remove a named tag from a set of jobs.
+- Web router registers `POST /crons/bulk` → `CronController::bulkAction()` (admin-only) before `/crons/import` and `/crons/{id}` to prevent path collision.
+
+---
+
 ## [2.10.0] – branch: `feature/recovery-notification`
 
 ### Added

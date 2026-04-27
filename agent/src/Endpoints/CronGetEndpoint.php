@@ -183,6 +183,7 @@ final class CronGetEndpoint
                 j.retention_days,
                 j.retry_count,
                 j.retry_delay_minutes,
+                j.restart_on_exitcodes,
                 j.notify_after_failures,
                 j.notify_after_limit_exceeded,
                 j.execution_mode,
@@ -266,6 +267,9 @@ final class CronGetEndpoint
                 : null,
             'retry_count'              => (int) ($row['retry_count']          ?? 0),
             'retry_delay_minutes'      => max(1, (int) ($row['retry_delay_minutes'] ?? 1)),
+            'restart_on_exitcodes'     => isset($row['restart_on_exitcodes']) && (string) $row['restart_on_exitcodes'] !== ''
+                ? (string) $row['restart_on_exitcodes']
+                : null,
             'notify_after_failures'       => max(1, (int) ($row['notify_after_failures']        ?? 1)),
             'notify_after_limit_exceeded' => max(1, (int) ($row['notify_after_limit_exceeded']  ?? 1)),
             'targets'                     => $targets,

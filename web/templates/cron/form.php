@@ -60,7 +60,8 @@ $advancedOpen  = $isAutoKillVal
     || $isRunInMaintVal
     || $val('execution_limit_seconds') !== ''
     || $val('retention_days') !== ''
-    || (int) $val('retry_count', '0') > 0;
+    || (int) $val('retry_count', '0') > 0
+    || $val('restart_on_exitcodes', '') !== '';
 
 // Auto-expand the notify tab when any notify setting deviates from the default.
 $notifyOpen    = !$isNotifyVal
@@ -416,6 +417,22 @@ foreach ($tags as $tag) {
                     <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
                         <?= htmlspecialchars($t('cron_retry_hint'), ENT_QUOTES, 'UTF-8') ?>
                     </p>
+                    <!-- Restart on exit codes -->
+                    <div class="mt-3 flex flex-wrap items-center gap-2" id="restart-exitcodes-row">
+                        <label for="restart_on_exitcodes" class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                            <?= htmlspecialchars($t('cron_retry_exitcodes'), ENT_QUOTES, 'UTF-8') ?>
+                        </label>
+                        <input type="text" id="restart_on_exitcodes" name="restart_on_exitcodes"
+                               placeholder="<?= htmlspecialchars($t('cron_retry_exitcodes_placeholder'), ENT_QUOTES, 'UTF-8') ?>"
+                               value="<?= htmlspecialchars($val('restart_on_exitcodes', ''), ENT_QUOTES, 'UTF-8') ?>"
+                               class="w-48 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                      bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                      focus:outline-none focus:ring-2 focus:ring-blue-500
+                                      focus:border-blue-500 transition font-mono">
+                        <span class="text-xs text-gray-400 dark:text-gray-500">
+                            <?= htmlspecialchars($t('cron_retry_exitcodes_hint'), ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                    </div>
                 </div>
 
                 <!-- Advanced checkboxes -->

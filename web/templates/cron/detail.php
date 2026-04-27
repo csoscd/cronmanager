@@ -330,9 +330,18 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                 <?= htmlspecialchars($t('cron_retry'), ENT_QUOTES, 'UTF-8') ?>
             </dt>
             <dd class="text-sm text-gray-600 dark:text-gray-300">
-                <?php $retryCount = (int) ($job['retry_count'] ?? 0); $retryDelay = (int) ($job['retry_delay_minutes'] ?? 1); ?>
+                <?php
+                    $retryCount        = (int) ($job['retry_count']          ?? 0);
+                    $retryDelay        = (int) ($job['retry_delay_minutes']  ?? 1);
+                    $restartExitcodes  = isset($job['restart_on_exitcodes']) && $job['restart_on_exitcodes'] !== null
+                        ? (string) $job['restart_on_exitcodes']
+                        : null;
+                ?>
                 <?php if ($retryCount > 0): ?>
                     <?= htmlspecialchars($retryCount . '× / ' . $retryDelay . ' ' . $t('cron_retry_delay_unit'), ENT_QUOTES, 'UTF-8') ?>
+                    <?php if ($restartExitcodes !== null): ?>
+                        <span class="ml-1 text-xs text-gray-400 dark:text-gray-500 font-mono">(<?= htmlspecialchars($restartExitcodes, ENT_QUOTES, 'UTF-8') ?>)</span>
+                    <?php endif; ?>
                 <?php else: ?>
                     —
                 <?php endif; ?>

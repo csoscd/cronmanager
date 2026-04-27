@@ -181,6 +181,7 @@ try {
     $router->addProtectedRoute('GET',  '/dashboard',           [$dashboardCtrl, 'index']);
 
     $router->addProtectedRoute('GET',  '/crons',               [$cronCtrl, 'index']);
+    $router->addProtectedRoute('POST', '/crons/bulk',          [$cronCtrl, 'bulkAction'],  'admin');
     $router->addProtectedRoute('GET',  '/crons/import',        [$cronCtrl, 'importList'],  'admin');
     $router->addProtectedRoute('POST', '/crons/import',        [$cronCtrl, 'importStore'], 'admin');
     $router->addProtectedRoute('GET',  '/crons/new',           [$cronCtrl, 'create'],  'admin');
@@ -217,6 +218,7 @@ try {
     $router->addProtectedRoute('POST', '/maintenance/windows/{id}/delete',           [$targetCtrl, 'deleteWindow'], 'admin');
     $router->addProtectedRoute('GET',  '/maintenance/{target}/windows/new',          [$targetCtrl, 'newWindow'],    'admin');
     $router->addProtectedRoute('POST', '/maintenance/{target}/windows',              [$targetCtrl, 'storeWindow'],  'admin');
+    $router->addProtectedRoute('POST', '/maintenance/ssh/test',                      [$targetCtrl, 'testSsh'],      'admin');
     $router->addProtectedRoute('GET',  '/maintenance',                               [$targetCtrl, 'index'],        'admin');
 
     // Housekeeping (formerly "Maintenance") – admin only; more-specific paths first

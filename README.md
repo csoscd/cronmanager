@@ -54,18 +54,22 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Execution limits** | Optional maximum runtime per job; alert and/or auto-kill when the limit is exceeded |
 | **Kill running execution** | Admins can terminate a running job mid-flight from the detail page (local: SIGTERM; SSH: remote kill) |
 | **Singleton mode** | Flag a job so that new executions are silently skipped while a previous instance is still running |
-| **Job monitor** | Per-job statistics page with KPI cards (success rate, avg/min/max duration, alerts), an execution duration line chart, and a stacked bar chart – selectable time window from 1 hour to 1 year |
-| **Dashboard** | At-a-glance view of total jobs, active/inactive counts, and recent failures |
+| **Job monitor** | Per-job statistics page with KPI cards (success rate, avg/min/max duration, alerts), an execution duration line chart, and a stacked bar chart – selectable time window from 1 hour to 1 year; period and target switching updates in-place via AJAX with auto-refresh for short windows |
+| **Dashboard** | At-a-glance view of total jobs, active/inactive counts, and recent failures; KPI cards refresh every 60 s via AJAX |
+| **Bulk operations** | Select multiple jobs on the list page to activate, deactivate, delete, or re-tag them in a single action; running executions block bulk delete with a clear error message |
 | **Timeline** | Filterable, paginated history of all executions across all jobs |
 | **Swimlane** | Visual schedule overview: planned fire times per job across a time-of-day axis, filterable by hour range, day of week, tag, and target |
 | **Multi-host execution** | A single job can run on multiple targets (local + remote SSH) in parallel |
 | **Tags** | Label jobs to enable filtering and grouped export |
 | **Crontab import** | Detect and import existing unmanaged crontab entries |
 | **Export** | Download a ready-to-use crontab file or JSON for all managed jobs |
+| **Auto-retry on failure** | Automatically re-run a failed job up to N times with a configurable delay between attempts; notification is suppressed until all retries are exhausted |
+| **Exit-code filter for restart** | Optionally restrict which exit codes trigger an automatic retry using a flexible expression such as `1-5,10,255`; empty (default) means any non-zero code |
 | **Email alerts** | Receive an email when a job exits with a non-zero status or exceeds its execution limit |
 | **Telegram alerts** | Receive a Telegram message for the same events via the Bot API |
 | **Recovery notifications** | Optionally receive an email and/or Telegram message when a job succeeds again after a failure streak that triggered an alert |
 | **Maintenance Windows** | Define per-target scheduled maintenance windows; jobs are either skipped (exit code −4) or executed silently depending on the per-job setting. A special **"Cronmanager Agent"** target blocks all executions host-wide (useful for VM maintenance cycles). Conflict icons (⚠ amber / ✕ red) appear in the job list and detail view |
+| **SSH connectivity test** | A **Test** button on the Maintenance Windows page verifies that the agent can reach an SSH target via key-based auth (`BatchMode=yes`, 10 s timeout). The result (Connected / Failed) is shown inline without a page reload |
 | **Startup orphan cleanup** | On agent restart, executions still marked as "running" with no live process are automatically resolved to exit code −5 ("Interrupted by system restart") |
 | **Housekeeping** | Crontab sync, stuck-execution cleanup, and history bulk-delete |
 | **Local & SSO auth** | Username/password accounts or OAuth 2.0 / OpenID Connect (OIDC) via Authentik |

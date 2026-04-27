@@ -68,6 +68,7 @@ class CronController extends BaseController
         $filterTarget = $this->filterParam('target', 'cronmgr_crons_target');
         $filterSearch = $this->filterParam('search', 'cronmgr_crons_search');
         $filterResult = $this->filterParam('result', 'cronmgr_crons_result');
+        $filterActive = $this->filterParam('active', 'cronmgr_crons_active');
 
         // ------------------------------------------------------------------
         // Resolve page-size preference
@@ -147,6 +148,15 @@ class CronController extends BaseController
             }));
         }
 
+        // Apply active/inactive filter
+        if ($filterActive !== '') {
+            $wantActive = $filterActive === 'active';
+            $jobs       = array_values(array_filter(
+                $jobs,
+                static fn(array $job): bool => (bool) ($job['active'] ?? false) === $wantActive
+            ));
+        }
+
         // Apply last-result filter (ok = exit_code 0, failed = exit_code != 0, not_run = never started)
         if ($filterResult !== '') {
             $jobs = array_values(array_filter($jobs, static function (array $job) use ($filterResult): bool {
@@ -213,6 +223,7 @@ class CronController extends BaseController
             'filterTarget'          => $filterTarget,
             'filterSearch'          => $filterSearch,
             'filterResult'          => $filterResult,
+            'filterActive'          => $filterActive,
             'users'                 => $users,
             'allTargets'            => $allTargets,
             'isAdmin'               => SessionManager::hasRole('admin'),
@@ -796,6 +807,21 @@ class CronController extends BaseController
         $stats = $data['stats'] ?? [];
         $desc  = (string) ($job['description'] ?? "Job #{$id}");
 
+        // JSON mode: return raw data for AJAX period/target switching and auto-refresh
+        if ($this->isJsonRequest()) {
+            $this->jsonResponse([
+                'stats'           => $stats,
+                'duration_series' => $data['duration_series'] ?? [],
+                'bar_buckets'     => $data['bar_buckets']     ?? [],
+                'recent'          => $data['recent']          ?? [],
+                'from'            => $data['from']            ?? '',
+                'to'              => $data['to']              ?? '',
+                'targets'         => $data['targets']         ?? [],
+                'selected_target' => $data['selected_target'] ?? null,
+            ]);
+            return;
+        }
+
         $this->render('cron/monitor.php', $desc . ' – ' . $this->translator()->t('monitor_title'), [
             'job'            => $job,
             'stats'          => $stats,
@@ -818,6 +844,90 @@ class CronController extends BaseController
      *
      * @return void
      */
+    /**
+     * Handle bulk actions on multiple cron jobs (admin only).
+     *
+     * Accepted POST fields:
+     *   ids[]    – array of job IDs
+     *   action   – 'activate' | 'deactivate' | 'delete' | 'tag_add' | 'tag_remove'
+     *   tag      – tag name (required for tag_add / tag_remove)
+     *
+     * @param array<string,string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function bulkAction(array $params): void
+    {
+        $rawIds = isset($_POST['ids']) && is_array($_POST['ids']) ? $_POST['ids'] : [];
+        $ids    = array_values(array_filter(array_map('intval', $rawIds), static fn(int $v): bool => $v > 0));
+        $action = trim((string) ($_POST['action'] ?? ''));
+        $tag    = trim((string) ($_POST['tag']    ?? ''));
+
+        $t = $this->translator();
+
+        if ($ids === []) {
+            SessionManager::set('_flash_error', $t->t('bulk_error_agent'));
+            (new Response())->redirect('/crons');
+            return;
+        }
+
+        $agent = $this->agentClient();
+
+        try {
+            switch ($action) {
+                case 'activate':
+                    $result = $agent->post('/crons/bulk/status', ['ids' => $ids, 'active' => true]);
+                    $msg    = str_replace('{n}', (string) ($result['updated'] ?? count($ids)), $t->t('bulk_flash_activated'));
+                    SessionManager::set('_flash_success', $msg);
+                    break;
+
+                case 'deactivate':
+                    $result = $agent->post('/crons/bulk/status', ['ids' => $ids, 'active' => false]);
+                    $msg    = str_replace('{n}', (string) ($result['updated'] ?? count($ids)), $t->t('bulk_flash_deactivated'));
+                    SessionManager::set('_flash_success', $msg);
+                    break;
+
+                case 'delete':
+                    $result = $agent->post('/crons/bulk/delete', ['ids' => $ids]);
+                    $msg    = str_replace('{n}', (string) ($result['deleted'] ?? count($ids)), $t->t('bulk_flash_deleted'));
+                    SessionManager::set('_flash_success', $msg);
+                    break;
+
+                case 'tag_add':
+                case 'tag_remove':
+                    if ($tag === '') {
+                        SessionManager::set('_flash_error', $t->t('bulk_error_no_tag'));
+                        (new Response())->redirect('/crons');
+                        return;
+                    }
+                    $tagAction = $action === 'tag_add' ? 'add' : 'remove';
+                    $result    = $agent->post('/crons/bulk/tag', ['ids' => $ids, 'tag' => $tag, 'action' => $tagAction]);
+                    $msg       = str_replace('{n}', (string) ($result['updated'] ?? count($ids)), $t->t('bulk_flash_tagged'));
+                    SessionManager::set('_flash_success', $msg);
+                    break;
+
+                default:
+                    SessionManager::set('_flash_error', $t->t('bulk_error_agent'));
+            }
+        } catch (AgentHttpException $e) {
+            if ($e->getStatusCode() === 409) {
+                SessionManager::set('_flash_error', $t->t('bulk_error_running'));
+            } else {
+                $this->logger->error('CronController::bulkAction: agent error', [
+                    'action'  => $action,
+                    'status'  => $e->getStatusCode(),
+                    'message' => $e->getMessage(),
+                ]);
+                SessionManager::set('_flash_error', $t->t('bulk_error_agent'));
+            }
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::bulkAction: agent unavailable', ['message' => $e->getMessage()]);
+            SessionManager::set('_flash_error', $t->t('bulk_error_agent'));
+        }
+
+        (new Response())->redirect('/crons');
+    }
+
     public function destroy(array $params): void
     {
         $id = (string) ($params['id'] ?? '');
@@ -1082,6 +1192,10 @@ class CronController extends BaseController
             ? (int) $rawRetryDelay
             : 1;
 
+        // restart_on_exitcodes: optional expression string; empty → null (any non-zero)
+        $rawRestartOnExitcodes = trim((string) ($post['restart_on_exitcodes'] ?? ''));
+        $restartOnExitcodes    = $rawRestartOnExitcodes !== '' ? $rawRestartOnExitcodes : null;
+
         // notify_after_failures: positive integer, default 1
         $rawNotifyAfter = trim((string) ($post['notify_after_failures'] ?? ''));
         $notifyAfterFailures = ($rawNotifyAfter !== '' && ctype_digit($rawNotifyAfter) && (int) $rawNotifyAfter >= 1)
@@ -1110,6 +1224,7 @@ class CronController extends BaseController
             'retention_days'           => $retentionDays,
             'retry_count'              => $retryCount,
             'retry_delay_minutes'      => $retryDelayMinutes,
+            'restart_on_exitcodes'     => $restartOnExitcodes,
             'notify_after_failures'       => $notifyAfterFailures,
             'notify_after_limit_exceeded' => $notifyAfterLimitExceeded,
             'targets'                     => $targets,

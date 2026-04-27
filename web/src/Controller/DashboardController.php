@@ -116,6 +116,17 @@ class DashboardController extends BaseController
         ];
 
         // ------------------------------------------------------------------
+        // JSON mode: return data for AJAX polling
+        // ------------------------------------------------------------------
+        if ($this->isJsonRequest()) {
+            $this->jsonResponse([
+                'stats'          => $stats,
+                'recentFailures' => $recentFailures,
+            ]);
+            return;
+        }
+
+        // ------------------------------------------------------------------
         // Render
         // ------------------------------------------------------------------
         $this->render('dashboard.php', $this->translator()->t('dashboard_title'), [

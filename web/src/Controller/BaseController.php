@@ -167,6 +167,36 @@ abstract class BaseController
     }
 
     /**
+     * Return true when the request expects a JSON response (?_json=1).
+     *
+     * Used by action methods to short-circuit rendering and emit data for
+     * AJAX polling without adding new routes.
+     *
+     * @return bool
+     */
+    protected function isJsonRequest(): bool
+    {
+        return isset($_GET['_json']) && $_GET['_json'] === '1';
+    }
+
+    /**
+     * Emit a JSON response, set the appropriate Content-Type header, and return.
+     *
+     * Callers must return immediately after this call; it does not exit().
+     *
+     * @param array<string,mixed> $data   Data to encode as JSON.
+     * @param int                 $status HTTP status code (default 200).
+     *
+     * @return void
+     */
+    protected function jsonResponse(array $data, int $status = 200): void
+    {
+        http_response_code($status);
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
      * Render an error page inside the standard layout.
      *
      * @param int    $code        HTTP status code to set (e.g. 500).

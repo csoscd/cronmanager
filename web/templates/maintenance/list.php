@@ -91,13 +91,29 @@ $agentTarget = '_agent_';
                     </span>
                 </div>
                 <?php if ($isAdmin): ?>
-                    <a href="/maintenance/<?= rawurlencode($targetName) ?>/windows/new"
-                       class="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                        </svg>
-                        <?= $h($t('targets_add_window')) ?>
-                    </a>
+                    <div class="flex items-center gap-3">
+                        <?php if (!$isAgentTarget && $targetName !== 'local'): ?>
+                            <div class="flex items-center gap-1.5">
+                                <button type="button"
+                                        data-ssh-test-host="<?= $h($targetName) ?>"
+                                        class="ssh-test-btn inline-flex items-center gap-1 text-sm font-medium text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-200 transition-colors">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                              d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                    </svg>
+                                    <?= $h($t('targets_ssh_test')) ?>
+                                </button>
+                                <span class="ssh-test-result-<?= $h($targetName) ?> text-xs hidden"></span>
+                            </div>
+                        <?php endif; ?>
+                        <a href="/maintenance/<?= rawurlencode($targetName) ?>/windows/new"
+                           class="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            <?= $h($t('targets_add_window')) ?>
+                        </a>
+                    </div>
                 <?php endif; ?>
             </div>
 
@@ -194,3 +210,51 @@ $agentTarget = '_agent_';
     <?php endforeach; ?>
 
 <?php endif; ?>
+
+<script>
+(function () {
+    const labelTest    = <?= json_encode($t('targets_ssh_test_testing')) ?>;
+    const labelOk      = <?= json_encode($t('targets_ssh_test_ok')) ?>;
+    const labelFailed  = <?= json_encode($t('targets_ssh_test_failed')) ?>;
+    const csrfToken    = <?= json_encode($csrf_token) ?>;
+
+    document.querySelectorAll('.ssh-test-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const host       = btn.dataset.sshTestHost;
+            const resultSpan = document.querySelector('.ssh-test-result-' + CSS.escape(host));
+
+            btn.disabled = true;
+            if (resultSpan) {
+                resultSpan.textContent = labelTest;
+                resultSpan.className   = 'ssh-test-result-' + host + ' text-xs text-gray-500 dark:text-gray-400';
+                resultSpan.classList.remove('hidden');
+            }
+
+            const body = new URLSearchParams({ host: host, _csrf: csrfToken });
+
+            cmFetch('/maintenance/ssh/test', { method: 'POST', body: body })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (resultSpan) {
+                        if (data.success) {
+                            resultSpan.textContent = labelOk;
+                            resultSpan.className   = 'ssh-test-result-' + host + ' text-xs font-medium text-green-600 dark:text-green-400';
+                        } else {
+                            resultSpan.textContent = labelFailed + (data.output ? ': ' + data.output : '');
+                            resultSpan.className   = 'ssh-test-result-' + host + ' text-xs font-medium text-red-600 dark:text-red-400';
+                        }
+                    }
+                })
+                .catch(function (err) {
+                    if (resultSpan) {
+                        resultSpan.textContent = labelFailed + ': ' + (err.message || 'Unknown error');
+                        resultSpan.className   = 'ssh-test-result-' + host + ' text-xs font-medium text-red-600 dark:text-red-400';
+                    }
+                })
+                .finally(function () {
+                    btn.disabled = false;
+                });
+        });
+    });
+}());
+</script>

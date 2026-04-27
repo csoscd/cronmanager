@@ -39,6 +39,7 @@ declare(strict_types=1);
 namespace Cronmanager\Agent\Endpoints;
 
 use Cronmanager\Agent\Cron\CrontabManager;
+use Cronmanager\Agent\Util\ExitCodeMatcher;
 use Cron\CronExpression;
 use Monolog\Logger;
 use PDO;
@@ -145,6 +146,9 @@ final class CronCreateEndpoint
         $retryDelayMinutes    = isset($body['retry_delay_minutes']) && is_int($body['retry_delay_minutes']) && $body['retry_delay_minutes'] >= 1
             ? $body['retry_delay_minutes']
             : 1;
+        $restartOnExitcodes   = isset($body['restart_on_exitcodes']) && is_string($body['restart_on_exitcodes']) && trim($body['restart_on_exitcodes']) !== ''
+            ? trim($body['restart_on_exitcodes'])
+            : null;
         $notifyAfterFailures  = isset($body['notify_after_failures']) && is_int($body['notify_after_failures']) && $body['notify_after_failures'] >= 1
             ? $body['notify_after_failures']
             : 1;
@@ -176,13 +180,13 @@ final class CronCreateEndpoint
                 'INSERT INTO cronjobs
                     (linux_user, schedule, command, description, active, notify_on_failure,
                      execution_limit_seconds, auto_kill_on_limit, singleton, run_in_maintenance,
-                     retention_days, retry_count, retry_delay_minutes, notify_after_failures,
-                     notify_after_limit_exceeded, execution_mode, ssh_host)
+                     retention_days, retry_count, retry_delay_minutes, restart_on_exitcodes,
+                     notify_after_failures, notify_after_limit_exceeded, execution_mode, ssh_host)
                  VALUES
                     (:linux_user, :schedule, :command, :description, :active, :notify_on_failure,
                      :execution_limit_seconds, :auto_kill_on_limit, :singleton, :run_in_maintenance,
-                     :retention_days, :retry_count, :retry_delay_minutes, :notify_after_failures,
-                     :notify_after_limit_exceeded, :execution_mode, :ssh_host)'
+                     :retention_days, :retry_count, :retry_delay_minutes, :restart_on_exitcodes,
+                     :notify_after_failures, :notify_after_limit_exceeded, :execution_mode, :ssh_host)'
             );
             $stmt->execute([
                 ':linux_user'             => $linuxUser,
@@ -198,6 +202,7 @@ final class CronCreateEndpoint
                 ':retention_days'         => $retentionDays,
                 ':retry_count'            => $retryCount,
                 ':retry_delay_minutes'    => $retryDelayMinutes,
+                ':restart_on_exitcodes'   => $restartOnExitcodes,
                 ':notify_after_failures'        => $notifyAfterFailures,
                 ':notify_after_limit_exceeded'  => $notifyAfterLimitExceeded,
                 ':execution_mode'               => $executionMode,
@@ -350,6 +355,14 @@ final class CronCreateEndpoint
                         break;
                     }
                 }
+            }
+        }
+
+        // restart_on_exitcodes: optional string, validated via ExitCodeMatcher
+        if (isset($body['restart_on_exitcodes']) && is_string($body['restart_on_exitcodes'])) {
+            $exitcodesError = ExitCodeMatcher::validate($body['restart_on_exitcodes']);
+            if ($exitcodesError !== null) {
+                $errors['restart_on_exitcodes'] = $exitcodesError;
             }
         }
 

@@ -126,6 +126,7 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │       ├── Cron/CrontabManager.php
 │       ├── Notification/MailNotifier.php
 │       ├── Ssh/SshConfigParser.php
+│       ├── Util/ExitCodeMatcher.php
 │       ├── Repository/MaintenanceWindowRepository.php
 │       └── Endpoints/
 │           ├── CronListEndpoint.php
@@ -133,6 +134,9 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │           ├── CronCreateEndpoint.php
 │           ├── CronUpdateEndpoint.php
 │           ├── CronDeleteEndpoint.php
+│           ├── CronBulkStatusEndpoint.php
+│           ├── CronBulkDeleteEndpoint.php
+│           ├── CronBulkTagEndpoint.php
 │           ├── CronUsersEndpoint.php
 │           ├── CronUnmanagedEndpoint.php
 │           ├── ExecutionStartEndpoint.php
@@ -143,6 +147,8 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 │           ├── TagCreateEndpoint.php
 │           ├── TagDeleteEndpoint.php
 │           ├── SshHostsEndpoint.php
+│           ├── ImportSshTargetsEndpoint.php
+│           ├── SshTestEndpoint.php
 │           ├── HistoryEndpoint.php
 │           ├── ExportEndpoint.php
 │           ├── MonitorEndpoint.php
@@ -161,6 +167,13 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 └── web/                       ← web application source
     ├── index.php              ← front controller
     ├── config/config.json     ← web configuration (deployed to conf/)
+    ├── assets/
+    │   ├── css/
+    │   │   └── brand.css          ← custom CSS variables and component styles
+    │   └── js/
+    │       ├── tailwind.min.js    ← Tailwind CSS runtime (downloaded by deploy.sh)
+    │       ├── chart.min.js       ← Chart.js 4 UMD build (downloaded by deploy.sh)
+    │       └── cm-fetch.js        ← shared AJAX utilities (cmFetch, cmToast, cmPoll)
     ├── lang/
     │   ├── en.php
     │   └── de.php
@@ -477,6 +490,19 @@ unavailable the endpoint falls back to synchronous sending.
 **Encryption:** use `"ssl"` for port 465 (SMTPS / implicit TLS) and `"tls"` for
 port 587 (STARTTLS). Mixing these causes the connection to hang.
 
+### ExitCodeMatcher
+
+`src/Util/ExitCodeMatcher.php` is a stateless utility class that parses and evaluates the per-job `restart_on_exitcodes` expression.
+
+**Expression format:** comma-separated tokens; each token is either a single integer (`0`–`255`) or a range `N-M` (`N < M`, both `0`–`255`). Whitespace around tokens is trimmed. Null or empty string = "any non-zero" (default, backward-compatible).
+
+| Method | Signature | Purpose |
+|---|---|---|
+| `matches` | `static (string\|null $expression, int $exitCode): bool` | Returns `true` when the exit code should trigger a retry |
+| `validate` | `static (string $expression): ?string` | Returns `null` on success, or an error message string on failure; used by create/update endpoints before persisting |
+
+`ExecutionFinishEndpoint` calls `ExitCodeMatcher::matches($job['restart_on_exitcodes'], $exitCode)` in step 5a instead of the former bare `$exitCode !== 0` check. When `retry_count = 0` the retry block is still skipped regardless of the expression result.
+
 **Config keys used by both notifiers:**
 - `mail.from` / `mail.to` (not `mail.from_address` / `mail.to_address`)
 - `notifications.web_url` for the job link (populated by `WEB_URL` env var; `app.base_url` is not used)
@@ -486,6 +512,10 @@ port 587 (STARTTLS). Mixing these causes the connection to hang.
 `src/Ssh/SshConfigParser.php` parses `~/.ssh/config` for a given Linux user and
 returns the list of named `Host` entries (excluding wildcard `*` entries).
 These are offered in the web UI's target selector when creating or editing a job.
+
+`ImportSshTargetsEndpoint` (`GET /import/ssh-targets`) uses `SshConfigParser` across all candidate users (root + UID ≥ 1000) to build an aggregated, deduplicated list of SSH hosts without requiring a `?user=` parameter.
+
+`SshTestEndpoint` (`POST /ssh/test`) uses the same aggregation as a **whitelist check** before running the SSH probe. This prevents the endpoint from being used to probe arbitrary hostnames — only aliases already known to the agent are accepted.
 
 ### InfluxWriter / send-influx.php
 
@@ -622,6 +652,59 @@ Update an existing job. Body is the same as POST /crons.
 Delete a job and remove its crontab entries.
 
 **Response:** HTTP 204 No Content.
+
+---
+
+### POST /crons/bulk/status
+
+Activate or deactivate a set of jobs in one call. The crontab is updated only for jobs whose `active` state actually changes.
+
+**Request body:**
+```json
+{ "ids": [1, 4, 7], "active": true }
+```
+
+**Response:**
+```json
+{ "updated": 3 }
+```
+
+---
+
+### POST /crons/bulk/delete
+
+Delete a set of jobs and remove their crontab entries.
+
+Returns **HTTP 409 Conflict** if any of the specified jobs has a currently running execution (`finished_at IS NULL`). All jobs are left unchanged in that case.
+
+**Request body:**
+```json
+{ "ids": [1, 4, 7] }
+```
+
+**Response:**
+```json
+{ "deleted": 3 }
+```
+
+---
+
+### POST /crons/bulk/tag
+
+Add or remove a named tag from a set of jobs.
+
+- `add`: creates the tag via `INSERT IGNORE` if it does not exist, then links each job.
+- `remove`: deletes the `cronjob_tags` link rows; orphaned tag rows are left for housekeeping.
+
+**Request body:**
+```json
+{ "ids": [1, 4, 7], "tag": "backup", "action": "add" }
+```
+
+**Response:**
+```json
+{ "updated": 3 }
+```
 
 ---
 
@@ -781,6 +864,39 @@ List SSH host aliases available to a Linux user (parsed from `~/.ssh/config`).
 **Response:**
 ```json
 { "data": ["webserver01", "db01", "backup01"] }
+```
+
+---
+
+### GET /import/ssh-targets
+
+Aggregate SSH host aliases from all candidate Linux users (root + UID ≥ 1000) without requiring a specific `?user=` parameter. Used by the Maintenance Windows page to populate the list of known SSH targets.
+
+**Response:**
+```json
+{ "data": ["homeserver", "webhost"], "count": 2 }
+```
+
+---
+
+### POST /ssh/test
+
+Test SSH connectivity to a named host alias. The host must exist in at least one candidate user's `~/.ssh/config` (whitelist check). Runs `ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new <host> echo ok`.
+
+**Request body:**
+```json
+{ "host": "myserver" }
+```
+
+**Response (HTTP 200):**
+```json
+{ "success": true,  "output": "ok" }
+{ "success": false, "output": "ssh: connect to host myserver port 22: Connection refused" }
+```
+
+**Response (HTTP 422)** — invalid host format or host not found in any SSH config:
+```json
+{ "error": "Unknown SSH host", "message": "..." }
 ```
 
 ---
@@ -1110,18 +1226,31 @@ after `extract()`, avoid defining variables named `$user`, `$content`, `$title`,
 The layout always uses `SessionManager::getUser()` / `SessionManager::hasRole()` directly
 for security-sensitive checks such as navigation visibility.
 
+#### JSON mode (`?_json=1`)
+
+`BaseController` provides two helpers for AJAX responses without requiring separate routes:
+
+```php
+protected function isJsonRequest(): bool   // true when $_GET['_json'] === '1'
+protected function jsonResponse(array $data, int $status = 200): void
+```
+
+Controllers call `isJsonRequest()` before `render()` and return early with `jsonResponse()` when detected. This lets the same URL serve both the full HTML page and a JSON payload for polling — no route duplication needed.
+
+Currently used by `DashboardController::index()` (returns stats array) and `CronController::monitor()` (returns chart/KPI data). The JavaScript utility `cmFetch` in `cm-fetch.js` appends `?_json=1` automatically for AJAX callers.
+
 | Controller | Routes | Min role |
 |---|---|---|
 | `AuthController` | `GET/POST /login`, `GET /logout`, `GET /auth/callback`, `GET /auth/oidc` | public |
 | `SetupController` | `GET/POST /setup` | public |
 | `DashboardController` | `GET /dashboard` | view |
-| `CronController` | `GET /crons`, `GET /crons/{id}`, `GET /crons/{id}/monitor`, `GET/POST /crons/new`, `GET/POST /crons/{id}/edit`, `POST /crons/{id}/delete`, `GET/POST /crons/import` | view/admin |
+| `CronController` | `GET /crons`, `POST /crons/bulk` (admin), `GET /crons/{id}`, `GET /crons/{id}/monitor`, `GET/POST /crons/new`, `GET/POST /crons/{id}/edit`, `POST /crons/{id}/delete`, `GET/POST /crons/import` | view/admin |
 | `TimelineController` | `GET /timeline` | view |
 | `SwimlaneController` | `GET /swimlane`, `GET /swimlane?debug=1` | view |
 | `ExportController` | `GET /export`, `GET /export/download` | view |
 | `UserController` | `GET /users`, `POST /users/{id}/role`, `POST /users/{id}/delete` | admin |
 | `MaintenanceController` | `GET /housekeeping`, `POST /housekeeping/crontab/resync`, `POST /housekeeping/executions/{id}/finish`, `DELETE /housekeeping/executions/{id}`, `POST /housekeeping/executions/bulk`, `POST /housekeeping/history/cleanup` | admin |
-| `TargetController` | `GET /maintenance`, `POST /maintenance`, `GET /maintenance/{target}/edit`, `POST /maintenance/{target}`, `DELETE /maintenance/{target}`, `GET /maintenance/windows/conflict` | admin |
+| `TargetController` | `GET /maintenance`, `GET /maintenance/{target}/windows/new`, `POST /maintenance/{target}/windows`, `GET /maintenance/windows/{id}/edit`, `POST /maintenance/windows/{id}/edit`, `POST /maintenance/windows/{id}/delete`, `GET /maintenance/windows/conflict`, `POST /maintenance/ssh/test` | admin |
 
 ### HostAgentClient
 
@@ -1252,6 +1381,12 @@ is stored in `$_SESSION['lang']`. Fallback is English if a key is missing.
 | `auto_kill_on_limit` | TINYINT(1) | `1` = auto-kill when limit is exceeded |
 | `singleton` | TINYINT(1) | `1` = skip new execution if a previous instance is still running |
 | `run_in_maintenance` | TINYINT(1) | `1` = execute during maintenance window (failures reported normally); `0` = skip with exit code `−4` |
+| `retention_days` | SMALLINT UNSIGNED NULL | Keep execution logs for this many days; NULL = keep forever |
+| `retry_count` | TINYINT UNSIGNED | Max automatic retry attempts on failure; `0` = no retry |
+| `retry_delay_minutes` | SMALLINT UNSIGNED | Minutes between retry attempts (minimum 1) |
+| `restart_on_exitcodes` | VARCHAR(255) NULL | Exit-code expression that triggers auto-retry, e.g. `1-5,10,255`; NULL = any non-zero code |
+| `notify_after_failures` | SMALLINT UNSIGNED | Send failure alert only after this many consecutive failures (default 1) |
+| `notify_after_limit_exceeded` | SMALLINT UNSIGNED | Send limit-exceeded alert only after this many consecutive limit breaches (default 1) |
 | `execution_mode` | ENUM('local','remote') | Legacy; superseded by `job_targets` |
 | `ssh_host` | VARCHAR(255) NULL | Legacy; superseded by `job_targets` |
 | `created_at` | DATETIME | |
@@ -1892,6 +2027,13 @@ since all their changes are already included in the baseline schema.
 | `002_add_job_targets.sql` | Added `job_targets` table for multi-host support |
 | `003_add_target_to_execution_log.sql` | Added `target` column to `execution_log` |
 | `004_kill_and_limits.sql` | Added `pid`, `pid_file`, `notified_limit_exceeded` to `execution_log`; added `execution_limit_seconds`, `auto_kill_on_limit` to `cronjobs` |
+| `005_singleton.sql` | Added `singleton` column to `cronjobs` |
+| `006_maintenance_windows.sql` | Added `maintenance_windows` table; added `run_in_maintenance` and `during_maintenance` columns |
+| `007_retention_and_retry.sql` | Added `retention_days`, `retry_count`, `retry_delay_minutes` to `cronjobs`; added `retry_attempt`, `retry_root_execution_id` to `execution_log`; created `job_retry_state` table |
+| `008_notify_after_failures.sql` | Added `notify_after_failures` column to `cronjobs` |
+| `009_notify_after_limit_exceeded.sql` | Added `notify_after_limit_exceeded` column to `cronjobs` |
+| `010_notify_on_recovery.sql` | Added `notify_on_recovery` column to `cronjobs` |
+| `011_restart_on_exitcodes.sql` | Added `restart_on_exitcodes` column to `cronjobs` for per-job exit-code filter on auto-retry |
 
 Always apply migrations in order. The full schema in `agent/sql/schema.sql` reflects
 the current state after all migrations and is used for fresh installations.

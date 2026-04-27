@@ -98,13 +98,13 @@ if ($successRate !== null) {
                 — <?= htmlspecialchars($t('monitor_title'), ENT_QUOTES, 'UTF-8') ?>
             </span>
         </h1>
-        <?php if ($fromStr !== '' && $toStr !== ''): ?>
-            <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+        <p id="cm-mon-daterange" class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+            <?php if ($fromStr !== '' && $toStr !== ''): ?>
                 <?= htmlspecialchars($fromStr, ENT_QUOTES, 'UTF-8') ?>
                 &ndash;
                 <?= htmlspecialchars($toStr, ENT_QUOTES, 'UTF-8') ?>
-            </p>
-        <?php endif; ?>
+            <?php endif; ?>
+        </p>
     </div>
 
     <!-- Period selector -->
@@ -115,28 +115,22 @@ if ($successRate !== null) {
         <?php foreach ($validPeriods as $p): ?>
             <?php
                 $isActive = $p === $period;
-                // Preserve active target filter when switching periods
                 $url = '/crons/' . rawurlencode($jobId) . '/monitor?period=' . rawurlencode($p);
                 if ($selectedTarget !== null) {
                     $url .= '&target=' . rawurlencode($selectedTarget);
                 }
                 $btnClass = $isActive
-                    ? 'px-3 py-1.5 text-xs font-semibold rounded-md cursor-default text-white shadow-sm'
+                    ? 'px-3 py-1.5 text-xs font-semibold rounded-md text-white shadow-sm'
                     : 'px-3 py-1.5 text-xs font-medium rounded-md border transition-colors';
                 $btnStyle = $isActive
                     ? 'background:var(--cm-grad);border:none'
                     : 'background:var(--cm-bg-card);border-color:var(--cm-border);color:var(--cm-muted)';
             ?>
-            <?php if ($isActive): ?>
-                <span class="<?= $btnClass ?>" style="<?= $btnStyle ?>">
-                    <?= htmlspecialchars($t('monitor_period_' . $p), ENT_QUOTES, 'UTF-8') ?>
-                </span>
-            <?php else: ?>
-                <a href="<?= htmlspecialchars($url, ENT_QUOTES, 'UTF-8') ?>"
-                   class="<?= $btnClass ?>" style="<?= $btnStyle ?>">
-                    <?= htmlspecialchars($t('monitor_period_' . $p), ENT_QUOTES, 'UTF-8') ?>
-                </a>
-            <?php endif; ?>
+            <a href="<?= htmlspecialchars($url, ENT_QUOTES, 'UTF-8') ?>"
+               class="<?= $btnClass ?>" style="<?= $btnStyle ?>"
+               data-period="<?= htmlspecialchars($p, ENT_QUOTES, 'UTF-8') ?>">
+                <?= htmlspecialchars($t('monitor_period_' . $p), ENT_QUOTES, 'UTF-8') ?>
+            </a>
         <?php endforeach; ?>
     </div>
 </div>
@@ -151,48 +145,37 @@ if ($successRate !== null) {
     </span>
 
     <?php
-        // "All targets" button
         $allActive   = $selectedTarget === null;
         $allUrl      = '/crons/' . rawurlencode($jobId) . '/monitor?period=' . rawurlencode($period);
         $allBtnClass = $allActive
-            ? 'px-3 py-1.5 text-xs font-semibold rounded-md cursor-default text-white shadow-sm'
+            ? 'px-3 py-1.5 text-xs font-semibold rounded-md text-white shadow-sm'
             : 'px-3 py-1.5 text-xs font-medium rounded-md border transition-colors';
         $allBtnStyle = $allActive
             ? 'background:var(--cm-grad);border:none'
             : 'background:var(--cm-bg-card);border-color:var(--cm-border);color:var(--cm-muted)';
     ?>
-    <?php if ($allActive): ?>
-        <span class="<?= $allBtnClass ?>" style="<?= $allBtnStyle ?>">
-            <?= htmlspecialchars($t('monitor_all_targets'), ENT_QUOTES, 'UTF-8') ?>
-        </span>
-    <?php else: ?>
-        <a href="<?= htmlspecialchars($allUrl, ENT_QUOTES, 'UTF-8') ?>"
-           class="<?= $allBtnClass ?>" style="<?= $allBtnStyle ?>">
-            <?= htmlspecialchars($t('monitor_all_targets'), ENT_QUOTES, 'UTF-8') ?>
-        </a>
-    <?php endif; ?>
+    <a href="<?= htmlspecialchars($allUrl, ENT_QUOTES, 'UTF-8') ?>"
+       class="<?= $allBtnClass ?>" style="<?= $allBtnStyle ?>"
+       data-target-btn="">
+        <?= htmlspecialchars($t('monitor_all_targets'), ENT_QUOTES, 'UTF-8') ?>
+    </a>
 
     <?php foreach ($targets as $tgt): ?>
         <?php
             $tgtActive   = $selectedTarget === $tgt;
             $tgtUrl      = '/crons/' . rawurlencode($jobId) . '/monitor?period=' . rawurlencode($period) . '&target=' . rawurlencode($tgt);
             $tgtBtnClass = $tgtActive
-                ? 'px-3 py-1.5 text-xs font-semibold rounded-md cursor-default text-white shadow-sm font-mono'
+                ? 'px-3 py-1.5 text-xs font-semibold rounded-md text-white shadow-sm font-mono'
                 : 'px-3 py-1.5 text-xs font-medium rounded-md border transition-colors font-mono';
             $tgtBtnStyle = $tgtActive
                 ? 'background:var(--cm-grad);border:none'
                 : 'background:var(--cm-bg-card);border-color:var(--cm-border);color:var(--cm-muted)';
         ?>
-        <?php if ($tgtActive): ?>
-            <span class="<?= $tgtBtnClass ?>" style="<?= $tgtBtnStyle ?>">
-                <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
-            </span>
-        <?php else: ?>
-            <a href="<?= htmlspecialchars($tgtUrl, ENT_QUOTES, 'UTF-8') ?>"
-               class="<?= $tgtBtnClass ?>" style="<?= $tgtBtnStyle ?>">
-                <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
-            </a>
-        <?php endif; ?>
+        <a href="<?= htmlspecialchars($tgtUrl, ENT_QUOTES, 'UTF-8') ?>"
+           class="<?= $tgtBtnClass ?>" style="<?= $tgtBtnStyle ?>"
+           data-target-btn="<?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>">
+            <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
+        </a>
     <?php endforeach; ?>
 </div>
 <?php endif; ?>
@@ -207,12 +190,12 @@ if ($successRate !== null) {
         <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
             <?= htmlspecialchars($t('monitor_success_rate'), ENT_QUOTES, 'UTF-8') ?>
         </p>
-        <p class="text-3xl font-bold" style="<?= $rateStyle ?>">
+        <p id="cm-mon-rate" class="text-3xl font-bold" style="<?= $rateStyle ?>">
             <?= $successRate !== null
                 ? htmlspecialchars(number_format((float) $successRate, 1) . ' %', ENT_QUOTES, 'UTF-8')
                 : '<span class="text-gray-300 dark:text-gray-600">—</span>' ?>
         </p>
-        <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+        <p id="cm-mon-rate-sub" class="mt-1 text-xs text-gray-400 dark:text-gray-500">
             <?= htmlspecialchars($successCount . ' / ' . $execCount, ENT_QUOTES, 'UTF-8') ?>
         </p>
     </div>
@@ -222,7 +205,7 @@ if ($successRate !== null) {
         <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
             <?= htmlspecialchars($t('monitor_avg_duration'), ENT_QUOTES, 'UTF-8') ?>
         </p>
-        <p class="text-3xl font-bold text-gray-700 dark:text-gray-300">
+        <p id="cm-mon-avg" class="text-3xl font-bold text-gray-700 dark:text-gray-300">
             <?php if ($avgDuration !== null): ?>
                 <?= htmlspecialchars(number_format((float) $avgDuration, 1), ENT_QUOTES, 'UTF-8') ?>
                 <span class="text-base font-normal text-gray-400"><?= htmlspecialchars($t('monitor_seconds'), ENT_QUOTES, 'UTF-8') ?></span>
@@ -230,15 +213,15 @@ if ($successRate !== null) {
                 <span class="text-gray-300 dark:text-gray-600">—</span>
             <?php endif; ?>
         </p>
-        <?php if ($minDuration !== null && $maxDuration !== null): ?>
-            <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+        <p id="cm-mon-avg-sub" class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            <?php if ($minDuration !== null && $maxDuration !== null): ?>
                 <?= htmlspecialchars($t('monitor_min'), ENT_QUOTES, 'UTF-8') ?>
                 <?= htmlspecialchars((string) $minDuration, ENT_QUOTES, 'UTF-8') ?><?= htmlspecialchars($t('monitor_seconds'), ENT_QUOTES, 'UTF-8') ?>
                 &nbsp;/&nbsp;
                 <?= htmlspecialchars($t('monitor_max'), ENT_QUOTES, 'UTF-8') ?>
                 <?= htmlspecialchars((string) $maxDuration, ENT_QUOTES, 'UTF-8') ?><?= htmlspecialchars($t('monitor_seconds'), ENT_QUOTES, 'UTF-8') ?>
-            </p>
-        <?php endif; ?>
+            <?php endif; ?>
+        </p>
     </div>
 
     <!-- Executions -->
@@ -246,10 +229,10 @@ if ($successRate !== null) {
         <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
             <?= htmlspecialchars($t('monitor_executions'), ENT_QUOTES, 'UTF-8') ?>
         </p>
-        <p class="text-3xl font-bold text-gray-700 dark:text-gray-300">
+        <p id="cm-mon-exec" class="text-3xl font-bold text-gray-700 dark:text-gray-300">
             <?= htmlspecialchars(number_format($execCount), ENT_QUOTES, 'UTF-8') ?>
         </p>
-        <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+        <p id="cm-mon-exec-sub" class="mt-1 text-xs text-gray-400 dark:text-gray-500">
             <?php if ($failureCount > 0): ?>
                 <span class="text-red-500"><?= htmlspecialchars((string) $failureCount, ENT_QUOTES, 'UTF-8') ?></span>
                 <?= htmlspecialchars($t('monitor_failed_label'), ENT_QUOTES, 'UTF-8') ?>
@@ -265,7 +248,7 @@ if ($successRate !== null) {
         <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
             <?= htmlspecialchars($t('monitor_alerts'), ENT_QUOTES, 'UTF-8') ?>
         </p>
-        <p class="text-3xl font-bold <?= $alertCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300' ?>">
+        <p id="cm-mon-alerts" class="text-3xl font-bold <?= $alertCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300' ?>">
             <?= htmlspecialchars(number_format($alertCount), ENT_QUOTES, 'UTF-8') ?>
         </p>
         <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
@@ -343,7 +326,7 @@ if ($successRate !== null) {
                         </th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                <tbody id="cm-mon-recent-tbody" class="divide-y divide-gray-100 dark:divide-gray-700">
                     <?php foreach ($recent as $entry): ?>
                         <?php
                             $exitCode   = isset($entry['exit_code']) ? (int) $entry['exit_code'] : null;
@@ -395,211 +378,364 @@ if ($successRate !== null) {
 </div>
 
 <!-- ======================================================================
-     Chart.js initialisation
+     Chart.js initialisation + AJAX period/target switching + auto-refresh
      ====================================================================== -->
 <script>
 (function () {
     'use strict';
 
-    // -------------------------------------------------------------------------
-    // Data from PHP
-    // -------------------------------------------------------------------------
-    var DURATION_DATA = <?= $durationSeries ?>;
-    var BAR_DATA      = <?= $barBuckets ?>;
-    var AVG_DURATION  = <?= $avgDuration !== null ? json_encode((float) $avgDuration) : 'null' ?>;
-    var LABEL_SUCCESS = <?= json_encode($t('monitor_success_label')) ?>;
-    var LABEL_FAILED  = <?= json_encode($t('monitor_failed_label')) ?>;
-    var LABEL_AVG     = <?= json_encode($t('monitor_avg_duration')) ?>;
+    // ── Server-injected constants ─────────────────────────────────────────────
+    var JOB_ID         = <?= json_encode($jobId) ?>;
+    var INIT_PERIOD    = <?= json_encode($period) ?>;
+    var INIT_TARGET    = <?= $selectedTarget !== null ? json_encode($selectedTarget) : 'null' ?>;
+    var INIT_DURATION  = <?= $durationSeries ?>;
+    var INIT_BARS      = <?= $barBuckets ?>;
+    var INIT_AVG       = <?= $avgDuration !== null ? json_encode((float) $avgDuration) : 'null' ?>;
 
-    // -------------------------------------------------------------------------
-    // Brand-token colours (always dark)
-    // -------------------------------------------------------------------------
-    var textColor  = '#8888bb';   /* --cm-muted  */
-    var gridColor  = '#1e1e40';   /* --cm-border */
-    var colorGreen = '#34d399';   /* --cm-success */
-    var colorRed   = '#f87171';   /* --cm-danger  */
-    var colorLine  = '#818cf8';   /* --cm-indigo  */
-    var colorAvg   = 'rgba(251,191,36,0.8)'; /* --cm-warning (avg line) */
+    // ── Translated labels (PHP-injected once, reused in JS rendering) ─────────
+    var L = {
+        success : <?= json_encode($t('monitor_success_label')) ?>,
+        failed  : <?= json_encode($t('monitor_failed_label')) ?>,
+        avg     : <?= json_encode($t('monitor_avg_duration')) ?>,
+        seconds : <?= json_encode($t('monitor_seconds')) ?>,
+        noData  : <?= json_encode($t('monitor_no_data')) ?>,
+        running : <?= json_encode($t('status_running')) ?>,
+        local   : <?= json_encode($t('cron_local_badge')) ?>,
+        min     : <?= json_encode($t('monitor_min')) ?>,
+        max     : <?= json_encode($t('monitor_max')) ?>,
+        duration: <?= json_encode($t('duration')) ?>,
+    };
 
-    // -------------------------------------------------------------------------
-    // Duration line chart
-    // -------------------------------------------------------------------------
-    var durationCtx = document.getElementById('durationChart');
-    if (durationCtx && DURATION_DATA.length > 0) {
-        // Build per-point colours based on success flag
-        var pointColors = DURATION_DATA.map(function (d) {
-            return d.success ? colorGreen : colorRed;
-        });
+    // ── Chart colour tokens ───────────────────────────────────────────────────
+    var C_TEXT  = '#8888bb';
+    var C_GRID  = '#1e1e40';
+    var C_GREEN = '#34d399';
+    var C_RED   = '#f87171';
+    var C_LINE  = '#818cf8';
+    var C_AVG   = 'rgba(251,191,36,0.8)';
 
-        var datasets = [{
-            label: '<?= addslashes($t('duration')) ?>',
-            data: DURATION_DATA.map(function (d) { return d.duration_seconds; }),
-            borderColor: colorLine,
-            backgroundColor: 'rgba(129,140,248,.08)',
-            pointBackgroundColor: pointColors,
-            pointBorderColor: pointColors,
-            pointRadius: DURATION_DATA.length > 100 ? 2 : 4,
-            pointHoverRadius: 6,
-            tension: 0.2,
-            fill: true,
-        }];
+    // ── State ─────────────────────────────────────────────────────────────────
+    var currentPeriod = INIT_PERIOD;
+    var currentTarget = INIT_TARGET;
+    var durationChart = null;
+    var activityChart = null;
+    var poller        = null;
+    var SHORT_PERIODS = ['1h', '6h', '12h', '24h'];
 
-        // Add average line if we have a meaningful average
-        if (AVG_DURATION !== null) {
-            datasets.push({
-                label: LABEL_AVG,
-                data: DURATION_DATA.map(function () { return AVG_DURATION; }),
-                borderColor: colorAvg,
-                borderDash: [6, 4],
-                borderWidth: 1.5,
-                pointRadius: 0,
-                fill: false,
-                tension: 0,
-            });
-        }
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function esc(s) {
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
 
-        new Chart(durationCtx, {
-            type: 'line',
-            data: {
-                labels: DURATION_DATA.map(function (d) {
-                    // Display only the time portion for short labels
-                    return d.started_at.replace('T', ' ').substring(0, 16);
-                }),
-                datasets: datasets,
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                interaction: { intersect: false, mode: 'index' },
-                scales: {
-                    x: {
-                        ticks: {
-                            maxTicksLimit: 10,
-                            color: textColor,
-                            maxRotation: 30,
-                            font: { size: 10 },
+    function el(id) { return document.getElementById(id); }
+
+    function setText(id, text) {
+        var e = el(id);
+        if (e) { e.textContent = String(text); }
+    }
+
+    // ── Chart rendering ───────────────────────────────────────────────────────
+    function initCharts(durationData, barData, avgDuration) {
+        if (durationChart) { durationChart.destroy(); durationChart = null; }
+        if (activityChart) { activityChart.destroy(); activityChart = null; }
+
+        var durCtx = el('durationChart');
+        if (durCtx) {
+            if (durationData.length > 0) {
+                var ptColors = durationData.map(function (d) { return d.success ? C_GREEN : C_RED; });
+                var sets = [{
+                    label: L.duration,
+                    data: durationData.map(function (d) { return d.duration_seconds; }),
+                    borderColor: C_LINE,
+                    backgroundColor: 'rgba(129,140,248,.08)',
+                    pointBackgroundColor: ptColors,
+                    pointBorderColor: ptColors,
+                    pointRadius: durationData.length > 100 ? 2 : 4,
+                    pointHoverRadius: 6,
+                    tension: 0.2,
+                    fill: true,
+                }];
+                if (avgDuration !== null) {
+                    sets.push({
+                        label: L.avg,
+                        data: durationData.map(function () { return avgDuration; }),
+                        borderColor: C_AVG,
+                        borderDash: [6, 4],
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        fill: false,
+                        tension: 0,
+                    });
+                }
+                durationChart = new Chart(durCtx, {
+                    type: 'line',
+                    data: {
+                        labels: durationData.map(function (d) {
+                            return d.started_at.replace('T', ' ').substring(0, 16);
+                        }),
+                        datasets: sets,
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        interaction: { intersect: false, mode: 'index' },
+                        scales: {
+                            x: {
+                                ticks: { maxTicksLimit: 10, color: C_TEXT, maxRotation: 30, font: { size: 10 } },
+                                grid:  { color: C_GRID },
+                            },
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: L.seconds, color: C_TEXT, font: { size: 11 } },
+                                ticks: { color: C_TEXT, font: { size: 10 } },
+                                grid:  { color: C_GRID },
+                            },
                         },
-                        grid: { color: gridColor },
-                    },
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: '<?= addslashes($t('monitor_seconds')) ?>',
-                            color: textColor,
-                            font: { size: 11 },
-                        },
-                        ticks: { color: textColor, font: { size: 10 } },
-                        grid: { color: gridColor },
-                    },
-                },
-                plugins: {
-                    legend: {
-                        display: AVG_DURATION !== null,
-                        labels: { color: textColor, boxWidth: 20, font: { size: 11 } },
-                    },
-                    tooltip: {
-                        backgroundColor: '#12122a',
-                        borderColor: '#1e1e40',
-                        borderWidth: 1,
-                        titleColor: '#f0f0ff',
-                        bodyColor: '#8888bb',
-                        callbacks: {
-                            label: function (ctx) {
-                                if (ctx.datasetIndex === 0) {
-                                    var d = DURATION_DATA[ctx.dataIndex];
-                                    var status = d.success ? LABEL_SUCCESS : LABEL_FAILED;
-                                    return status + ': ' + ctx.parsed.y + ' <?= addslashes($t('monitor_seconds')) ?>';
-                                }
-                                return ctx.dataset.label + ': ' + ctx.parsed.y + ' <?= addslashes($t('monitor_seconds')) ?>';
+                        plugins: {
+                            legend: {
+                                display: avgDuration !== null,
+                                labels: { color: C_TEXT, boxWidth: 20, font: { size: 11 } },
+                            },
+                            tooltip: {
+                                backgroundColor: '#12122a', borderColor: '#1e1e40', borderWidth: 1,
+                                titleColor: '#f0f0ff', bodyColor: '#8888bb',
+                                callbacks: {
+                                    label: function (ctx) {
+                                        if (ctx.datasetIndex === 0) {
+                                            var d = durationData[ctx.dataIndex];
+                                            return (d.success ? L.success : L.failed) + ': ' + ctx.parsed.y + ' ' + L.seconds;
+                                        }
+                                        return ctx.dataset.label + ': ' + ctx.parsed.y + ' ' + L.seconds;
+                                    },
+                                },
                             },
                         },
                     },
-                },
-            },
-        });
-    } else if (durationCtx) {
-        // No data: show placeholder text
-        var ctx2d = durationCtx.getContext('2d');
-        durationCtx.height = 80;
-        ctx2d.fillStyle = textColor;
-        ctx2d.textAlign = 'center';
-        ctx2d.font = '13px sans-serif';
-        ctx2d.fillText('<?= addslashes($t('monitor_no_data')) ?>', durationCtx.width / 2, 50);
+                });
+            } else {
+                var c = durCtx.getContext('2d');
+                durCtx.height = 80;
+                c.fillStyle = C_TEXT;
+                c.textAlign = 'center';
+                c.font = '13px sans-serif';
+                c.fillText(L.noData, durCtx.width / 2, 50);
+            }
+        }
+
+        var actCtx = el('activityChart');
+        if (actCtx) {
+            if (barData.length > 0) {
+                activityChart = new Chart(actCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: barData.map(function (b) { return b.label; }),
+                        datasets: [
+                            { label: L.success, data: barData.map(function (b) { return b.success; }), backgroundColor: C_GREEN, stack: 'stack' },
+                            { label: L.failed,  data: barData.map(function (b) { return b.failed;  }), backgroundColor: C_RED,   stack: 'stack' },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        scales: {
+                            x: { stacked: true, ticks: { maxTicksLimit: 14, color: C_TEXT, maxRotation: 30, font: { size: 10 } }, grid: { color: C_GRID } },
+                            y: {
+                                stacked: true, beginAtZero: true,
+                                ticks: { stepSize: 1, color: C_TEXT, font: { size: 10 }, callback: function (v) { return Number.isInteger(v) ? v : null; } },
+                                grid: { color: C_GRID },
+                            },
+                        },
+                        plugins: {
+                            legend: { labels: { color: C_TEXT, boxWidth: 14, font: { size: 11 } } },
+                            tooltip: { backgroundColor: '#12122a', borderColor: '#1e1e40', borderWidth: 1, titleColor: '#f0f0ff', bodyColor: '#8888bb' },
+                        },
+                    },
+                });
+            } else {
+                var c2 = actCtx.getContext('2d');
+                actCtx.height = 80;
+                c2.fillStyle = C_TEXT;
+                c2.textAlign = 'center';
+                c2.font = '13px sans-serif';
+                c2.fillText(L.noData, actCtx.width / 2, 50);
+            }
+        }
     }
 
-    // -------------------------------------------------------------------------
-    // Activity stacked bar chart
-    // -------------------------------------------------------------------------
-    var activityCtx = document.getElementById('activityChart');
-    if (activityCtx && BAR_DATA.length > 0) {
-        new Chart(activityCtx, {
-            type: 'bar',
-            data: {
-                labels: BAR_DATA.map(function (b) { return b.label; }),
-                datasets: [
-                    {
-                        label: LABEL_SUCCESS,
-                        data: BAR_DATA.map(function (b) { return b.success; }),
-                        backgroundColor: colorGreen,
-                        stack: 'stack',
-                    },
-                    {
-                        label: LABEL_FAILED,
-                        data: BAR_DATA.map(function (b) { return b.failed; }),
-                        backgroundColor: colorRed,
-                        stack: 'stack',
-                    },
-                ],
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                scales: {
-                    x: {
-                        stacked: true,
-                        ticks: {
-                            maxTicksLimit: 14,
-                            color: textColor,
-                            maxRotation: 30,
-                            font: { size: 10 },
-                        },
-                        grid: { color: gridColor },
-                    },
-                    y: {
-                        stacked: true,
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1,
-                            color: textColor,
-                            font: { size: 10 },
-                            callback: function (v) { return Number.isInteger(v) ? v : null; },
-                        },
-                        grid: { color: gridColor },
-                    },
-                },
-                plugins: {
-                    legend: {
-                        labels: { color: textColor, boxWidth: 14, font: { size: 11 } },
-                    },
-                    tooltip: {
-                        backgroundColor: '#12122a',
-                        borderColor: '#1e1e40',
-                        borderWidth: 1,
-                        titleColor: '#f0f0ff',
-                        bodyColor: '#8888bb',
-                    },
-                },
-            },
-        });
-    } else if (activityCtx) {
-        var ctx2d2 = activityCtx.getContext('2d');
-        activityCtx.height = 80;
-        ctx2d2.fillStyle = textColor;
-        ctx2d2.textAlign = 'center';
-        ctx2d2.font = '13px sans-serif';
-        ctx2d2.fillText('<?= addslashes($t('monitor_no_data')) ?>', activityCtx.width / 2, 50);
+    // ── KPI card updaters ─────────────────────────────────────────────────────
+    function updateKpis(stats) {
+        var rate = stats.success_rate != null ? parseFloat(stats.success_rate) : null;
+        var rateEl = el('cm-mon-rate');
+        if (rateEl) {
+            rateEl.textContent = rate !== null ? rate.toFixed(1) + ' %' : '—';
+            rateEl.style.color = rate === null ? 'var(--cm-muted)'
+                : rate >= 95 ? 'var(--cm-success)'
+                : rate >= 80 ? 'var(--cm-warning)'
+                : 'var(--cm-danger)';
+        }
+        setText('cm-mon-rate-sub', (stats.success_count || 0) + ' / ' + (stats.execution_count || 0));
+
+        var avgEl = el('cm-mon-avg');
+        if (avgEl) {
+            avgEl.innerHTML = stats.avg_duration != null
+                ? esc(parseFloat(stats.avg_duration).toFixed(1)) + '<span class="text-base font-normal text-gray-400"> ' + esc(L.seconds) + '</span>'
+                : '<span class="text-gray-300 dark:text-gray-600">—</span>';
+        }
+        var avgSubEl = el('cm-mon-avg-sub');
+        if (avgSubEl) {
+            avgSubEl.innerHTML = (stats.min_duration != null && stats.max_duration != null)
+                ? esc(L.min) + ' ' + esc(stats.min_duration) + esc(L.seconds) + '&nbsp;/&nbsp;' + esc(L.max) + ' ' + esc(stats.max_duration) + esc(L.seconds)
+                : '';
+        }
+
+        setText('cm-mon-exec', parseInt(stats.execution_count || 0, 10).toLocaleString());
+        var execSubEl = el('cm-mon-exec-sub');
+        if (execSubEl) {
+            var fails = parseInt(stats.failure_count || 0, 10);
+            execSubEl.innerHTML = fails > 0
+                ? '<span class="text-red-500">' + fails + '</span> ' + esc(L.failed)
+                : esc(L.success) + ' ' + parseInt(stats.success_count || 0, 10);
+        }
+
+        var alertEl = el('cm-mon-alerts');
+        if (alertEl) {
+            var alerts = parseInt(stats.alert_count || 0, 10);
+            alertEl.textContent = alerts.toLocaleString();
+            alertEl.className = 'text-3xl font-bold ' + (alerts > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300');
+        }
     }
 
-})();
+    // ── Recent table renderer ─────────────────────────────────────────────────
+    function renderRecent(recent) {
+        if (!recent || recent.length === 0) {
+            return '<tr><td colspan="4" class="px-6 py-10 text-center text-gray-400 dark:text-gray-500 text-sm">' + esc(L.noData) + '</td></tr>';
+        }
+        return recent.map(function (e) {
+            var code   = e.exit_code != null ? parseInt(e.exit_code, 10) : null;
+            var dur    = e.duration_seconds != null ? parseFloat(e.duration_seconds).toFixed(1) + ' ' + esc(L.seconds) : '—';
+            var tgt    = e.target || '';
+            var cls    = (code !== null && code !== 0) ? 'bg-red-50 dark:bg-red-950' : 'hover:bg-gray-50 dark:hover:bg-gray-700';
+            var tgtBadge = (tgt === '' || tgt === 'local')
+                ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">' + esc(L.local) + '</span>'
+                : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-mono">' + esc(tgt) + '</span>';
+            var exitBadge = code === null
+                ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">' + esc(L.running) + '</span>'
+                : code === 0
+                    ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">0</span>'
+                    : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">' + esc(String(code)) + '</span>';
+            return '<tr class="' + cls + '">'
+                + '<td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap font-mono">' + esc(e.started_at || '') + '</td>'
+                + '<td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">' + dur + '</td>'
+                + '<td class="px-4 py-3 text-sm whitespace-nowrap">' + tgtBadge + '</td>'
+                + '<td class="px-4 py-3 text-sm">' + exitBadge + '</td>'
+                + '</tr>';
+        }).join('');
+    }
+
+    // ── Button active-state updater ───────────────────────────────────────────
+    function ACTIVE_STYLE() { return 'background:var(--cm-grad);border:none'; }
+    function IDLE_STYLE()   { return 'background:var(--cm-bg-card);border-color:var(--cm-border);color:var(--cm-muted)'; }
+
+    function refreshButtonStates(period, target) {
+        document.querySelectorAll('[data-period]').forEach(function (btn) {
+            var active = btn.dataset.period === period;
+            btn.className = active
+                ? 'px-3 py-1.5 text-xs font-semibold rounded-md text-white shadow-sm'
+                : 'px-3 py-1.5 text-xs font-medium rounded-md border transition-colors';
+            btn.style.cssText = active ? ACTIVE_STYLE() : IDLE_STYLE();
+        });
+        document.querySelectorAll('[data-target-btn]').forEach(function (btn) {
+            var btnTgt = btn.dataset.targetBtn;
+            var active = (btnTgt === '' && target === null) || (btnTgt !== '' && btnTgt === target);
+            var mono   = btn.classList.contains('font-mono') ? ' font-mono' : '';
+            btn.className = (active
+                ? 'px-3 py-1.5 text-xs font-semibold rounded-md text-white shadow-sm'
+                : 'px-3 py-1.5 text-xs font-medium rounded-md border transition-colors') + mono;
+            btn.style.cssText = active ? ACTIVE_STYLE() : IDLE_STYLE();
+        });
+    }
+
+    // ── Auto-refresh ──────────────────────────────────────────────────────────
+    function setupAutoRefresh() {
+        if (poller) { poller.stop(); poller = null; }
+        if (SHORT_PERIODS.indexOf(currentPeriod) !== -1) {
+            poller = cmPoll(function () {
+                fetchMonitorData(currentPeriod, currentTarget, false);
+            }, 60000);
+        }
+    }
+
+    // ── Main fetch + update function ──────────────────────────────────────────
+    function fetchMonitorData(period, target, pushHistory) {
+        currentPeriod = period;
+        currentTarget = target;
+
+        var url = '/crons/' + encodeURIComponent(JOB_ID) + '/monitor?_json=1&period=' + encodeURIComponent(period);
+        if (target !== null) { url += '&target=' + encodeURIComponent(target); }
+
+        cmFetch(url)
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                // Date range
+                var drEl = el('cm-mon-daterange');
+                if (drEl) { drEl.textContent = (data.from || '') + ' – ' + (data.to || ''); }
+
+                // KPI cards
+                updateKpis(data.stats || {});
+
+                // Charts
+                initCharts(data.duration_series || [], data.bar_buckets || [], (data.stats || {}).avg_duration || null);
+
+                // Recent table
+                var tbody = el('cm-mon-recent-tbody');
+                if (tbody) { tbody.innerHTML = renderRecent(data.recent || []); }
+
+                // Button states
+                refreshButtonStates(period, target);
+
+                // History API — update URL without reload for bookmarkability
+                if (pushHistory) {
+                    var histUrl = '/crons/' + encodeURIComponent(JOB_ID) + '/monitor?period=' + encodeURIComponent(period);
+                    if (target !== null) { histUrl += '&target=' + encodeURIComponent(target); }
+                    history.pushState({ period: period, target: target }, '', histUrl);
+                }
+
+                setupAutoRefresh();
+            })
+            .catch(function () {
+                cmToast(<?= json_encode($t('error_agent_unavailable')) ?>, 'error');
+            });
+    }
+
+    // ── Event: period buttons ─────────────────────────────────────────────────
+    document.querySelectorAll('[data-period]').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            fetchMonitorData(btn.dataset.period, currentTarget, true);
+        });
+    });
+
+    // ── Event: target buttons ─────────────────────────────────────────────────
+    document.querySelectorAll('[data-target-btn]').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            var tgt = btn.dataset.targetBtn || null;
+            fetchMonitorData(currentPeriod, tgt === '' ? null : tgt, true);
+        });
+    });
+
+    // ── Event: browser back/forward ───────────────────────────────────────────
+    window.addEventListener('popstate', function (e) {
+        if (e.state && e.state.period) {
+            fetchMonitorData(e.state.period, e.state.target || null, false);
+        }
+    });
+
+    // ── Initial render from PHP-injected data (no extra HTTP request) ─────────
+    initCharts(INIT_DURATION, INIT_BARS, INIT_AVG);
+    setupAutoRefresh();
+
+}());
 </script>

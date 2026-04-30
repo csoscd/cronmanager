@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [3.0.1] – branch: `3.0.0-fixes`
+
+### Fixed
+- **Zombie process accumulation causes all cron jobs to stop after ~15 hours**: the agent container uses `exec php -S …` as PID 1, which means PHP inherits responsibility for reaping orphaned grandchild processes. Every background notification or InfluxDB dispatch spawned via `exec()` with `&` detached a grandchild that was re-parented to PHP after the shell intermediary exited. PHP never calls `waitpid()` for these orphans, so they accumulated as `[php] <defunct>` zombie processes. The container's cgroup PID limit (4655) was reached after roughly 15 hours of uptime, at which point `fork()` returned `EAGAIN` and the internal cron daemon could no longer launch `cron-wrapper.sh`. All cron jobs silently stopped. Fixed by installing `tini` in the agent Dockerfile and using it as PID 1 (`ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]`). `tini` is a minimal init that forwards signals correctly and reaps all orphaned children, preventing zombie accumulation.
+
+---
+
 ## [3.0.0] – branch: `feature/v2.11`
 
 ### Added

@@ -44,6 +44,14 @@ LABEL org.opencontainers.image.title="Cronmanager Agent" \
       org.opencontainers.image.licenses="GPL-3.0-or-later" \
       org.opencontainers.image.source="https://github.com/csoscd/cronmanager"
 
+# Install tini as a minimal init (PID 1) to reap zombie child processes.
+# PHP does not call waitpid() for orphaned grandchildren spawned via exec()
+# with &, so without tini the container gradually fills with defunct PHP
+# processes until fork() fails and the cron daemon can no longer start jobs.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tini \
+ && rm -rf /var/lib/apt/lists/*
+
 # Copy Composer-installed vendor tree into the expected path
 COPY --from=composer-build /build/vendor /opt/phplib/vendor
 
@@ -67,4 +75,4 @@ VOLUME ["/opt/cronmanager/agent/log"]
 
 EXPOSE 8865
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]

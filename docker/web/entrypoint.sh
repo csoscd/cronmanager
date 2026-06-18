@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # =============================================================================
 # Cronmanager Web Container – entrypoint.sh
 #

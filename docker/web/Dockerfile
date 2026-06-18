@@ -78,7 +78,7 @@ RUN mkdir -p /var/www/conf /var/www/log \
 # be told which user to drop to or php-fpm refuses to start.
 # We locate www.conf dynamically to stay compatible if the base image PHP
 # version changes, then append the directives (last value wins in php-fpm).
-RUN PHP_FPM_POOL=$(find /etc/php* -name "www.conf" 2>/dev/null | head -1) \
+RUN PHP_FPM_POOL=$(find /etc/php* /usr/local/etc/php-fpm.d -name "www.conf" 2>/dev/null | head -1) \
     && if [ -n "$PHP_FPM_POOL" ]; then \
          printf '\n; Added by cronmanager-web Dockerfile\n' >> "$PHP_FPM_POOL"; \
          printf 'user = nobody\ngroup = nogroup\n' >> "$PHP_FPM_POOL"; \
@@ -99,7 +99,7 @@ RUN PHP_FPM_POOL=$(find /etc/php* -name "www.conf" 2>/dev/null | head -1) \
 RUN NGINX_CONF=$(find /etc/nginx -name "nginx.conf" 2>/dev/null | head -1) \
     && if [ -n "$NGINX_CONF" ]; then \
          if grep -qE '^user ' "$NGINX_CONF"; then \
-             sed -i 's/^user .*/user nobody;/' "$NGINX_CONF"; \
+             sed -i 's/^user .*/user nobody nogroup;/' "$NGINX_CONF"; \
          else \
              sed -i '1s/^/user nobody;\n/' "$NGINX_CONF"; \
          fi; \

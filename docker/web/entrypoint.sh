@@ -88,8 +88,7 @@ else
     log_info "Agent URL: ${AGENT_URL} (TLS disabled)"
 fi
 
-# The alpine base image uses php84, not php
-php84 -r "
+php -r "
 \$config = [
     'database' => [
         'host'     => getenv('DB_HOST') ?: 'cronmanager-db',

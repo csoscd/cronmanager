@@ -3,7 +3,7 @@
 #
 # Stages:
 #   1. composer  – installs PHP dependencies with Composer
-#   2. final     – runtime image (cs1711/cs_php-nginx-fpm:latest-alpine)
+#   2. final     – runtime image (cs1711/cs_php-nginx-fpm:latest-debian)
 #
 # Build from the repository root:
 #   docker build -f docker/web/Dockerfile -t cs1711/cronmanager-web:latest .
@@ -11,7 +11,7 @@
 # Notes:
 #   * The entrypoint runs as root (required for supervisord to manage processes).
 #     nginx and php-fpm drop to unprivileged users via their own config files.
-#   * PHP binary on alpine is php84, not php.
+#   * PHP binary on Debian is php (not php84 as on Alpine).
 #
 # @author  Christian Schulz <technik@meinetechnikwelt.rocks>
 # @license GNU General Public License version 3 or later
@@ -34,7 +34,7 @@ RUN composer install \
 
 
 # ── Stage 2: runtime image ────────────────────────────────────────────────────
-FROM cs1711/cs_php-nginx-fpm:latest-alpine
+FROM cs1711/cs_php-nginx-fpm:latest-debian
 
 # Receive the application version from the CI build pipeline and expose it as
 # an environment variable so the web UI can display it in the footer.

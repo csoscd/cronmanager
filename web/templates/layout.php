@@ -134,6 +134,40 @@ $icon = static function (string $name): string {
             </a>
         </div>
 
+        <!-- Agent switcher: visible only when 2+ enabled agents exist -->
+        <?php
+        $enabledAgents  = isset($enabledAgents)  ? (array) $enabledAgents  : [];
+        $selectedAgent  = isset($selectedAgent)   ? (array) $selectedAgent  : [];
+        $selectedAgId   = (int) ($selectedAgent['id'] ?? 0);
+        ?>
+        <?php if (count($enabledAgents) > 1): ?>
+        <div class="px-3 py-2.5 border-b" style="border-color:var(--cm-border)">
+            <div class="text-xs font-medium mb-1.5" style="color:var(--cm-text-muted)">
+                <?= htmlspecialchars($t('agent_switch'), ENT_QUOTES, 'UTF-8') ?>
+            </div>
+            <form method="POST" action="/agent/select">
+                <input type="hidden" name="_csrf"
+                       value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                <select name="agent_id" onchange="this.form.submit()"
+                        class="w-full rounded-lg border text-sm px-2 py-1.5 focus:outline-none"
+                        style="background:var(--cm-input-bg);border-color:var(--cm-border);color:var(--cm-text)">
+                    <?php foreach ($enabledAgents as $ag): ?>
+                        <option value="<?= (int) $ag['id'] ?>"
+                            <?= ((int) $ag['id'] === $selectedAgId) ? 'selected' : '' ?>>
+                            <?= htmlspecialchars((string) $ag['name'], ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </form>
+        </div>
+        <?php elseif (!empty($selectedAgent)): ?>
+        <div class="px-3 py-2 border-b" style="border-color:var(--cm-border)">
+            <div class="text-xs font-medium truncate" style="color:var(--cm-text-muted)">
+                <?= htmlspecialchars((string) ($selectedAgent['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Navigation -->
         <nav class="cm-sidebar-nav">
 
@@ -201,7 +235,7 @@ $icon = static function (string $name): string {
                         <?= $icon('clock') ?>
                         <?= htmlspecialchars($t('nav_maintenance'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
-                    <a href="/housekeeping" class="<?= $navClass('/housekeeping') ?>">
+                    <a href="/settings" class="<?= $navClass('/settings') ?>">
                         <?= $icon('cog') ?>
                         <?= htmlspecialchars($t('nav_housekeeping'), ENT_QUOTES, 'UTF-8') ?>
                     </a>

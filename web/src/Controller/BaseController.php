@@ -18,7 +18,9 @@ declare(strict_types=1);
 namespace Cronmanager\Web\Controller;
 
 use Cronmanager\Web\Agent\HostAgentClient;
+use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\I18n\Translator;
+use Cronmanager\Web\Repository\AgentRepository;
 use Cronmanager\Web\Session\SessionManager;
 use Monolog\Logger;
 use Noodlehaus\Config;
@@ -36,8 +38,11 @@ abstract class BaseController
     // Lazy-loaded collaborator cache
     // -------------------------------------------------------------------------
 
-    /** @var HostAgentClient|null Cached agent client instance */
+    /** @var HostAgentClient|null Cached agent client instance (reset on agent switch) */
     private ?HostAgentClient $agentClientInstance = null;
+
+    /** @var array<string,mixed>|null Cached selected agent row */
+    private ?array $selectedAgentCache = null;
 
     /** @var Translator|null Cached translator instance */
     private ?Translator $translatorInstance = null;
@@ -97,6 +102,20 @@ abstract class BaseController
         // without needing to call SessionManager directly.
         $data['csrf_token'] = SessionManager::getCsrfToken();
 
+        // Inject the selected agent and all enabled agents so layout.php can
+        // render the sidebar agent switcher without extra DB calls in the template.
+        try {
+            $data['selectedAgent'] = $this->selectedAgent();
+        } catch (\Throwable) {
+            $data['selectedAgent'] = null;
+        }
+        try {
+            $pdo = Connection::getInstance()->getPdo();
+            $data['enabledAgents'] = (new AgentRepository($pdo))->findEnabled();
+        } catch (\Throwable) {
+            $data['enabledAgents'] = [];
+        }
+
         // Inject version strings for the footer.
         // App version is read from the VERSION file deployed alongside the web
         // source (works for both direct deployments and Docker).
@@ -139,17 +158,83 @@ abstract class BaseController
     }
 
     /**
-     * Return a shared HostAgentClient instance (created on first call).
+     * Return a HostAgentClient for the currently selected agent.
+     *
+     * The client is cached for the lifetime of the request.  Calling
+     * selectedAgent() before this method is not necessary – it is called
+     * internally.
+     *
+     * @throws \RuntimeException When no agent is configured in the database.
      *
      * @return HostAgentClient
      */
     protected function agentClient(): HostAgentClient
     {
         if ($this->agentClientInstance === null) {
-            $this->agentClientInstance = new HostAgentClient($this->config, $this->logger);
+            $agent = $this->selectedAgent();
+
+            $this->agentClientInstance = new HostAgentClient(
+                logger:      $this->logger,
+                agentUrl:    (string)  $agent['url'],
+                hmacSecret:  (string)  $agent['hmac_secret'],
+                timeout:     (int)     ($agent['timeout']     ?? 10),
+                sslVerify:   (bool)    ($agent['ssl_verify']  ?? true),
+                sslCaBundle: (string)  ($agent['ssl_ca_bundle'] ?? ''),
+            );
         }
 
         return $this->agentClientInstance;
+    }
+
+    /**
+     * Return the agent row for the currently selected agent.
+     *
+     * Resolution order:
+     *   1. In-request cache ($this->selectedAgentCache)
+     *   2. Session value 'selected_agent_id' → load from DB
+     *   3. First enabled agent in the database (auto-select)
+     *
+     * Saves the resolved agent ID back to the session so subsequent pages
+     * continue using the same agent without requiring an explicit selection.
+     *
+     * @throws \RuntimeException When the agents table is empty (no agents configured).
+     *
+     * @return array<string, mixed>
+     */
+    protected function selectedAgent(): array
+    {
+        if ($this->selectedAgentCache !== null) {
+            return $this->selectedAgentCache;
+        }
+
+        $pdo  = Connection::getInstance()->getPdo();
+        $repo = new AgentRepository($pdo);
+
+        // Try the session-persisted agent ID first
+        $agentId = (int) SessionManager::get('selected_agent_id', 0);
+
+        if ($agentId > 0) {
+            $agent = $repo->findById($agentId);
+            if ($agent !== null && (bool) $agent['enabled']) {
+                $this->selectedAgentCache = $agent;
+                return $agent;
+            }
+        }
+
+        // Fall back to the first enabled agent
+        $agents = $repo->findEnabled();
+
+        if (empty($agents)) {
+            throw new \RuntimeException(
+                'No agent configured. Please add at least one agent on the Settings page.'
+            );
+        }
+
+        $agent = $agents[0];
+        SessionManager::set('selected_agent_id', $agent['id']);
+
+        $this->selectedAgentCache = $agent;
+        return $agent;
     }
 
     /**
@@ -300,17 +385,27 @@ abstract class BaseController
     /**
      * Resolve the agent version strings (app version + container version).
      *
-     * The values are fetched once from the agent's /health endpoint and cached
-     * in the session for 5 minutes to avoid a redundant HTTP call on every page.
+     * The values are fetched once from the selected agent's /health endpoint
+     * and cached per agent ID in the session for 5 minutes to avoid a
+     * redundant HTTP call on every page load.
      *
-     * Returns ['unknown', 'unknown'] when the agent is unreachable.
+     * Returns ['unknown', 'unknown'] when the agent is unreachable or when
+     * no agent is configured yet.
      *
      * @return array{0: string, 1: string} [appVersion, containerVersion]
      */
     private function resolveAgentVersion(): array
     {
-        $cacheKey = '_cm_agent_version';
-        $ttlKey   = '_cm_agent_version_ts';
+        // Scope cache keys to the selected agent so that switching agents
+        // immediately shows the correct version in the footer.
+        try {
+            $agentId = (int) ($this->selectedAgent()['id'] ?? 0);
+        } catch (\Throwable) {
+            return ['unknown', 'unknown'];
+        }
+
+        $cacheKey = '_cm_agent_version_' . $agentId;
+        $ttlKey   = '_cm_agent_version_ts_' . $agentId;
         $ttl      = 300; // 5 minutes
 
         // Return cached value if it is still fresh

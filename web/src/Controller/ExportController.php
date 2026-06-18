@@ -117,15 +117,16 @@ class ExportController extends BaseController
         try {
             // We use the raw Guzzle client here to access the response body
             // as a stream rather than a decoded JSON array.
-            $agentUrl    = rtrim((string) $this->config->get('agent.url', 'http://host.docker.internal:8865'), '/');
-            $timeout     = (int) $this->config->get('agent.timeout', 10);
-            $secret      = (string) $this->config->get('agent.hmac_secret', '');
+            $agent       = $this->selectedAgent();
+            $agentUrl    = rtrim((string) $agent['url'], '/');
+            $timeout     = (int)    ($agent['timeout']     ?? 10);
+            $secret      = (string) ($agent['hmac_secret'] ?? '');
             $path        = '/export';
             $queryString = '?' . http_build_query($query);
             $signature   = hash_hmac('sha256', 'GET' . $path . '', $secret);
 
-            $sslVerify = (bool)   $this->config->get('agent.ssl_verify',    true);
-            $caBundle  = (string) $this->config->get('agent.ssl_ca_bundle', '');
+            $sslVerify = (bool)   ($agent['ssl_verify']   ?? true);
+            $caBundle  = (string) ($agent['ssl_ca_bundle'] ?? '');
             $verify    = !$sslVerify ? false : ($caBundle !== '' ? $caBundle : true);
 
             $guzzle   = new \GuzzleHttp\Client(['timeout' => $timeout, 'http_errors' => false, 'verify' => $verify]);

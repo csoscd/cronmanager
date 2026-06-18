@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.0.0] – branch: `remote_agents`
+
+### Added
+- **Multi-agent support** (issue #50): the web UI can now manage cron jobs across multiple remote agents running on different hosts. Agents are stored in a new `agents` DB table inside the shared `cronmanager` schema. On first start the table is auto-created and seeded from the existing `agent.*` config.json values so existing installations upgrade transparently without any manual step.
+- **Agent management on Settings page**: a new first section on `/settings` lists all configured agents with name, URL, live status badge (AJAX `/health` ping), edit, and delete actions. A dedicated create/edit form (`/settings/agents/create`, `/settings/agents/{id}/edit`) with a connectivity test button allows adding and managing agents at runtime. The last agent cannot be deleted.
+- **Agent switcher in the sidebar**: when two or more enabled agents are configured a `<select>` dropdown appears at the top of the sidebar. Selecting an agent POSTs to `/agent/select` (available to all authenticated users) and stores the choice in the session; all subsequent page views — including the dashboard, job list, timeline, export, and monitor — read data from the newly selected agent. A single-agent installation shows only the agent name as a static label.
+- **`AgentRepository`**: PDO-based CRUD for the `agents` table (`findAll`, `findEnabled`, `findById`, `create`, `update`, `delete`, `count`).
+- **`AgentSchema`**: bootstrapped once per web container start via `AgentSchema::ensure()`; creates the `agents` table with `CREATE TABLE IF NOT EXISTS` and seeds it from legacy `agent.*` config.json when the table is empty.
+- **`AgentController`**: handles `create`, `store`, `edit`, `update`, `destroy`, `test` (JSON health check) and `select` (session switch) actions.
+
+### Changed
+- **`/housekeeping` renamed to `/settings`**: all routes, templates, and internal links updated. A permanent 301 redirect from `GET /housekeeping` → `/settings` is in place for bookmarks.
+- **`HostAgentClient` constructor**: changed from `(Config $config, Logger $logger)` to explicit agent parameters `(Logger $logger, string $agentUrl, string $hmacSecret, int $timeout, bool $sslVerify, string $sslCaBundle)`. All callers (controllers, `AgentController::test()`) now pass agent data directly from the `agents` DB row.
+- **`BaseController::agentClient()`** and **`selectedAgent()`**: build the HTTP client from the session-resolved agent DB row instead of the global config. Agent version cache keys are scoped per agent ID (`_cm_agent_version_{id}`) so switching agents immediately shows the correct footer version.
+- **`BaseController::render()`**: injects `$selectedAgent` (current agent row) and `$enabledAgents` (list of all enabled agents) into every page's variable scope so `layout.php` can render the sidebar switcher without additional DB calls.
+- **`ExportController::download()`**: reads agent URL, secret and SSL settings from `$this->selectedAgent()` instead of directly from `config.json`.
+
+---
+
 ## [3.0.1] – branch: `3.0.0-fixes`
 
 ### Fixed

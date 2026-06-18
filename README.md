@@ -36,12 +36,13 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 10. [Failure Alerts (Email & Telegram)](#failure-alerts-email--telegram)
 11. [Multi-Host Execution](#multi-host-execution)
 12. [Crontab Import](#crontab-import)
-13. [Housekeeping](#housekeeping)
-14. [Maintenance Windows](#maintenance-windows)
-15. [Export](#export)
-16. [User Management](#user-management)
-17. [Updating](#updating)
-18. [Troubleshooting](#troubleshooting)
+13. [Settings](#settings)
+14. [Multi-Agent Setup](#multi-agent-setup)
+15. [Maintenance Windows](#maintenance-windows)
+16. [Export](#export)
+17. [User Management](#user-management)
+18. [Updating](#updating)
+19. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -71,7 +72,8 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Maintenance Windows** | Define per-target scheduled maintenance windows; jobs are either skipped (exit code −4) or executed silently depending on the per-job setting. A special **"Cronmanager Agent"** target blocks all executions host-wide (useful for VM maintenance cycles). Conflict icons (⚠ amber / ✕ red) appear in the job list and detail view |
 | **SSH connectivity test** | A **Test** button on the Maintenance Windows page verifies that the agent can reach an SSH target via key-based auth (`BatchMode=yes`, 10 s timeout). The result (Connected / Failed) is shown inline without a page reload |
 | **Startup orphan cleanup** | On agent restart, executions still marked as "running" with no live process are automatically resolved to exit code −5 ("Interrupted by system restart") |
-| **Housekeeping** | Crontab sync, stuck-execution cleanup, and history bulk-delete |
+| **Multi-agent** | Manage cron jobs across multiple agents (different hosts) from a single web UI; switch the active agent per user session via a sidebar dropdown |
+| **Settings** | Agent management, crontab sync, stuck-execution cleanup, and history bulk-delete |
 | **Local & SSO auth** | Username/password accounts or OAuth 2.0 / OpenID Connect (OIDC) via Authentik |
 | **Role-based access** | Admin (full access) and Viewer (read-only) roles |
 | **User management** | Admins can promote, demote, or remove users |
@@ -1174,9 +1176,9 @@ docker exec cronmanager-agent cat /var/spool/cron/crontabs/root
 
 ---
 
-## Housekeeping
+## Settings
 
-The **Housekeeping** page (`/housekeeping`, admin only) provides operational tools for keeping the system healthy.
+The **Settings** page (`/settings`, admin only) provides operational tools for keeping the system healthy.
 
 ### Crontab Sync
 
@@ -1199,6 +1201,91 @@ The lookback threshold is adjustable with an inline hour selector without leavin
 ### History Cleanup
 
 Bulk-deletes finished execution records older than a configurable number of days (default: 90). Only records with a non-NULL `finished_at` are eligible; running executions are never deleted. Use this to reclaim database space on long-running installations.
+
+### Agents
+
+Lists all configured remote agents with name, URL, live connection status, and edit/delete actions. See [Multi-Agent Setup](#multi-agent-setup) for details.
+
+---
+
+## Multi-Agent Setup
+
+Cronmanager v4.0.0 can manage cron jobs across **multiple agents** running on different hosts — all from a single web UI. Each agent is an independent Cronmanager agent container (or host-agent service) with its own MariaDB and crontab. The web UI stores a registry of configured agents in its own `agents` table and lets each user switch between them via a sidebar dropdown.
+
+### Architecture
+
+```
+Browser
+  │
+  ▼
+┌──────────────────────────┐
+│  Web UI (single instance) │
+│  agents table (registry) │
+└───┬───────────┬───────────┘
+    │ HMAC      │ HMAC
+    ▼           ▼
+┌───────────┐ ┌───────────┐
+│  Agent A  │ │  Agent B  │
+│  host-1   │ │  host-2   │
+│  MariaDB  │ │  MariaDB  │
+└───────────┘ └───────────┘
+```
+
+- The `agents` table lives in the **web UI's database** (same MariaDB as users and sessions).
+- Each agent has its **own** MariaDB storing cronjobs, tags, and execution history.
+- When you switch the active agent, the web UI sends all subsequent API calls to that agent's URL. The dashboard, job list, timeline, monitor, and export all reflect the selected agent's data.
+- Each user's selection is stored in their PHP session — different users can view different agents simultaneously.
+
+### Step 1 — Deploy a second agent
+
+Set up a Cronmanager agent on the second host using the same procedure as the primary agent (Docker Hub image or manual deployment). The second agent needs:
+
+- Its own MariaDB container (or database on a shared MariaDB instance)
+- Its own HMAC secret (generate with `openssl rand -hex 32`)
+- A port reachable from the web UI container (default: 8865 / HTTPS)
+
+Make sure the web UI container can reach the second agent's URL. If the agent is on another host in your network, verify firewall rules allow TCP 8865 from the web container's host.
+
+**Test connectivity from the web container:**
+```bash
+docker exec cronmanager-web curl -sk https://<second-host>:8865/health
+# → {"status":"ok","timestamp":"...","version":"..."}
+```
+
+### Step 2 — Register the agent in the web UI
+
+1. Log in as **admin**
+2. Go to **Settings** (`/settings`)
+3. In the **Agents** section click **+ Add agent**
+4. Fill in the form:
+
+   | Field | Example | Notes |
+   |---|---|---|
+   | **Name** | `host-2` | Display name in the sidebar switcher |
+   | **Description** | `Production server 2` | Optional |
+   | **URL** | `https://192.168.1.20:8865` | Base URL of the agent; must be reachable from the web container |
+   | **HMAC secret** | `<openssl rand -hex 32>` | Must match the second agent's `agent.hmac_secret` |
+   | **Timeout** | `10` | HTTP timeout in seconds |
+   | **Verify SSL certificate** | unchecked | Uncheck for self-signed certs (default); check + supply CA bundle for private CA |
+   | **Sort order** | `1` | Controls the dropdown order (0 = first) |
+   | **Enabled** | checked | Uncheck to hide from the switcher without deleting |
+
+5. Click **Save** — the agent appears in the Agents table with a live status badge (green = reachable, red = unreachable)
+
+> **Tip:** Use the **Test connection** button on the edit form to verify URL and secret before saving.
+
+### Step 3 — Switch between agents
+
+Once two or more agents are configured, a **dropdown selector** appears at the top of the sidebar (above the navigation groups). Select the desired agent — the page reloads and all data (jobs, timeline, monitor, export) reflects the newly selected agent.
+
+The selection is per-user and per-session. It does not affect other logged-in users.
+
+### Notes
+
+- **The last agent cannot be deleted.** At least one agent must remain to keep the web UI functional.
+- **Disabling an agent** (`Enabled = unchecked`) removes it from the switcher but keeps its configuration. Re-enable it at any time.
+- **HMAC secrets are independent** per agent. Rotating a secret requires updating it in both the agent's config and the web UI's agent record.
+- **Existing installs upgrade automatically.** On first start after upgrading to v4.0.0 the web UI creates the `agents` table and seeds a "Default" agent entry from the existing `agent.*` values in `config.json`. No manual migration step is required.
 
 ---
 
@@ -1370,7 +1457,7 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
    ```
 
 **Docker mode:**
-1. Verify the container crontab has entries (use Housekeeping → Crontab Sync if empty):
+1. Verify the container crontab has entries (use Settings → Crontab Sync if empty):
    ```bash
    docker exec cronmanager-agent crontab -l
    ```
@@ -1385,6 +1472,8 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
    ```bash
    docker exec cronmanager-agent /opt/cronmanager/agent/bin/cron-wrapper.sh <job-id> local
    ```
+
+> **Multi-agent:** If you use multiple agents, verify that the **active agent** in the sidebar is set to the correct host before checking the job list or timeline. Each agent's data is completely independent.
 
 ### OIDC login fails with SSL error
 
@@ -1528,7 +1617,7 @@ the container is recreated.
 
 **Clean up via the UI:**
 
-1. Go to **Housekeeping → Stuck Executions**
+1. Go to **Settings → Stuck Executions**
 2. Adjust the lookback threshold if needed
 3. Use **Mark Finished** (sets exit code `-1`) or **Delete** per row, or select all and use the bulk toolbar
 

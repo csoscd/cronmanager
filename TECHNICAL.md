@@ -211,10 +211,14 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
         ├── Auth/
         │   ├── LocalAuthProvider.php
         │   └── OidcAuthProvider.php
+        ├── Bootstrap/
+        │   └── AgentSchema.php            ← CREATE TABLE IF NOT EXISTS agents + seed from config
         ├── Repository/
+        │   ├── AgentRepository.php        ← PDO CRUD for the agents table
         │   └── UserPreferenceRepository.php
         └── Controller/
             ├── BaseController.php
+            ├── AgentController.php        ← agent CRUD + connectivity test + session switch
             ├── AuthController.php
             ├── SetupController.php
             ├── DashboardController.php
@@ -1249,13 +1253,29 @@ Currently used by `DashboardController::index()` (returns stats array) and `Cron
 | `SwimlaneController` | `GET /swimlane`, `GET /swimlane?debug=1` | view |
 | `ExportController` | `GET /export`, `GET /export/download` | view |
 | `UserController` | `GET /users`, `POST /users/{id}/role`, `POST /users/{id}/delete` | admin |
-| `MaintenanceController` | `GET /housekeeping`, `POST /housekeeping/crontab/resync`, `POST /housekeeping/executions/{id}/finish`, `DELETE /housekeeping/executions/{id}`, `POST /housekeeping/executions/bulk`, `POST /housekeeping/history/cleanup` | admin |
+| `AgentController` | `GET /settings/agents/create`, `POST /settings/agents`, `GET /settings/agents/{id}/edit`, `POST /settings/agents/{id}`, `POST /settings/agents/{id}/delete`, `POST /settings/agents/{id}/test` (JSON), `POST /agent/select` | admin (select: view) |
+| `MaintenanceController` | `GET /settings`, `POST /settings/resync`, `POST /settings/executions/{id}/finish`, `POST /settings/executions/{id}/delete`, `POST /settings/executions/bulk`, `POST /settings/history/cleanup`, `POST /settings/once/cleanup`, `POST /settings/logs/prune`, `POST /settings/notification/test` | admin |
 | `TargetController` | `GET /maintenance`, `GET /maintenance/{target}/windows/new`, `POST /maintenance/{target}/windows`, `GET /maintenance/windows/{id}/edit`, `POST /maintenance/windows/{id}/edit`, `POST /maintenance/windows/{id}/delete`, `GET /maintenance/windows/conflict`, `POST /maintenance/ssh/test` | admin |
 
 ### HostAgentClient
 
 `src/Agent/HostAgentClient.php` is the sole communication bridge between the web UI
-and the host agent.
+and a host agent.
+
+**Constructor (since v4.0.0):** agent parameters are passed explicitly instead of reading from the global config, so the web UI can instantiate a client for any configured agent:
+
+```php
+new HostAgentClient(
+    logger:      $logger,
+    agentUrl:    'https://host-2:8865',
+    hmacSecret:  'secret',
+    timeout:     10,
+    sslVerify:   false,
+    sslCaBundle: '',
+)
+```
+
+`BaseController::agentClient()` builds this from the session-resolved agent DB row (`selectedAgent()`). `AgentController::test()` builds a one-off client for the agent under test.
 
 **Methods:**
 
@@ -1352,6 +1372,27 @@ is stored in `$_SESSION['lang']`. Fallback is English if a key is missing.
 ---
 
 ## Database Schema
+
+### `agents`
+
+Managed by the web application (`AgentSchema::ensure()` on startup). Stores the registry of configured remote agents.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INT PK AUTO_INCREMENT | |
+| `name` | VARCHAR(100) | Display name in the sidebar switcher |
+| `description` | VARCHAR(255) NULL | Optional human-readable description |
+| `url` | VARCHAR(500) | Base URL of the agent, e.g. `https://host-2:8865` |
+| `hmac_secret` | VARCHAR(255) | Shared HMAC-SHA256 secret (must match the agent's config) |
+| `timeout` | INT | HTTP request timeout in seconds (default: 10) |
+| `ssl_verify` | TINYINT(1) | `1` = verify TLS certificate; `0` = accept self-signed |
+| `ssl_ca_bundle` | VARCHAR(500) NULL | Path to a custom CA bundle PEM (empty = system CA) |
+| `enabled` | TINYINT(1) | `1` = shown in sidebar switcher; `0` = hidden |
+| `sort_order` | INT | Display order in the switcher (ascending) |
+| `created_at` | DATETIME | |
+| `updated_at` | DATETIME | Updated automatically via `ON UPDATE CURRENT_TIMESTAMP` |
+
+On the **first start** after upgrading to v4.0.0, `AgentSchema::ensure()` checks whether the table is empty and seeds a "Default" entry from the existing `agent.*` values in `config.json`, so existing installations upgrade without any manual intervention.
 
 ### `users`
 

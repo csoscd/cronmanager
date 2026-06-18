@@ -311,15 +311,15 @@ for mig in $(ls -1v "${MIGRATIONS_DIR}"/*.sql 2>/dev/null); do
             \$pdo = new PDO(
                 'mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME'),
                 getenv('DB_USER'),
-                getenv('DB_PASSWORD')
+                getenv('DB_PASSWORD'),
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
             );
             \$pdo->exec(\$sql);
             \$stmt = \$pdo->prepare('INSERT IGNORE INTO schema_migrations (filename) VALUES (?)');
             \$stmt->execute([getenv('MIGRATION_NAME')]);
             echo 'ok';
         } catch (Exception \$e) {
-            fwrite(STDERR, 'Migration failed: ' . \$e->getMessage() . PHP_EOL);
-            echo 'fail';
+            echo 'fail: ' . \$e->getMessage();
         }
     " 2>/dev/null)
 
@@ -327,7 +327,8 @@ for mig in $(ls -1v "${MIGRATIONS_DIR}"/*.sql 2>/dev/null); do
         log_info "  applied: ${fname}"
         MIGRATIONS_APPLIED=$((MIGRATIONS_APPLIED + 1))
     else
-        log_warn "  FAILED: ${fname} – check logs and apply manually if needed"
+        log_warn "  FAILED: ${fname} – ${RESULT#fail: }"
+        log_warn "  Migration will be retried on next container start."
     fi
 done
 

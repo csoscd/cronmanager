@@ -245,7 +245,7 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
 | Database | MariaDB LTS via PDO | LTS |
 | Cron parsing | `dragonmantank/cron-expression` | ^3.3 |
 | Cron translation | `lorisleiva/cron-translator` | ^0.4 |
-| In-memory cache | APCu (`php84-pecl-apcu`) | bundled |
+| In-memory cache | APCu (`php8.4-apcu`) | bundled |
 | Frontend CSS | Tailwind CSS (local copy, no build step) | 3.4.x |
 | Frontend charts | Chart.js 4 UMD build (self-hosted, downloaded by `deploy.sh`) | 4.x |
 | Containerisation | Docker + Docker Compose v2 | — |
@@ -1699,7 +1699,7 @@ value is permanently valid until the APCu segment is reset (container restart).
 the controller falls back to computing every pattern on every request.  No error
 is raised and the page still works — it is just slower.
 
-**Required Alpine package:** `php84-pecl-apcu`
+**Required package:** `php8.4-apcu` (Debian) — included in the `cs1711/cs_cronmanagerweb` base image.
 
 Verify that APCu is active:
 ```bash
@@ -1846,7 +1846,7 @@ these images have all PHP source and Composer dependencies baked in.
 | Image | Base | Entrypoint behaviour |
 |---|---|---|
 | `cs1711/cronmanager-agent` | `cs1711/cs_cronmanageragent:latest` (Debian Trixie, PHP 8.4 CLI, cron, openssh-client) | Generates `config.json`, waits for MariaDB, applies schema, starts cron daemon, then `exec php -S` |
-| `cs1711/cronmanager-web` | `cs1711/cs_php-nginx-fpm:latest-alpine` (Alpine, PHP 8.4 FPM, Nginx, supervisord) | Generates `config.json`, fixes volume ownership (`/var/www/conf`, `/var/www/log`), then `exec /usr/bin/supervisord` as root; nginx worker and PHP-FPM pool drop to `nobody` internally |
+| `cs1711/cronmanager-web` | `cs1711/cs_cronmanagerweb:latest` (Debian, based on `cs_php-nginx-fpm:latest-debian`, PHP 8.4 FPM, Nginx, supervisord) | Generates `config.json`, fixes volume ownership (`/var/www/conf`, `/var/www/log`), then `exec /usr/bin/supervisord` as root; nginx worker drops to `nobody nogroup`, PHP-FPM pool runs as `nobody:nogroup` |
 
 ### Build pipeline
 
@@ -1908,19 +1908,26 @@ Both containers generate their `config.json` at every start — no config volume
 **Web (`docker/web/entrypoint.sh`):**
 
 ```
-1. php84 -r "echo json_encode([...])"  →  /var/www/conf/config.json
-2. chown -R nobody:nobody /var/www/conf /var/www/log
-3. exec /usr/bin/supervisord            (runs as root)
-   ├── nginx:     worker user = nobody  (patched in Dockerfile)
-   └── php-fpm:   pool user = nobody, listen.owner = nobody,
-                  listen.group = nobody, listen.mode = 0660
-                  (patched in Dockerfile)
+1. php -r "echo json_encode([...])"  →  /var/www/conf/config.json
+2. chown -R nobody:nogroup /var/www/conf /var/www/log
+3. exec /usr/bin/supervisord          (runs as root)
+   ├── nginx:     worker user = nobody nogroup  (set in cs_cronmanagerweb nginx.conf)
+   └── php-fpm:   pool user = nobody, group = nogroup, listen.owner = nobody,
+                  listen.group = nogroup, listen.mode = 0660
+                  (set in cs_cronmanagerweb fpm-pool.conf)
 ```
 
-> **Why root for supervisord?** Alpine's `cs_php-nginx-fpm` base image does not include
-> `su-exec`. Supervisord must start as root so it can bind ports and manage child process
-> lifecycle. nginx and PHP-FPM then drop to `nobody` via their own configuration, keeping
-> the effective attack surface identical to a `su-exec` approach.
+> **Why root for supervisord?** The entrypoint must run as root to `chown` the mounted
+> volume directories (`/var/www/conf`, `/var/www/log`) before supervisord starts. nginx and
+> PHP-FPM then drop to `nobody:nogroup` via their own configuration (baked into
+> `cs1711/cs_cronmanagerweb`), keeping the effective privilege surface minimal.
+>
+> **`cs_cronmanagerweb` base image** (`/opt/dockercronmanagerweb` on build host `db`):
+> Derives from `cs1711/cs_php-nginx-fpm:latest-debian` and overrides three configuration
+> files — `nginx.conf` (adds `user nobody nogroup;`), `fpm-pool.conf` (sets explicit
+> `user`, `group`, and socket ownership) and `cronmanagerweb.ini` (sets
+> `display_errors = Off`, `log_errors = On`, `expose_php = Off`). Built via
+> `/opt/dockerhelp/build.sh /opt/dockercronmanagerweb`.
 
 ### Vendor path inside containers
 

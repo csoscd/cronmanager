@@ -445,19 +445,21 @@ the containers), the agent container must be able to SSH back to it.
 | openssl | For HMAC-SHA256 signing in the wrapper |
 | SSH client | Required only for remote job execution |
 
-The Docker image used for the web container (`cs1711/cs_php-nginx-fpm:latest-alpine`)
-includes PHP-FPM 8.4 and Nginx.
+The Docker image used for the web container (`cs1711/cs_cronmanagerweb:latest`) is a
+Debian-based image (derived from `cs_php-nginx-fpm:latest-debian`) that includes
+PHP-FPM 8.4, Nginx, and supervisord with production PHP settings pre-configured.
 
 > **Alternative images**: Any Docker image that bundles PHP-FPM **8.4** (or later 8.x) with
 > Nginx (or Apache) and the required PHP extensions (`pdo_mysql`, `json`, `mbstring`, `openssl`,
-> `curl`) is supported. Official images such as `php:8.4-fpm-alpine` combined with a separate
-> Nginx container, or community images like `webdevops/php-nginx:8.4-alpine`, are equally valid.
+> `curl`) is supported. Official images such as `php:8.4-fpm` combined with a separate
+> Nginx container, or community images like `webdevops/php-nginx:8.4`, are equally valid.
 > Update the `image:` field in `docker-compose.yml` accordingly.
 
 > **APCu extension**: The swimlane view uses APCu for in-memory caching of pre-computed cron
-> fire-time patterns.  Install the Alpine package `php84-pecl-apcu` in your Docker image for
-> best performance.  The swimlane view works without APCu but will recompute all patterns on
-> every page load.  Verify with:
+> fire-time patterns.  The `cs1711/cs_cronmanagerweb` image includes `php8.4-apcu` out of
+> the box.  If you use a custom base image, install the `php8.4-apcu` package (Debian/Ubuntu)
+> for best performance.  The swimlane view works without APCu but will recompute all patterns
+> on every page load.  Verify with:
 > ```bash
 > docker exec <container> php -r "var_dump(extension_loaded('apcu'));"
 > ```

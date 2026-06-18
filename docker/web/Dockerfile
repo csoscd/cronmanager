@@ -50,10 +50,10 @@ LABEL org.opencontainers.image.title="Cronmanager Web" \
 USER root
 
 # Copy Composer-installed vendor tree
-COPY --from=composer-build --chown=nobody:nobody /build/vendor /var/www/libs/vendor
+COPY --from=composer-build --chown=nobody:nogroup /build/vendor /var/www/libs/vendor
 
 # Copy web application source
-COPY --chown=nobody:nobody web/ /var/www/html/
+COPY --chown=nobody:nogroup web/ /var/www/html/
 
 # Download static assets that are not checked into the repository.
 # Tailwind CSS (Play CDN build) and Chart.js UMD are fetched at image build
@@ -63,14 +63,14 @@ RUN mkdir -p /var/www/html/assets/js \
          "https://cdn.tailwindcss.com/3.4.17" \
     && curl -fsSL -o /var/www/html/assets/js/chart.min.js \
          "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" \
-    && chown nobody:nobody \
+    && chown nobody:nogroup \
          /var/www/html/assets/js/tailwind.min.js \
          /var/www/html/assets/js/chart.min.js \
     && echo "Static assets downloaded."
 
 # Pre-create directories that will be used at runtime
 RUN mkdir -p /var/www/conf /var/www/log \
-    && chown -R nobody:nobody /var/www/conf /var/www/log
+    && chown -R nobody:nogroup /var/www/conf /var/www/log
 
 # Set php-fpm pool user/group.
 # The base image was designed to run with the master process already as nobody,
@@ -81,11 +81,11 @@ RUN mkdir -p /var/www/conf /var/www/log \
 RUN PHP_FPM_POOL=$(find /etc/php* -name "www.conf" 2>/dev/null | head -1) \
     && if [ -n "$PHP_FPM_POOL" ]; then \
          printf '\n; Added by cronmanager-web Dockerfile\n' >> "$PHP_FPM_POOL"; \
-         printf 'user = nobody\ngroup = nobody\n' >> "$PHP_FPM_POOL"; \
+         printf 'user = nobody\ngroup = nogroup\n' >> "$PHP_FPM_POOL"; \
          printf '; Socket ownership must match nginx worker user.\n' >> "$PHP_FPM_POOL"; \
          printf '; php-fpm master runs as root (via supervisord) so the socket\n' >> "$PHP_FPM_POOL"; \
          printf '; is created by root unless listen.owner/group are set explicitly.\n' >> "$PHP_FPM_POOL"; \
-         printf 'listen.owner = nobody\nlisten.group = nobody\nlisten.mode = 0660\n' >> "$PHP_FPM_POOL"; \
+         printf 'listen.owner = nobody\nlisten.group = nogroup\nlisten.mode = 0660\n' >> "$PHP_FPM_POOL"; \
          echo "php-fpm pool user/listen set to nobody in ${PHP_FPM_POOL}"; \
        else \
          echo "WARNING: php-fpm www.conf not found – pool user not set"; \
@@ -93,8 +93,8 @@ RUN PHP_FPM_POOL=$(find /etc/php* -name "www.conf" 2>/dev/null | head -1) \
 
 # Set nginx worker user to nobody.
 # When supervisord runs as root, nginx master runs as root and properly drops
-# workers to the user specified in nginx.conf (typically 'nginx' on Alpine).
-# That user cannot access the php-fpm socket (nobody:nobody 0660), causing
+# workers to the user specified in nginx.conf.
+# That user cannot access the php-fpm socket (nobody:nogroup 0660), causing
 # EACCES on every request.  Set the worker user to nobody to match the socket.
 RUN NGINX_CONF=$(find /etc/nginx -name "nginx.conf" 2>/dev/null | head -1) \
     && if [ -n "$NGINX_CONF" ]; then \

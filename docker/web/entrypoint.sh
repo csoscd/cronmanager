@@ -137,8 +137,8 @@ log_info "Config written to ${CONFIG_FILE}."
 # 2. Fix directory ownership for the nobody user
 # =============================================================================
 
-chown -R nobody:nobody /var/www/conf /var/www/log
-log_info "Ownership of /var/www/conf and /var/www/log set to nobody."
+chown -R nobody:nogroup /var/www/conf /var/www/log
+log_info "Ownership of /var/www/conf and /var/www/log set to nobody:nogroup."
 
 # =============================================================================
 # 3. Start supervisord (nginx + php-fpm)

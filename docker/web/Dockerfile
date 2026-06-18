@@ -59,9 +59,9 @@ COPY --chown=nobody:nobody web/ /var/www/html/
 # Tailwind CSS (Play CDN build) and Chart.js UMD are fetched at image build
 # time so the container has no external CDN dependency at runtime.
 RUN mkdir -p /var/www/html/assets/js \
-    && wget -qO /var/www/html/assets/js/tailwind.min.js \
+    && curl -fsSL -o /var/www/html/assets/js/tailwind.min.js \
          "https://cdn.tailwindcss.com/3.4.17" \
-    && wget -qO /var/www/html/assets/js/chart.min.js \
+    && curl -fsSL -o /var/www/html/assets/js/chart.min.js \
          "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" \
     && chown nobody:nobody \
          /var/www/html/assets/js/tailwind.min.js \

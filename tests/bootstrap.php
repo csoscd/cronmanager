@@ -32,3 +32,7 @@ if (!file_exists($projectVendor)) {
     exit(1);
 }
 require_once $projectVendor;
+
+// Global agent function stubs (jsonResponse etc.) – must be loaded after the
+// autoloader so that Tests\Support\AgentResponse is resolvable.
+require_once __DIR__ . '/Support/AgentFunctions.php';

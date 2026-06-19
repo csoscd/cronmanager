@@ -55,7 +55,9 @@ abstract class IntegrationTestCase extends TestCase
 
     protected function tearDown(): void
     {
-        if ($this->pdo->inTransaction()) {
+        // Guard against setUp() failure (e.g. DB unreachable → markTestSkipped()
+        // before $this->pdo was ever initialised).
+        if (isset($this->pdo) && $this->pdo->inTransaction()) {
             $this->pdo->rollBack();
         }
 
@@ -134,6 +136,54 @@ abstract class IntegrationTestCase extends TestCase
                   ->execute($data);
 
         return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * Insert a pending retry state row for the given job + target.
+     *
+     * @param int                  $jobId           References cronjobs.id.
+     * @param int                  $rootExecutionId References execution_log.id of the original run.
+     * @param array<string, mixed> $overrides       Column overrides.
+     */
+    protected function seedRetryState(int $jobId, int $rootExecutionId, array $overrides = []): void
+    {
+        $defaults = [
+            'job_id'              => $jobId,
+            'target'              => 'local',
+            'next_retry_attempt'  => 1,
+            'root_execution_id'   => $rootExecutionId,
+            'retry_delay_minutes' => 5,
+            'scheduled_at'        => date('Y-m-d H:i:s'),
+        ];
+
+        $data = array_merge($defaults, $overrides);
+
+        $columns      = implode(', ', array_keys($data));
+        $placeholders = implode(', ', array_map(fn($k) => ':' . $k, array_keys($data)));
+
+        $this->pdo->prepare("INSERT INTO job_retry_state ({$columns}) VALUES ({$placeholders})")
+                  ->execute($data);
+    }
+
+    /**
+     * Insert a maintenance window that is always currently active.
+     *
+     * Uses schedule `* * * * *` (fires every minute) with a 1440-minute
+     * (24-hour) duration, guaranteeing the window covers the current moment
+     * regardless of when the test runs.
+     *
+     * @param string      $target    Target to put in maintenance (use '_agent_' for agent-wide).
+     * @param string|null $description Optional description.
+     */
+    protected function seedActiveMaintenanceWindow(string $target, ?string $description = null): int
+    {
+        return $this->seedMaintenanceWindow([
+            'target'           => $target,
+            'cron_schedule'    => '* * * * *',
+            'duration_minutes' => 1440,
+            'description'      => $description ?? "Test window for {$target}",
+            'active'           => 1,
+        ]);
     }
 
     /**

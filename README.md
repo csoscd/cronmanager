@@ -267,6 +267,7 @@ commented-out lines in `docker-compose-full.yml`.
 | `INFLUXDB_ORG` | _(empty)_ | InfluxDB organisation name |
 | `INFLUXDB_BUCKET` | `cronmanager` | InfluxDB bucket name |
 | `INFLUXDB_TIMEOUT` | `10` | HTTP write timeout in seconds |
+| `AGENT_SETTINGS_KEY` | _(empty)_ | When set, `mail.password`, `telegram.bot_token` and `influxdb.token` are encrypted with AES-256-CBC before being stored in the `agent_settings` DB table. Use at least 32 random characters (`openssl rand -hex 32`). If unset, values are stored as plaintext. Removing the key after setting it makes stored credentials unreadable until re-saved via the web UI. |
 
 #### Web container optional variables
 
@@ -988,13 +989,32 @@ Cronmanager can send failure alerts when a cron job exits with a non-zero status
 is auto-killed after exceeding its execution limit, or is still running past its limit.
 Both email and Telegram can be enabled independently and fire in parallel.
 
+### Configuring via the web UI
+
+The recommended way to configure notifications is the **Agent Settings** page at
+**Settings → Agent Settings** (`/settings/agent-config`). It provides a form for
+all four sections (General, Email, Telegram, InfluxDB) and writes the values directly
+to the agent's database — settings persist across container restarts without changing
+environment variables.
+
+The page also supports copying settings from one agent to another, which is useful
+when running multiple agents that share the same SMTP or Telegram configuration.
+
+> **Encryption at rest**: if you set `AGENT_SETTINGS_KEY` on the agent container,
+> passwords and tokens are encrypted with AES-256-CBC before being stored. See the
+> [environment variables reference](#environment-variables-reference) for details.
+
+Alternatively, settings can still be supplied through environment variables in
+Docker Compose (see below). When both exist, the database value takes precedence.
+
 ### Email alerts
 
 **To enable:**
 
 1. Set `mail.enabled = true` and fill in your SMTP credentials in the agent config
-   (or set `MAIL_ENABLED=true` and the other `MAIL_*` variables in Docker Compose)
-2. Restart the agent: `sudo systemctl restart cronmanager-agent`
+   (or set `MAIL_ENABLED=true` and the other `MAIL_*` variables in Docker Compose),
+   **or** use the web UI at **Settings → Agent Settings**
+2. Restart the agent when using environment variables: `sudo systemctl restart cronmanager-agent`
 3. Per job: check **"Notify on failure"** when creating or editing the job
 
 Alerts are dispatched asynchronously after the job completes — SMTP runs in a background

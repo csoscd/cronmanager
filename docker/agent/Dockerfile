@@ -75,4 +75,8 @@ VOLUME ["/opt/cronmanager/agent/log"]
 
 EXPOSE 8865
 
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
+# The agent container intentionally runs as root to manage the system crontab
+# via crontab(1), which requires root privileges. The container is not publicly
+# accessible (internal Docker network only).
 ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]

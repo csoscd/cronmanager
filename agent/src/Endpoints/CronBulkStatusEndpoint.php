@@ -81,6 +81,8 @@ final class CronBulkStatusEndpoint
 
         // ── Fetch current job state ───────────────────────────────────────────
         $placeholders = implode(',', array_fill(0, count($intIds), '?'));
+        // nosemgrep: php.lang.security.injection.tainted-callable.tainted-callable
+        // $placeholders contains only literal '?' characters; values bound via execute().
         $stmt = $this->pdo->prepare(
             "SELECT id, linux_user, active, schedule, GROUP_CONCAT(jt.target ORDER BY jt.target) AS targets
              FROM cronjobs j

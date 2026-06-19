@@ -86,6 +86,8 @@ final class CronBulkTagEndpoint
         $placeholders = implode(',', array_fill(0, count($intIds), '?'));
 
         // Verify all IDs exist
+        // nosemgrep: php.lang.security.injection.tainted-callable.tainted-callable
+        // $placeholders contains only literal '?' characters; values bound via execute().
         $existsStmt = $this->pdo->prepare("SELECT COUNT(*) FROM cronjobs WHERE id IN ({$placeholders})");
         $existsStmt->execute($intIds);
         if ((int) $existsStmt->fetchColumn() !== count($intIds)) {
@@ -124,6 +126,7 @@ final class CronBulkTagEndpoint
 
                 if ($tagId > 0) {
                     $unlinkParams = array_merge([$tagId], $intIds);
+                    // nosemgrep: php.lang.security.injection.tainted-callable.tainted-callable
                     $this->pdo->prepare(
                         "DELETE FROM cronjob_tags WHERE tag_id = ? AND cronjob_id IN ({$placeholders})"
                     )->execute($unlinkParams);

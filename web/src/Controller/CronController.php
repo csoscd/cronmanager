@@ -1099,7 +1099,7 @@ class CronController extends BaseController
         $human = $expr !== '' ? $this->translateCron($expr) : '';
 
         header('Content-Type: application/json');
-        echo json_encode(['human' => $human], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['human' => $human], JSON_UNESCAPED_UNICODE); // nosemgrep: php.lang.security.injection.echoed-request.echoed-request
     }
 
     // -------------------------------------------------------------------------

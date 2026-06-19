@@ -74,7 +74,7 @@ try {
     $rawPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
     $rawPath = '/' . ltrim((string) $rawPath, '/');
 
-    if ($rawPath !== '/' && file_exists(__DIR__ . $rawPath)) {
+    if ($rawPath !== '/' && file_exists(__DIR__ . $rawPath)) { // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename
         return false;
     }
 

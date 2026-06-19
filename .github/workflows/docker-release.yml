@@ -101,15 +101,18 @@ jobs:
       # workflow_dispatch with a manual tag override bypasses this check.
       - name: Validate release tag
         if: github.event_name == 'release'
+        env:
+          # Use env variable instead of direct ${{ }} interpolation in run: to
+          # prevent shell injection via a crafted tag name (Semgrep run-shell-injection).
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          TAG="${{ github.ref_name }}"
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9._-]+)?$ ]]; then
-            echo "::error::Release tag '${TAG}' is not a valid semver tag."
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9._-]+)?$ ]]; then
+            echo "::error::Release tag '${RELEASE_TAG}' is not a valid semver tag."
             echo "::error::Expected format: vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-suffix  (e.g. v2.4.0 or v2.4.0-dev)"
             echo "::error::Delete this release, fix the tag, and publish again."
             exit 1
           fi
-          echo "Tag '${TAG}' is valid – proceeding with build."
+          echo "Tag '${RELEASE_TAG}' is valid – proceeding with build."
 
       # ── Checkout ────────────────────────────────────────────────────────────
       - name: Check out repository

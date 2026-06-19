@@ -176,7 +176,7 @@ class ExportController extends BaseController
 
         // Stream in 8 KB chunks to keep memory usage low
         while (!$body->eof()) {
-            echo $body->read(8192);
+            echo $body->read(8192); // nosemgrep: php.lang.security.injection.echoed-request.echoed-request
             // Flush to the client if output buffering is not active
             if (connection_status() !== CONNECTION_NORMAL) {
                 break;

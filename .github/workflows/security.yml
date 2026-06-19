@@ -1,0 +1,118 @@
+################################################################################
+# GitHub Actions – Security checks
+#
+# Two parallel jobs run on every push and pull request:
+#
+#   dependency-audit  – composer audit --no-dev
+#                       Checks production Composer dependencies against the
+#                       PHP Security Advisories database (packagist.org/security-advisories).
+#                       Covers OWASP A06 (Vulnerable and Outdated Components).
+#                       Fails when any known-vulnerable package version is found.
+#
+#   semgrep           – Semgrep SAST with PHP + OWASP Top 10 rule sets.
+#                       Covers: A01 Broken Access Control, A02 Cryptographic Failures,
+#                       A03 Injection (SQL, Command, XSS, Path Traversal),
+#                       A07 Authentication Failures, A10 SSRF.
+#                       Fails when any finding is reported (exit code 1).
+#                       False positives can be suppressed per-line with:
+#                         # nosemgrep: <rule-id>
+#                       or by adding paths to .semgrepignore.
+#
+# Optional: set the repository secret SEMGREP_APP_TOKEN to enable full
+# Semgrep Registry access and upload results to semgrep.dev for trend tracking.
+# Without the token the scan still runs using the public rule sets.
+#
+# These checks do NOT block Docker image builds (docker-release.yml /
+# docker-dev.yml) — findings must be addressed separately.  To gate releases
+# on security checks, add `security` to the `needs:` list in those workflows.
+#
+# @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+# @license GNU General Public License version 3 or later
+################################################################################
+
+name: Security checks
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ============================================================================
+  # Job 1: Dependency vulnerability audit
+  # ============================================================================
+  dependency-audit:
+    name: Dependency audit (composer audit)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      # Audit production dependencies only (--no-dev).
+      # Dev dependencies (PHPUnit, Mockery, etc.) are never deployed.
+      # Exit code 1 = vulnerabilities found → job fails.
+      - name: Run composer audit (production deps)
+        run: composer audit --no-dev
+
+  # ============================================================================
+  # Job 2: SAST – Semgrep
+  # ============================================================================
+  semgrep:
+    name: SAST – Semgrep (PHP + OWASP Top 10)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python (for Semgrep CLI)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Semgrep
+        run: pip install semgrep --quiet
+
+      # Rules used:
+      #   p/php          – PHP-specific security rules (injection, XSS, open redirect, …)
+      #   p/owasp-top-ten – OWASP Top 10 mapped rules across all supported languages
+      #
+      # Excluded paths are defined in .semgrepignore (vendor/, tests/, assets, …).
+      #
+      # --error: exit code 1 when any finding is reported.
+      # To suppress a specific finding inline use:  # nosemgrep: rule-id
+      - name: Run Semgrep scan
+        run: |
+          semgrep scan \
+            --config "p/php" \
+            --config "p/owasp-top-ten" \
+            --error \
+            --quiet \
+            .
+        env:
+          # Optional: set SEMGREP_APP_TOKEN as a repository secret to enable
+          # full Registry access and upload results to semgrep.dev.
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}

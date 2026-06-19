@@ -166,6 +166,38 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
+     * Insert an already-finished execution log entry and return its ID.
+     *
+     * Useful for building failure-streak history in threshold and recovery tests.
+     * Unlike seedRunningExecution(), the row has both started_at and finished_at set.
+     *
+     * @param int                  $jobId     References cronjobs.id.
+     * @param array<string, mixed> $overrides Column overrides.
+     */
+    protected function seedFinishedExecution(int $jobId, array $overrides = []): int
+    {
+        $defaults = [
+            'cronjob_id'    => $jobId,
+            'started_at'    => date('Y-m-d H:i:s', time() - 3600),
+            'finished_at'   => date('Y-m-d H:i:s', time() - 3595),
+            'target'        => 'local',
+            'exit_code'     => 1,
+            'output'        => '',
+            'retry_attempt' => 0,
+        ];
+
+        $data = array_filter(array_merge($defaults, $overrides), fn($v) => $v !== null);
+
+        $columns      = implode(', ', array_keys($data));
+        $placeholders = implode(', ', array_map(fn($k) => ':' . $k, array_keys($data)));
+
+        $this->pdo->prepare("INSERT INTO execution_log ({$columns}) VALUES ({$placeholders})")
+                  ->execute($data);
+
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
      * Insert a maintenance window that is always currently active.
      *
      * Uses schedule `* * * * *` (fires every minute) with a 1440-minute

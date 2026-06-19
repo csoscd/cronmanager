@@ -47,10 +47,10 @@ LABEL org.opencontainers.image.title="Cronmanager Web" \
       org.opencontainers.image.licenses="GPL-3.0-or-later" \
       org.opencontainers.image.source="https://github.com/csoscd/cronmanager"
 
-# nosemgrep: dockerfile.security.last-user-is-root.last-user-is-root
 # USER root is required here only for COPY/setup steps. PHP-FPM runs as the
 # unprivileged 'nobody' user defined in the pool config (www.conf), so the
 # effective runtime user is not root.
+# nosemgrep: dockerfile.security.last-user-is-root.last-user-is-root
 USER root
 
 # Copy Composer-installed vendor tree

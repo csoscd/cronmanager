@@ -76,10 +76,10 @@ final class CronBulkDeleteEndpoint
         $placeholders = implode(',', array_fill(0, count($intIds), '?'));
 
         // ── Fetch jobs ────────────────────────────────────────────────────────
-        // nosemgrep: php.lang.security.injection.tainted-callable.tainted-callable
         // $placeholders is implode(',', array_fill(0, N, '?')) – only literal '?'
         // characters, never user data. Values are bound via PDO execute($intIds).
         $stmt = $this->pdo->prepare(
+            // nosemgrep: php.lang.security.injection.tainted-callable.tainted-callable
             "SELECT id, linux_user FROM cronjobs WHERE id IN ({$placeholders})"
         );
         $stmt->execute($intIds);
@@ -91,8 +91,8 @@ final class CronBulkDeleteEndpoint
         }
 
         // ── Reject if any job is currently running ────────────────────────────
-        // nosemgrep: php.lang.security.injection.tainted-callable.tainted-callable
         $runStmt = $this->pdo->prepare(
+            // nosemgrep: php.lang.security.injection.tainted-callable.tainted-callable
             "SELECT COUNT(*) FROM execution_log
              WHERE cronjob_id IN ({$placeholders}) AND finished_at IS NULL"
         );
@@ -113,8 +113,8 @@ final class CronBulkDeleteEndpoint
                 $this->crontabManager->removeAllEntries((string) $job['linux_user'], (int) $job['id']);
             }
 
-            // nosemgrep: php.lang.security.injection.tainted-callable.tainted-callable
             $deleteStmt = $this->pdo->prepare(
+                // nosemgrep: php.lang.security.injection.tainted-callable.tainted-callable
                 "DELETE FROM cronjobs WHERE id IN ({$placeholders})"
             );
             $deleteStmt->execute($intIds);

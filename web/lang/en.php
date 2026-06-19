@@ -402,6 +402,30 @@ return [
     'agent_error_secret_required'=> 'HMAC secret must not be empty.',
 
     // -------------------------------------------------------------------------
+    // Job transfer between agents
+    // -------------------------------------------------------------------------
+    'bulk_transfer'                 => 'Transfer',
+    'transfer_title'                => 'Transfer Jobs',
+    'transfer_jobs_selected'        => '{n} job(s) selected for transfer',
+    'transfer_source'               => 'Source agent',
+    'transfer_destination'          => 'Destination agent',
+    'transfer_source_action'        => 'Source jobs after transfer',
+    'transfer_keep'                 => 'Keep (copy)',
+    'transfer_deactivate'           => 'Deactivate',
+    'transfer_delete'               => 'Delete',
+    'transfer_compatibility'        => 'Compatibility',
+    'transfer_warning_targets'      => 'Warning: the following targets are not available on the destination agent:',
+    'transfer_target_missing'       => 'Target "{target}" not available',
+    'transfer_target_ok'            => 'Compatible',
+    'transfer_btn'                  => 'Start transfer',
+    'transfer_flash_done'           => '{n} job(s) transferred successfully.',
+    'transfer_flash_partial'        => '{n} job(s) transferred, {m} failed.',
+    'transfer_flash_error'          => 'Transfer failed.',
+    'transfer_error_no_destination' => 'No other agent configured. Please add a second agent first.',
+    'transfer_error_same_agent'     => 'Source and destination agent are identical.',
+    'transfer_error_no_ids'         => 'No jobs selected.',
+
+    // -------------------------------------------------------------------------
     // Bulk actions (job list)
     // -------------------------------------------------------------------------
     'bulk_selected'           => '{n} job(s) selected',

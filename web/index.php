@@ -40,6 +40,7 @@ use Cronmanager\Web\Controller\SwimlaneController;
 use Cronmanager\Web\Controller\TimelineController;
 use Cronmanager\Web\Controller\MaintenanceController;
 use Cronmanager\Web\Controller\TargetController;
+use Cronmanager\Web\Controller\TransferController;
 use Cronmanager\Web\Controller\UserController;
 use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Request;
@@ -188,12 +189,17 @@ try {
     $maintenanceCtrl  = new MaintenanceController($config, $logger);
     $targetCtrl       = new TargetController($config, $logger);
     $agentCtrl        = new AgentController($config, $logger);
+    $transferCtrl     = new TransferController($config, $logger);
 
     $router->addProtectedRoute('GET',  '/',                    fn(array $p) => (new Response())->redirect('/dashboard'));
     $router->addProtectedRoute('GET',  '/dashboard',           [$dashboardCtrl, 'index']);
 
     $router->addProtectedRoute('GET',  '/crons',               [$cronCtrl, 'index']);
     $router->addProtectedRoute('POST', '/crons/bulk',          [$cronCtrl, 'bulkAction'],  'admin');
+    // Transfer routes must come before /crons/{id} to avoid matching 'transfer' as an ID
+    $router->addProtectedRoute('GET',  '/crons/transfer',          [$transferCtrl, 'prepare'],  'admin');
+    $router->addProtectedRoute('POST', '/crons/transfer/validate', [$transferCtrl, 'validate'], 'admin');
+    $router->addProtectedRoute('POST', '/crons/transfer',          [$transferCtrl, 'execute'],  'admin');
     $router->addProtectedRoute('GET',  '/crons/import',        [$cronCtrl, 'importList'],  'admin');
     $router->addProtectedRoute('POST', '/crons/import',        [$cronCtrl, 'importStore'], 'admin');
     $router->addProtectedRoute('GET',  '/crons/new',           [$cronCtrl, 'create'],  'admin');

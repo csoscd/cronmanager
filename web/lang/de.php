@@ -402,6 +402,30 @@ return [
     'agent_error_secret_required'=> 'Das HMAC-Secret darf nicht leer sein.',
 
     // -------------------------------------------------------------------------
+    // Job-Transfer zwischen Agents
+    // -------------------------------------------------------------------------
+    'bulk_transfer'                 => 'Transferieren',
+    'transfer_title'                => 'Jobs transferieren',
+    'transfer_jobs_selected'        => '{n} Job(s) zum Transferieren ausgewählt',
+    'transfer_source'               => 'Quell-Agent',
+    'transfer_destination'          => 'Ziel-Agent',
+    'transfer_source_action'        => 'Quell-Jobs nach Transfer',
+    'transfer_keep'                 => 'Behalten (Kopie)',
+    'transfer_deactivate'           => 'Deaktivieren',
+    'transfer_delete'               => 'Löschen',
+    'transfer_compatibility'        => 'Kompatibilität',
+    'transfer_warning_targets'      => 'Warnung: Folgende Targets am Ziel-Agent nicht verfügbar:',
+    'transfer_target_missing'       => 'Target „{target}" nicht verfügbar',
+    'transfer_target_ok'            => 'Kompatibel',
+    'transfer_btn'                  => 'Transfer starten',
+    'transfer_flash_done'           => '{n} Job(s) erfolgreich transferiert.',
+    'transfer_flash_partial'        => '{n} Job(s) transferiert, {m} fehlgeschlagen.',
+    'transfer_flash_error'          => 'Transfer fehlgeschlagen.',
+    'transfer_error_no_destination' => 'Kein weiterer Agent konfiguriert. Bitte zuerst einen zweiten Agent anlegen.',
+    'transfer_error_same_agent'     => 'Quell- und Ziel-Agent sind identisch.',
+    'transfer_error_no_ids'         => 'Keine Jobs ausgewählt.',
+
+    // -------------------------------------------------------------------------
     // Massenaktionen (Job-Liste)
     // -------------------------------------------------------------------------
     'bulk_selected'           => '{n} Job(s) ausgewählt',

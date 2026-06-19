@@ -357,6 +357,14 @@ $allTagNames = array_map(
         <?= htmlspecialchars($t('bulk_delete'), ENT_QUOTES, 'UTF-8') ?>
     </button>
 
+    <?php if (count($enabledAgents ?? []) > 1): ?>
+    <button type="button" onclick="cmBulkTransfer()"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition
+                   bg-indigo-100 hover:bg-indigo-200 text-indigo-800 dark:bg-indigo-900/40 dark:hover:bg-indigo-900/70 dark:text-indigo-300">
+        <?= htmlspecialchars($t('bulk_transfer'), ENT_QUOTES, 'UTF-8') ?>
+    </button>
+    <?php endif; ?>
+
     <button type="button" onclick="cmBulkDeselectAll()"
             class="ml-auto text-xs text-gray-500 dark:text-gray-400 hover:underline">
         <?= htmlspecialchars($t('bulk_deselect'), ENT_QUOTES, 'UTF-8') ?>
@@ -835,6 +843,14 @@ $allTagNames = array_map(
         document.querySelectorAll('.cm-row-check').forEach(function (cb) { cb.checked = false; });
         if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
         updateBar();
+    };
+
+    window.cmBulkTransfer = function () {
+        if (selected.size === 0) { return; }
+        var url = '/crons/transfer?' + Array.from(selected).map(function (id) {
+            return 'ids[]=' + encodeURIComponent(id);
+        }).join('&');
+        window.location = url;
     };
 
     // Close modal on backdrop click

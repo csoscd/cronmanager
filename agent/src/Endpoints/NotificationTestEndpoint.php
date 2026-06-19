@@ -44,7 +44,7 @@ namespace Cronmanager\Agent\Endpoints;
 use Cronmanager\Agent\Notification\MailNotifier;
 use Cronmanager\Agent\Notification\TelegramNotifier;
 use Monolog\Logger;
-use Noodlehaus\Config;
+use Noodlehaus\ConfigInterface;
 
 /**
  * Class NotificationTestEndpoint
@@ -61,13 +61,13 @@ final class NotificationTestEndpoint
      * @param MailNotifier     $mailNotifier     Mail notification service.
      * @param TelegramNotifier $telegramNotifier Telegram notification service.
      * @param Logger           $logger           Monolog logger instance.
-     * @param Config           $config           Agent configuration.
+     * @param ConfigInterface  $config           Agent configuration (file-based or DB-backed).
      */
     public function __construct(
         private readonly MailNotifier     $mailNotifier,
         private readonly TelegramNotifier $telegramNotifier,
         private readonly Logger           $logger,
-        private readonly Config           $config,
+        private readonly ConfigInterface  $config,
     ) {}
 
     // -------------------------------------------------------------------------

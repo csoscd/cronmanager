@@ -1,0 +1,36 @@
+services:
+
+  # ---------------------------------------------------------------------------
+  # Isolated MariaDB for integration tests (port 13306 to avoid conflicts)
+  # ---------------------------------------------------------------------------
+  cronmanager-test-db:
+    image: mariadb:lts
+    environment:
+      MYSQL_ROOT_PASSWORD: root_test
+      MYSQL_DATABASE: cronmanager_test
+      MYSQL_USER: cronmanager_test
+      MYSQL_PASSWORD: cronmanager_test
+    ports:
+      - "127.0.0.1:13306:3306"
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "root", "-proot_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    tmpfs:
+      - /var/lib/mysql   # in-memory for speed; data is ephemeral by design
+
+  # ---------------------------------------------------------------------------
+  # SMTP stub for mail notification tests (optional)
+  # UI: http://localhost:8025
+  # ---------------------------------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:8025:8025"   # web UI
+      - "127.0.0.1:1025:1025"   # SMTP
+
+networks:
+  default:
+    name: cronmanager-test

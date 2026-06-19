@@ -32,9 +32,56 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  php-tests:
+    name: Unit + integration tests (PHP 8.4)
+    runs-on: ubuntu-latest
+
+    services:
+      mariadb:
+        image: mariadb:lts
+        env:
+          MYSQL_ROOT_PASSWORD: root_test
+          MYSQL_DATABASE: cronmanager_test
+          MYSQL_USER: cronmanager_test
+          MYSQL_PASSWORD: cronmanager_test
+        ports:
+          - 13306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -u root -proot_test --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+          --health-start-period=20s
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, mbstring, pdo, pdo_mysql
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run unit + integration tests
+        run: ./vendor/bin/phpunit --testsuite unit,integration
+
   build-and-push:
     name: Build ${{ matrix.image }} image
     runs-on: ubuntu-latest
+    needs: [php-tests]
 
     strategy:
       fail-fast: false
@@ -54,15 +101,18 @@ jobs:
       # workflow_dispatch with a manual tag override bypasses this check.
       - name: Validate release tag
         if: github.event_name == 'release'
+        env:
+          # Use env variable instead of direct ${{ }} interpolation in run: to
+          # prevent shell injection via a crafted tag name (Semgrep run-shell-injection).
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          TAG="${{ github.ref_name }}"
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9._-]+)?$ ]]; then
-            echo "::error::Release tag '${TAG}' is not a valid semver tag."
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9._-]+)?$ ]]; then
+            echo "::error::Release tag '${RELEASE_TAG}' is not a valid semver tag."
             echo "::error::Expected format: vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-suffix  (e.g. v2.4.0 or v2.4.0-dev)"
             echo "::error::Delete this release, fix the tag, and publish again."
             exit 1
           fi
-          echo "Tag '${TAG}' is valid – proceeding with build."
+          echo "Tag '${RELEASE_TAG}' is valid – proceeding with build."
 
       # ── Checkout ────────────────────────────────────────────────────────────
       - name: Check out repository

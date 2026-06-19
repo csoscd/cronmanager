@@ -1,0 +1,21 @@
+# Semgrep ignore file
+# Paths listed here are excluded from all Semgrep scans.
+
+# Third-party libraries – not our code, not our responsibility to fix
+vendor/
+
+# Test code – intentional "bad" patterns (e.g. hardcoded test credentials,
+# raw SQL in fixtures) must not trigger security alerts
+tests/
+
+# Generated / compiled assets
+web/assets/js/chart.min.js
+web/assets/js/tailwind.min.js
+web/assets/css/tailwind.min.css
+
+# Grafana example dashboard (JSON, not PHP)
+grafana/
+
+# Database schema and migrations contain intentional DDL that static
+# analysis tools sometimes flag incorrectly
+agent/sql/

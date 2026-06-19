@@ -70,7 +70,7 @@ services:
   # Web UI (PHP-FPM + Nginx)
   # ---------------------------------------------------------------------------
   cronmanager-web:
-    image: cs1711/cs_php-nginx-fpm:latest-alpine
+    image: cs1711/cs_php-nginx-fpm:latest-debian
     container_name: cronmanager-web
     restart: unless-stopped
     # No extra_hosts needed – agent is reachable via Docker service name

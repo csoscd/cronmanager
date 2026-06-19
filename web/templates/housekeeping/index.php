@@ -6,6 +6,7 @@ declare(strict_types=1);
  * Cronmanager – Maintenance page template
  *
  * Variables injected by MaintenanceController::index():
+ *   array              $agents              All configured agent rows
  *   int                $hours               Stuck-execution threshold
  *   array              $stuckExecutions     List of stuck execution rows
  *   string|null        $stuckError          Error message if agent unreachable
@@ -35,6 +36,25 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
     </h1>
 
     <!-- ── Flash banners ──────────────────────────────────────────────────── -->
+
+    <?php if (\Cronmanager\Web\Session\SessionManager::get('_flash_agent_saved')): ?>
+        <?php \Cronmanager\Web\Session\SessionManager::remove('_flash_agent_saved'); ?>
+        <div class="rounded-lg px-4 py-3 text-sm font-medium"
+             style="background:rgba(34,197,94,.12);color:#16a34a;border:1px solid rgba(34,197,94,.25)">
+            <?= htmlspecialchars($t('agent_saved'), ENT_QUOTES, 'UTF-8') ?>
+        </div>
+    <?php endif; ?>
+
+    <?php
+    $agentErrorKey = \Cronmanager\Web\Session\SessionManager::get('_flash_agent_error');
+    if ($agentErrorKey !== null):
+        \Cronmanager\Web\Session\SessionManager::remove('_flash_agent_error');
+    ?>
+        <div class="rounded-lg px-4 py-3 text-sm font-medium"
+             style="background:rgba(239,68,68,.1);color:#dc2626;border:1px solid rgba(239,68,68,.2)">
+            <?= htmlspecialchars($t((string) $agentErrorKey), ENT_QUOTES, 'UTF-8') ?>
+        </div>
+    <?php endif; ?>
 
     <?php if ($flashSyncOk !== null): ?>
         <div class="rounded-lg px-4 py-3 text-sm font-medium"
@@ -116,7 +136,126 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
 
     <!-- ══════════════════════════════════════════════════════════════════════
-         1. CRONTAB SYNC
+         1. AGENTS
+         ══════════════════════════════════════════════════════════════════════ -->
+    <section class="cm-card rounded-xl p-6 space-y-4">
+
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <h2 class="text-lg font-semibold" style="color:var(--cm-text)">
+                    <?= htmlspecialchars($t('agents_title'), ENT_QUOTES, 'UTF-8') ?>
+                </h2>
+                <p class="mt-1 text-sm" style="color:var(--cm-text-muted)">
+                    <?= htmlspecialchars($t('agents_desc'), ENT_QUOTES, 'UTF-8') ?>
+                </p>
+            </div>
+            <a href="/settings/agents/create"
+               class="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition"
+               style="background:rgba(59,130,246,.1);color:var(--cm-primary);border:1px solid rgba(59,130,246,.2)">
+                + <?= htmlspecialchars($t('agent_add'), ENT_QUOTES, 'UTF-8') ?>
+            </a>
+        </div>
+
+        <?php if (empty($agents)): ?>
+            <p class="text-sm" style="color:var(--cm-text-muted)">
+                <?= htmlspecialchars($t('agents_none'), ENT_QUOTES, 'UTF-8') ?>
+            </p>
+        <?php else: ?>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="cm-table-head">
+                            <th class="px-3 py-2 text-left font-semibold">
+                                <?= htmlspecialchars($t('agent_name'), ENT_QUOTES, 'UTF-8') ?>
+                            </th>
+                            <th class="px-3 py-2 text-left font-semibold">
+                                <?= htmlspecialchars($t('agent_url'), ENT_QUOTES, 'UTF-8') ?>
+                            </th>
+                            <th class="px-3 py-2 text-left font-semibold">
+                                <?= htmlspecialchars($t('agent_status'), ENT_QUOTES, 'UTF-8') ?>
+                            </th>
+                            <th class="px-3 py-2 text-right font-semibold">
+                                <?= htmlspecialchars($t('actions'), ENT_QUOTES, 'UTF-8') ?>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($agents as $a): ?>
+                        <?php
+                            $aId      = (int) $a['id'];
+                            $aName    = htmlspecialchars((string) $a['name'], ENT_QUOTES, 'UTF-8');
+                            $aUrl     = htmlspecialchars((string) $a['url'],  ENT_QUOTES, 'UTF-8');
+                            $aEnabled = (bool) $a['enabled'];
+                        ?>
+                        <tr class="cm-table-row">
+                            <td class="px-3 py-2 font-medium" style="color:var(--cm-text)">
+                                <?= $aName ?>
+                                <?php if (!$aEnabled): ?>
+                                    <span class="ml-1 text-xs px-1.5 py-0.5 rounded"
+                                          style="background:rgba(107,114,128,.12);color:var(--cm-text-muted)">
+                                        <?= htmlspecialchars($t('agent_disabled'), ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="px-3 py-2 font-mono text-xs" style="color:var(--cm-text-muted)">
+                                <?= $aUrl ?>
+                            </td>
+                            <td class="px-3 py-2">
+                                <span class="agent-status-badge text-xs px-2 py-0.5 rounded-full font-medium"
+                                      data-agent-id="<?= $aId ?>"
+                                      style="background:rgba(107,114,128,.12);color:var(--cm-text-muted)">
+                                    …
+                                </span>
+                            </td>
+                            <td class="px-3 py-2 text-right">
+                                <div class="inline-flex gap-2">
+                                    <a href="/settings/agents/<?= $aId ?>/edit"
+                                       class="text-xs px-3 py-1 rounded font-medium transition cm-btn-secondary">
+                                        <?= htmlspecialchars($t('cron_edit'), ENT_QUOTES, 'UTF-8') ?>
+                                    </a>
+                                    <form method="POST" action="/settings/agents/<?= $aId ?>/delete"
+                                          onsubmit="return confirm(<?= htmlspecialchars(json_encode($t('agent_delete_confirm')), ENT_QUOTES, 'UTF-8') ?>)">
+                                        <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
+                                        <button type="submit"
+                                                class="text-xs px-3 py-1 rounded font-medium transition"
+                                                style="background:rgba(239,68,68,.08);color:#dc2626;border:1px solid rgba(239,68,68,.2)">
+                                            <?= htmlspecialchars($t('cron_delete'), ENT_QUOTES, 'UTF-8') ?>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         AGENT NOTIFICATION SETTINGS
+         ══════════════════════════════════════════════════════════════════════ -->
+    <section class="cm-card rounded-xl p-6">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <h2 class="text-lg font-semibold" style="color:var(--cm-text)">
+                    <?= htmlspecialchars($t('agent_settings_title'), ENT_QUOTES, 'UTF-8') ?>
+                </h2>
+                <p class="mt-1 text-sm" style="color:var(--cm-text-muted)">
+                    <?= htmlspecialchars($t('agent_settings_desc'), ENT_QUOTES, 'UTF-8') ?>
+                </p>
+            </div>
+            <a href="/settings/agent-config"
+               class="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition"
+               style="background:rgba(59,130,246,.1);color:var(--cm-primary);border:1px solid rgba(59,130,246,.2)">
+                <?= htmlspecialchars($t('agent_settings_link'), ENT_QUOTES, 'UTF-8') ?>
+            </a>
+        </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         2. CRONTAB SYNC
          ══════════════════════════════════════════════════════════════════════ -->
     <section class="cm-card rounded-xl p-6 space-y-4">
 
@@ -129,7 +268,7 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
                     <?= htmlspecialchars($t('maintenance_resync_desc'), ENT_QUOTES, 'UTF-8') ?>
                 </p>
             </div>
-            <form method="POST" action="/housekeeping/resync"
+            <form method="POST" action="/settings/resync"
                   onsubmit="return confirm(<?= htmlspecialchars(json_encode($t('maintenance_resync_confirm')), ENT_QUOTES, 'UTF-8') ?>)">
                 <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
                 <button type="submit"
@@ -158,7 +297,7 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
             </div>
 
             <!-- Hours filter -->
-            <form method="GET" action="/housekeeping" class="flex items-center gap-2">
+            <form method="GET" action="/settings" class="flex items-center gap-2">
                 <label class="text-sm whitespace-nowrap" style="color:var(--cm-text-muted)">
                     <?= htmlspecialchars($t('maintenance_stuck_hours'), ENT_QUOTES, 'UTF-8') ?>
                 </label>
@@ -188,7 +327,7 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
         <?php else: ?>
 
             <!-- Bulk action form wraps the entire table -->
-            <form id="stuck-bulk-form" method="POST" action="/housekeeping/executions/bulk">
+            <form id="stuck-bulk-form" method="POST" action="/settings/executions/bulk">
                 <input type="hidden" name="_csrf"  value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
                 <input type="hidden" name="hours"  value="<?= htmlspecialchars((string) $hours, ENT_QUOTES, 'UTF-8') ?>">
 
@@ -309,7 +448,7 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
             </p>
         </div>
 
-        <form method="POST" action="/housekeeping/history/cleanup"
+        <form method="POST" action="/settings/history/cleanup"
               id="cleanup-form"
               onsubmit="return confirmCleanup(this)">
             <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
@@ -397,7 +536,7 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
             </p>
         </div>
 
-        <form method="POST" action="/housekeeping/logs/prune"
+        <form method="POST" action="/settings/logs/prune"
               onsubmit="return confirm(<?= htmlspecialchars(json_encode($t('maintenance_prune_confirm')), ENT_QUOTES, 'UTF-8') ?>)">
             <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
             <button type="submit"
@@ -423,7 +562,7 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
             </p>
         </div>
 
-        <form method="post" action="/housekeeping/once/cleanup"
+        <form method="post" action="/settings/once/cleanup"
               id="once-cleanup-form"
               onsubmit="return confirmOnceCleanup()">
             <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
@@ -522,6 +661,36 @@ function confirmOnceCleanup() {
     return confirm(<?= json_encode($t('maintenance_once_confirm')) ?>);
 }
 
+// ── Agent status badges (async health pings) ──────────────────────────────────
+
+(function () {
+    const csrf = <?= json_encode($csrf_token) ?>;
+
+    document.querySelectorAll('.agent-status-badge').forEach(function (badge) {
+        const agentId = badge.dataset.agentId;
+        if (!agentId) return;
+
+        fetch('/settings/agents/' + agentId + '/test', {
+            method:      'POST',
+            credentials: 'same-origin',
+            headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body:        '_csrf=' + encodeURIComponent(csrf),
+        })
+        .then(function (res) { return res.json(); })
+        .catch(function () { return null; })
+        .then(function (data) {
+            if (!data || !data.success) {
+                badge.textContent    = <?= json_encode($t('agent_status_offline')) ?>;
+                badge.style.cssText  = 'background:rgba(239,68,68,.08);color:#dc2626;border:1px solid rgba(239,68,68,.2)';
+            } else {
+                const ver = data.version ? ' v' + data.version : '';
+                badge.textContent    = <?= json_encode($t('agent_status_online')) ?> + ver;
+                badge.style.cssText  = 'background:rgba(34,197,94,.12);color:#16a34a;border:1px solid rgba(34,197,94,.25)';
+            }
+        });
+    });
+}());
+
 // ── Notification test (AJAX) ───────────────────────────────────────────────────
 
 (function () {
@@ -559,7 +728,7 @@ function confirmOnceCleanup() {
             const resultEl = document.getElementById('notify-result-' + channel);
             if (resultEl) resultEl.classList.add('hidden');
 
-            fetch('/housekeeping/notification/test', {
+            fetch('/settings/notification/test', {
                 method:      'POST',
                 credentials: 'same-origin',
                 headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },

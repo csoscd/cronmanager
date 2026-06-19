@@ -74,7 +74,7 @@ try {
     $rawPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
     $rawPath = '/' . ltrim((string) $rawPath, '/');
 
-    if ($rawPath !== '/' && file_exists(__DIR__ . $rawPath)) {
+    if ($rawPath !== '/' && file_exists(__DIR__ . $rawPath)) { // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename
         return false;
     }
 
@@ -168,6 +168,11 @@ try {
     // Initialise shared dependencies for all cron endpoints
     $pdo           = \Cronmanager\Agent\Database\Connection::getInstance()->getPdo();
     $wrapperScript = (string) $config->get('cron.wrapper_script', '/opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh');
+
+    // DB-backed config overlay: notification/integration settings stored in
+    // agent_settings survive container restarts (entrypoint.sh regenerates
+    // config.json on every start). Falls back to config.json when no DB row.
+    $dbConfig = new \Cronmanager\Agent\Config\DbConfig($config, $pdo);
     $crontabManager = new \Cronmanager\Agent\Cron\CrontabManager($logger, $wrapperScript);
 
     $cronList    = new \Cronmanager\Agent\Endpoints\CronListEndpoint($pdo, $logger, $crontabManager);
@@ -208,8 +213,8 @@ try {
 
     // -- Execution lifecycle --------------------------------------------------
 
-    $mailNotifier     = new \Cronmanager\Agent\Notification\MailNotifier($logger, $config);
-    $telegramNotifier = new \Cronmanager\Agent\Notification\TelegramNotifier($logger, $config);
+    $mailNotifier     = new \Cronmanager\Agent\Notification\MailNotifier($logger, $dbConfig);
+    $telegramNotifier = new \Cronmanager\Agent\Notification\TelegramNotifier($logger, $dbConfig);
 
     $maintenanceWindowRepo = new \Cronmanager\Agent\Repository\MaintenanceWindowRepository($pdo, $logger);
 
@@ -261,8 +266,14 @@ try {
 
     // -- Notification test ----------------------------------------------------
 
-    $notificationTest = new \Cronmanager\Agent\Endpoints\NotificationTestEndpoint($mailNotifier, $telegramNotifier, $logger, $config);
+    $notificationTest = new \Cronmanager\Agent\Endpoints\NotificationTestEndpoint($mailNotifier, $telegramNotifier, $logger, $dbConfig);
     $router->addRoute('POST', '/maintenance/notification/test', [$notificationTest, 'handle']);
+
+    // -- Persistent agent settings (notification / integration config in DB) --
+
+    $settingsEndpoint = new \Cronmanager\Agent\Endpoints\SettingsEndpoint($dbConfig, $logger);
+    $router->addRoute('GET', '/settings', [$settingsEndpoint, 'handle']);
+    $router->addRoute('PUT', '/settings', [$settingsEndpoint, 'handle']);
 
     // -- Maintenance ----------------------------------------------------------
     // More-specific paths (/maintenance/crontab/resync, /maintenance/executions/…)

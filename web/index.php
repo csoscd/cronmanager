@@ -29,6 +29,8 @@ spl_autoload_register(function (string $class): void {
 
 use Cronmanager\Web\Auth\OidcAuthProvider;
 use Cronmanager\Web\Bootstrap;
+use Cronmanager\Web\Bootstrap\AgentSchema;
+use Cronmanager\Web\Controller\AgentController;
 use Cronmanager\Web\Controller\AuthController;
 use Cronmanager\Web\Controller\CronController;
 use Cronmanager\Web\Controller\DashboardController;
@@ -38,6 +40,7 @@ use Cronmanager\Web\Controller\SwimlaneController;
 use Cronmanager\Web\Controller\TimelineController;
 use Cronmanager\Web\Controller\MaintenanceController;
 use Cronmanager\Web\Controller\TargetController;
+use Cronmanager\Web\Controller\TransferController;
 use Cronmanager\Web\Controller\UserController;
 use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Request;
@@ -91,6 +94,15 @@ try {
     // Session
     // -------------------------------------------------------------------------
     SessionManager::start($config);
+
+    // -------------------------------------------------------------------------
+    // Agent schema bootstrap – ensure agents table exists and seed from config
+    // -------------------------------------------------------------------------
+    try {
+        AgentSchema::ensure(Connection::getInstance()->getPdo(), $config, $logger);
+    } catch (\Throwable $e) {
+        $logger->error('AgentSchema::ensure failed', ['message' => $e->getMessage()]);
+    }
 
     // -------------------------------------------------------------------------
     // Request
@@ -176,12 +188,18 @@ try {
     $userCtrl         = new UserController($config, $logger);
     $maintenanceCtrl  = new MaintenanceController($config, $logger);
     $targetCtrl       = new TargetController($config, $logger);
+    $agentCtrl        = new AgentController($config, $logger);
+    $transferCtrl     = new TransferController($config, $logger);
 
     $router->addProtectedRoute('GET',  '/',                    fn(array $p) => (new Response())->redirect('/dashboard'));
     $router->addProtectedRoute('GET',  '/dashboard',           [$dashboardCtrl, 'index']);
 
     $router->addProtectedRoute('GET',  '/crons',               [$cronCtrl, 'index']);
     $router->addProtectedRoute('POST', '/crons/bulk',          [$cronCtrl, 'bulkAction'],  'admin');
+    // Transfer routes must come before /crons/{id} to avoid matching 'transfer' as an ID
+    $router->addProtectedRoute('GET',  '/crons/transfer',          [$transferCtrl, 'prepare'],  'admin');
+    $router->addProtectedRoute('POST', '/crons/transfer/validate', [$transferCtrl, 'validate'], 'admin');
+    $router->addProtectedRoute('POST', '/crons/transfer',          [$transferCtrl, 'execute'],  'admin');
     $router->addProtectedRoute('GET',  '/crons/import',        [$cronCtrl, 'importList'],  'admin');
     $router->addProtectedRoute('POST', '/crons/import',        [$cronCtrl, 'importStore'], 'admin');
     $router->addProtectedRoute('GET',  '/crons/new',           [$cronCtrl, 'create'],  'admin');
@@ -221,16 +239,34 @@ try {
     $router->addProtectedRoute('POST', '/maintenance/ssh/test',                      [$targetCtrl, 'testSsh'],      'admin');
     $router->addProtectedRoute('GET',  '/maintenance',                               [$targetCtrl, 'index'],        'admin');
 
-    // Housekeeping (formerly "Maintenance") – admin only; more-specific paths first
-    $router->addProtectedRoute('GET',  '/housekeeping',                              [$maintenanceCtrl, 'index'],           'admin');
-    $router->addProtectedRoute('POST', '/housekeeping/resync',                       [$maintenanceCtrl, 'resyncCrontab'],   'admin');
-    $router->addProtectedRoute('POST', '/housekeeping/executions/bulk',              [$maintenanceCtrl, 'bulkAction'],      'admin');
-    $router->addProtectedRoute('POST', '/housekeeping/executions/{id}/finish',       [$maintenanceCtrl, 'resolveExecution'],'admin');
-    $router->addProtectedRoute('POST', '/housekeeping/executions/{id}/delete',       [$maintenanceCtrl, 'deleteExecution'], 'admin');
-    $router->addProtectedRoute('POST', '/housekeeping/history/cleanup',              [$maintenanceCtrl, 'cleanHistory'],    'admin');
-    $router->addProtectedRoute('POST', '/housekeeping/once/cleanup',                 [$maintenanceCtrl, 'onceCleanup'],     'admin');
-    $router->addProtectedRoute('POST', '/housekeeping/logs/prune',                   [$maintenanceCtrl, 'pruneLogs'],       'admin');
-    $router->addProtectedRoute('POST', '/housekeeping/notification/test',            [$maintenanceCtrl, 'testNotification'],'admin');
+    // Settings (formerly "Housekeeping") – admin only; more-specific paths first.
+    // Agent-config routes must be registered before /settings/agents/* so that
+    // "agent-config" is not accidentally matched as an agent ID.
+    $router->addProtectedRoute('GET',  '/settings/agent-config',                     [$maintenanceCtrl, 'agentSettings'],     'admin');
+    $router->addProtectedRoute('POST', '/settings/agent-config',                     [$maintenanceCtrl, 'saveAgentSettings'], 'admin');
+    $router->addProtectedRoute('POST', '/settings/agent-config/copy',                [$maintenanceCtrl, 'copyAgentSettings'], 'admin');
+    // Agent CRUD routes must be registered before the generic /settings/{id} patterns.
+    $router->addProtectedRoute('GET',  '/settings/agents/create',                    [$agentCtrl, 'create'],               'admin');
+    $router->addProtectedRoute('POST', '/settings/agents',                           [$agentCtrl, 'store'],                'admin');
+    $router->addProtectedRoute('GET',  '/settings/agents/{id}/edit',                 [$agentCtrl, 'edit'],                 'admin');
+    $router->addProtectedRoute('POST', '/settings/agents/{id}',                      [$agentCtrl, 'update'],               'admin');
+    $router->addProtectedRoute('POST', '/settings/agents/{id}/delete',               [$agentCtrl, 'destroy'],              'admin');
+    $router->addProtectedRoute('POST', '/settings/agents/{id}/test',                 [$agentCtrl, 'test'],                 'admin');
+    $router->addProtectedRoute('GET',  '/settings',                                  [$maintenanceCtrl, 'index'],          'admin');
+    $router->addProtectedRoute('POST', '/settings/resync',                           [$maintenanceCtrl, 'resyncCrontab'],  'admin');
+    $router->addProtectedRoute('POST', '/settings/executions/bulk',                  [$maintenanceCtrl, 'bulkAction'],     'admin');
+    $router->addProtectedRoute('POST', '/settings/executions/{id}/finish',           [$maintenanceCtrl, 'resolveExecution'],'admin');
+    $router->addProtectedRoute('POST', '/settings/executions/{id}/delete',           [$maintenanceCtrl, 'deleteExecution'],'admin');
+    $router->addProtectedRoute('POST', '/settings/history/cleanup',                  [$maintenanceCtrl, 'cleanHistory'],   'admin');
+    $router->addProtectedRoute('POST', '/settings/once/cleanup',                     [$maintenanceCtrl, 'onceCleanup'],    'admin');
+    $router->addProtectedRoute('POST', '/settings/logs/prune',                       [$maintenanceCtrl, 'pruneLogs'],      'admin');
+    $router->addProtectedRoute('POST', '/settings/notification/test',                [$maintenanceCtrl, 'testNotification'],'admin');
+
+    // Agent switcher – available to all authenticated users
+    $router->addProtectedRoute('POST', '/agent/select',                              [$agentCtrl, 'select'],              'view');
+
+    // 301 redirect: legacy /housekeeping bookmark → /settings
+    $router->addPublicRoute('GET',  '/housekeeping',  fn() => (new Response())->redirect('/settings', 301));
 
     // -------------------------------------------------------------------------
     // Dispatch

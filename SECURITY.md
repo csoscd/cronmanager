@@ -74,7 +74,7 @@ The analysis covers:
 | A03 | Injection (SQL, OS) | **Mitigated** |
 | A04 | Insecure Design | Low risk – design reviewed |
 | A05 | Security Misconfiguration | **Mitigated** |
-| A06 | Vulnerable and Outdated Components | Ongoing – monitor |
+| A06 | Vulnerable and Outdated Components | **Automated (CI)** – `composer audit` |
 | A07 | Identification and Authentication Failures | **Mitigated** |
 | A08 | Software and Data Integrity Failures | Low risk |
 | A09 | Security Logging and Monitoring Failures | **Mitigated** |
@@ -290,7 +290,7 @@ is a deployment configuration requirement, not enforced by the application code.
 
 ### A06 – Vulnerable and Outdated Components
 
-**Status**: Ongoing operational concern.
+**Status**: Automated – `composer audit --no-dev` runs in CI on every push.
 
 The application uses the following third-party libraries (via shared `/opt/phplib/vendor/`):
 
@@ -301,10 +301,14 @@ The application uses the following third-party libraries (via shared `/opt/phpli
 | `guzzlehttp/guzzle` | `^7.8` | HTTP client (HostAgentClient) |
 | `phpmailer/phpmailer` | `^6.8` | Email notifications |
 
+**Automated control**: `composer audit --no-dev` is executed on every push and pull
+request via the `dependency-audit` job in `.github/workflows/security.yml`. The job
+fails (blocking CI) if any production dependency has a known CVE or PHP Security
+Advisory. Dev-only dependencies (PHPUnit, Mockery, etc.) are excluded.
+
 **Recommendations**:
-1. Run `composer audit` regularly to check for known vulnerabilities in dependencies.
-2. Pin minor versions in `composer.json` and update deliberately with testing.
-3. Subscribe to security advisories for the listed packages.
+1. Pin minor versions in `composer.json` and update deliberately with testing.
+2. Subscribe to security advisories for the listed packages.
 
 ---
 
@@ -386,6 +390,53 @@ in development, should be `WARNING` or higher in production).
 
 ---
 
+## Automated Security Checks in CI
+
+Since v4.0.0 a dedicated GitHub Actions workflow (`.github/workflows/security.yml`)
+runs on every push and pull request with two parallel jobs:
+
+### `dependency-audit` – Composer Vulnerability Audit
+
+```
+composer audit --no-dev
+```
+
+Checks all production Composer dependencies against the
+[PHP Security Advisories database](https://github.com/FriendsOfPHP/security-advisories).
+Fails when any installed package version has a known CVE. Dev dependencies are excluded.
+
+**OWASP coverage:** A06 – Vulnerable and Outdated Components
+
+### `semgrep` – Static Application Security Testing
+
+```
+semgrep scan --config p/php --config p/owasp-top-ten --error .
+```
+
+Semgrep OSS with two rule sets from the public Semgrep Registry:
+
+| Rule set | Focus |
+|---|---|
+| `p/php` | PHP-specific: injection, XSS, path traversal, open redirect, dangerous functions |
+| `p/owasp-top-ten` | OWASP Top 10 (2021) mapped rules across PHP and other languages |
+
+**OWASP coverage:** A01 (access control, path traversal), A02 (weak crypto, hardcoded
+secrets), A03 (SQL/command/XSS injection), A07 (auth failures), A10 (SSRF)
+
+The job fails on any finding (`--error`). Excluded paths are listed in `.semgrepignore`
+(`vendor/`, `tests/`, compiled frontend assets, SQL migrations).
+
+**Suppressing a false positive per line:**
+```php
+exec($bgCmd . ' &'); // nosemgrep: php.lang.security.exec-use.exec-use
+```
+
+**Optional:** set the `SEMGREP_APP_TOKEN` repository secret (free semgrep.dev account)
+to enable full Registry access and upload findings to the Semgrep dashboard for trend
+tracking over time.
+
+---
+
 ## Additional Controls Implemented
 
 The following controls were added that do not map directly to a single OWASP category but
@@ -457,16 +508,16 @@ Use this checklist when deploying a new instance or reviewing after changes.
 - [ ] Test login rate limiting: 6 consecutive failed logins should lock the IP
 - [ ] Test CSRF: submitting a form without `_csrf` field returns 403
 - [ ] Test role enforcement: viewer account cannot access `/users`, `/crons/new`, etc.
-- [ ] Run `composer audit` to check for known CVEs in dependencies
+- [ ] Confirm GitHub Actions `security` workflow passes (dependency-audit + semgrep green)
 
 ### Periodic
 
 - [ ] Review log files for unusual patterns (mass failed logins, CSRF failures, 403s)
-- [ ] Update Composer dependencies and re-run `composer audit`
+- [ ] Update Composer dependencies and re-run `composer audit` (also enforced by CI)
 - [ ] Rotate HMAC secret (update both agent config and web config; restart agent service)
 - [ ] Review user accounts and remove stale accounts
 
 ---
 
-*Analysis performed: 2026-03-18; last updated: 2026-04-19 (v2.8.4)*
+*Analysis performed: 2026-03-18; last updated: 2026-06-19 (v4.0.0 – added automated CI security checks)*
 *Analyst: Christian Schulz <technik@meinetechnikwelt.rocks>*

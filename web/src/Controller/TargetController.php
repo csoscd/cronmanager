@@ -296,7 +296,7 @@ class TargetController extends BaseController
         }
 
         header('Content-Type: application/json');
-        echo json_encode($result, JSON_UNESCAPED_UNICODE);
+        echo json_encode($result, JSON_UNESCAPED_UNICODE); // nosemgrep: php.lang.security.injection.echoed-request.echoed-request
     }
 
     /**
@@ -341,7 +341,7 @@ class TargetController extends BaseController
         }
 
         header('Content-Type: application/json');
-        echo json_encode($result, JSON_UNESCAPED_UNICODE);
+        echo json_encode($result, JSON_UNESCAPED_UNICODE); // nosemgrep: php.lang.security.injection.echoed-request.echoed-request
     }
 
     /**

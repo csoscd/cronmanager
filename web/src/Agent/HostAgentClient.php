@@ -9,12 +9,9 @@ declare(strict_types=1);
  * agent process.  Every request is signed with an HMAC-SHA256 signature so
  * the agent can verify that the call originated from a trusted source.
  *
- * Config keys used:
- *   agent.url            – Base URL of the host agent (e.g. https://host.docker.internal:8865)
- *   agent.hmac_secret    – Shared secret for HMAC-SHA256 request signing
- *   agent.timeout        – Request timeout in seconds (default: 10)
- *   agent.ssl_verify     – Verify TLS certificate (default: true; set false for self-signed certs)
- *   agent.ssl_ca_bundle  – Path to custom CA bundle PEM (optional; used when ssl_verify is true)
+ * Connection parameters (url, hmacSecret, timeout, sslVerify, sslCaBundle) are
+ * supplied directly via the constructor so that the caller can switch between
+ * multiple agents at runtime without re-reading config files.
  *
  * Signature algorithm:
  *   X-Agent-Signature: hmac_sha256(secret, UPPER(method) + path + rawBody)
@@ -28,7 +25,6 @@ namespace Cronmanager\Web\Agent;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use Monolog\Logger;
-use Noodlehaus\Config;
 
 /**
  * Class HostAgentClient
@@ -52,12 +48,20 @@ class HostAgentClient
     // -------------------------------------------------------------------------
 
     /**
-     * @param Config $config Noodlehaus configuration instance.
-     * @param Logger $logger Monolog logger.
+     * @param Logger $logger      Monolog logger.
+     * @param string $agentUrl    Base URL of the agent (e.g. https://host.docker.internal:8865).
+     * @param string $hmacSecret  Shared secret for HMAC-SHA256 request signing.
+     * @param int    $timeout     Request timeout in seconds (default: 10).
+     * @param bool   $sslVerify   Verify TLS certificate (default: true).
+     * @param string $sslCaBundle Path to a custom CA bundle PEM (optional).
      */
     public function __construct(
-        private readonly Config $config,
         private readonly Logger $logger,
+        private readonly string $agentUrl,
+        private readonly string $hmacSecret,
+        private readonly int    $timeout     = 10,
+        private readonly bool   $sslVerify   = true,
+        private readonly string $sslCaBundle = '',
     ) {}
 
     // -------------------------------------------------------------------------
@@ -314,39 +318,29 @@ class HostAgentClient
 
     /**
      * Return a lazily-created Guzzle HTTP client configured with the agent base URL,
-     * request timeout, and TLS verification settings from configuration.
+     * request timeout, and TLS verification settings.
      *
-     * Config keys:
-     *   agent.ssl_verify    – true to verify the server certificate, false to skip
-     *                         (use false for self-signed certs; default: true)
-     *   agent.ssl_ca_bundle – path to a CA bundle PEM file; used when ssl_verify is
-     *                         true and the server uses a certificate from a custom CA
+     * The 'verify' Guzzle option resolves as follows:
+     *   false          → disable certificate verification (self-signed certs)
+     *   '/path/ca.pem' → verify against a custom CA bundle
+     *   true           → use the system CA bundle
      *
      * @return Client
      */
     private function client(): Client
     {
         if ($this->guzzle === null) {
-            $baseUrl   = (string) $this->config->get('agent.url', 'http://host.docker.internal:8865');
-            $timeout   = (int)    $this->config->get('agent.timeout', 10);
-            $sslVerify = (bool)   $this->config->get('agent.ssl_verify', true);
-            $caBundle  = (string) $this->config->get('agent.ssl_ca_bundle', '');
-
-            // Resolve the 'verify' option for Guzzle:
-            //   false          → disable certificate verification (self-signed)
-            //   '/path/ca.pem' → verify against a custom CA bundle
-            //   true           → use the system CA bundle
-            if (!$sslVerify) {
+            if (!$this->sslVerify) {
                 $verify = false;
-            } elseif ($caBundle !== '') {
-                $verify = $caBundle;
+            } elseif ($this->sslCaBundle !== '') {
+                $verify = $this->sslCaBundle;
             } else {
                 $verify = true;
             }
 
             $this->guzzle = new Client([
-                'base_uri'    => rtrim($baseUrl, '/'),
-                'timeout'     => $timeout,
+                'base_uri'    => rtrim($this->agentUrl, '/'),
+                'timeout'     => $this->timeout,
                 'verify'      => $verify,
                 'http_errors' => false,  // We handle error codes ourselves
             ]);
@@ -368,10 +362,9 @@ class HostAgentClient
      */
     private function sign(string $method, string $path, string $rawBody): string
     {
-        $secret  = (string) $this->config->get('agent.hmac_secret', '');
         $message = strtoupper($method) . $path . $rawBody;
 
-        return hash_hmac('sha256', $message, $secret);
+        return hash_hmac('sha256', $message, $this->hmacSecret);
     }
 
     /**

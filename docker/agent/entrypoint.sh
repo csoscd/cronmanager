@@ -51,6 +51,13 @@
 #   INFLUXDB_ORG        ""
 #   INFLUXDB_BUCKET     cronmanager
 #   INFLUXDB_TIMEOUT    10
+#   AGENT_SETTINGS_KEY  ""  (optional) When set, sensitive fields stored in the
+#                           agent_settings DB table (mail.password, telegram.bot_token,
+#                           influxdb.token) are encrypted with AES-256-CBC at rest.
+#                           Use at least 32 random characters: openssl rand -hex 32
+#                           If unset, values are stored as plaintext (same as before).
+#                           Removing the key after setting it makes stored credentials
+#                           unreadable — re-save all settings via the web UI afterwards.
 #
 # @author  Christian Schulz <technik@meinetechnikwelt.rocks>
 # @license GNU General Public License version 3 or later
@@ -311,15 +318,15 @@ for mig in $(ls -1v "${MIGRATIONS_DIR}"/*.sql 2>/dev/null); do
             \$pdo = new PDO(
                 'mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME'),
                 getenv('DB_USER'),
-                getenv('DB_PASSWORD')
+                getenv('DB_PASSWORD'),
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
             );
             \$pdo->exec(\$sql);
             \$stmt = \$pdo->prepare('INSERT IGNORE INTO schema_migrations (filename) VALUES (?)');
             \$stmt->execute([getenv('MIGRATION_NAME')]);
             echo 'ok';
         } catch (Exception \$e) {
-            fwrite(STDERR, 'Migration failed: ' . \$e->getMessage() . PHP_EOL);
-            echo 'fail';
+            echo 'fail: ' . \$e->getMessage();
         }
     " 2>/dev/null)
 
@@ -327,7 +334,8 @@ for mig in $(ls -1v "${MIGRATIONS_DIR}"/*.sql 2>/dev/null); do
         log_info "  applied: ${fname}"
         MIGRATIONS_APPLIED=$((MIGRATIONS_APPLIED + 1))
     else
-        log_warn "  FAILED: ${fname} – check logs and apply manually if needed"
+        log_warn "  FAILED: ${fname} – ${RESULT#fail: }"
+        log_warn "  Migration will be retried on next container start."
     fi
 done
 

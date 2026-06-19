@@ -27,7 +27,9 @@ declare(strict_types=1);
 
 namespace Cronmanager\Web\Controller;
 
+use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Response;
+use Cronmanager\Web\Repository\AgentRepository;
 
 /**
  * Class MaintenanceController
@@ -85,6 +87,17 @@ final class MaintenanceController extends BaseController
             : null;
         $flashLogsPruneErr  = isset($_GET['prune_err']);
 
+        // ── Load agent list for the Agents section ─────────────────────────
+        $agents = [];
+        try {
+            $pdo    = Connection::getInstance()->getPdo();
+            $agents = (new AgentRepository($pdo))->findAll();
+        } catch (\Throwable $e) {
+            $this->logger->warning('MaintenanceController: could not load agents list', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         $this->render('housekeeping/index.php', $this->translator()->t('housekeeping_title'), [
             'hours'             => $hours,
             'stuckExecutions'   => $stuckExecutions,
@@ -99,7 +112,8 @@ final class MaintenanceController extends BaseController
             'flashOnceRemoved'  => $flashOnceRemoved,
             'flashLogsPruned'   => $flashLogsPruned,
             'flashLogsPruneErr' => $flashLogsPruneErr,
-        ], '/housekeeping');
+            'agents'            => $agents,
+        ], '/settings');
     }
 
     // -------------------------------------------------------------------------
@@ -116,10 +130,10 @@ final class MaintenanceController extends BaseController
         try {
             $result = $this->agentClient()->post('/maintenance/crontab/resync');
             $synced = (int) ($result['synced'] ?? 0);
-            (new Response())->redirect('/housekeeping?sync_ok=' . $synced);
+            (new Response())->redirect('/settings?sync_ok=' . $synced);
         } catch (\RuntimeException $e) {
             $this->logger->error('MaintenanceController: resync failed', ['error' => $e->getMessage()]);
-            (new Response())->redirect('/housekeeping?sync_err=1');
+            (new Response())->redirect('/settings?sync_err=1');
         }
     }
 
@@ -146,7 +160,7 @@ final class MaintenanceController extends BaseController
             ]);
         }
 
-        (new Response())->redirect("/housekeeping?resolved=1&hours={$hours}");
+        (new Response())->redirect("/settings?resolved=1&hours={$hours}");
     }
 
     // -------------------------------------------------------------------------
@@ -172,7 +186,7 @@ final class MaintenanceController extends BaseController
             ]);
         }
 
-        (new Response())->redirect("/housekeeping?exec_del=1&hours={$hours}");
+        (new Response())->redirect("/settings?exec_del=1&hours={$hours}");
     }
 
     // -------------------------------------------------------------------------
@@ -196,7 +210,7 @@ final class MaintenanceController extends BaseController
         $hours  = max(1, (int) ($_POST['hours'] ?? 2));
 
         if (empty($ids) || !in_array($action, ['finish', 'delete'], true)) {
-            (new Response())->redirect("/housekeeping?hours={$hours}");
+            (new Response())->redirect("/settings?hours={$hours}");
             return;
         }
 
@@ -220,7 +234,7 @@ final class MaintenanceController extends BaseController
         }
 
         $param = $action === 'finish' ? 'bulk_resolved' : 'bulk_deleted';
-        (new Response())->redirect("/housekeeping?{$param}={$count}&hours={$hours}");
+        (new Response())->redirect("/settings?{$param}={$count}&hours={$hours}");
     }
 
     // -------------------------------------------------------------------------
@@ -240,12 +254,12 @@ final class MaintenanceController extends BaseController
         try {
             $result  = $this->agentClient()->post('/maintenance/once/cleanup');
             $removed = (int) ($result['removed'] ?? 0);
-            (new Response())->redirect('/housekeeping?once_removed=' . $removed);
+            (new Response())->redirect('/settings?once_removed=' . $removed);
         } catch (\RuntimeException $e) {
             $this->logger->error('MaintenanceController: onceCleanup failed', [
                 'error' => $e->getMessage(),
             ]);
-            (new Response())->redirect('/housekeeping');
+            (new Response())->redirect('/settings');
         }
     }
 
@@ -287,7 +301,7 @@ final class MaintenanceController extends BaseController
                 'channel' => $channel,
             ]);
 
-            echo json_encode($result);
+            echo json_encode($result); // nosemgrep: php.lang.security.injection.echoed-request.echoed-request
 
         } catch (\RuntimeException $e) {
             $this->logger->error('MaintenanceController: testNotification agent error', [
@@ -320,12 +334,12 @@ final class MaintenanceController extends BaseController
                 'older_than_days' => $days,
             ]);
             $deleted = (int) ($result['deleted'] ?? 0);
-            (new Response())->redirect('/housekeeping?cleaned=' . $deleted);
+            (new Response())->redirect('/settings?cleaned=' . $deleted);
         } catch (\RuntimeException $e) {
             $this->logger->error('MaintenanceController: cleanHistory failed', [
                 'error' => $e->getMessage(),
             ]);
-            (new Response())->redirect('/housekeeping');
+            (new Response())->redirect('/settings');
         }
     }
 
@@ -345,13 +359,203 @@ final class MaintenanceController extends BaseController
             $deletedLogs  = (int) ($result['deleted_logs']        ?? 0);
             $deletedRetry = (int) ($result['deleted_retry_state'] ?? 0);
             (new Response())->redirect(
-                '/housekeeping?logs_pruned=' . $deletedLogs . '&retry_state_pruned=' . $deletedRetry
+                '/settings?logs_pruned=' . $deletedLogs . '&retry_state_pruned=' . $deletedRetry
             );
         } catch (\RuntimeException $e) {
             $this->logger->error('MaintenanceController: pruneLogs failed', [
                 'error' => $e->getMessage(),
             ]);
-            (new Response())->redirect('/housekeeping?prune_err=1');
+            (new Response())->redirect('/settings?prune_err=1');
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /settings/agent-config
+    // -------------------------------------------------------------------------
+
+    /**
+     * Render the agent notification/integration settings form.
+     *
+     * Loads the effective settings for all sections from the selected agent.
+     * When ?source_id=X is present, the source agent's settings are pre-loaded
+     * into the form so the user can review them before saving.
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     */
+    public function agentSettings(array $params = []): void
+    {
+        $t           = $this->translator();
+        $sourceId    = isset($_GET['source_id']) ? (int) $_GET['source_id'] : 0;
+        $prefilled   = false;
+        $settings    = [];
+
+        // Load current agent's settings as the baseline
+        try {
+            $settings = $this->agentClient()->get('/settings');
+        } catch (\Throwable $e) {
+            $this->logger->warning('MaintenanceController: cannot load agent settings', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Optionally pre-fill with settings from a different source agent
+        if ($sourceId > 0) {
+            $pdo        = \Cronmanager\Web\Database\Connection::getInstance()->getPdo();
+            $repo       = new AgentRepository($pdo);
+            $sourceAgent = $repo->findById($sourceId);
+
+            if ($sourceAgent !== null) {
+                try {
+                    $settings  = $this->buildClientFor($sourceAgent)->get('/settings');
+                    $prefilled = true;
+                } catch (\Throwable $e) {
+                    $this->logger->warning('MaintenanceController: cannot load source agent settings', [
+                        'source_id' => $sourceId,
+                        'error'     => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        // Load all enabled agents except the current one for the copy selector
+        $pdo          = \Cronmanager\Web\Database\Connection::getInstance()->getPdo();
+        $repo         = new AgentRepository($pdo);
+        $currentAgent = $this->selectedAgent();
+        $otherAgents  = array_values(array_filter(
+            $repo->findEnabled(),
+            fn(array $a): bool => (int) $a['id'] !== (int) $currentAgent['id'],
+        ));
+
+        $this->render('housekeeping/agent-settings.php', $t->t('agent_settings_title'), [
+            'settings'     => $settings,
+            'otherAgents'  => $otherAgents,
+            'prefilled'    => $prefilled,
+            'sourceId'     => $sourceId,
+        ], '/settings');
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /settings/agent-config
+    // -------------------------------------------------------------------------
+
+    /**
+     * Save notification and integration settings to the selected agent's DB.
+     *
+     * Builds a PUT /settings payload from the POST body and delegates to the
+     * agent's SettingsEndpoint.
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     */
+    public function saveAgentSettings(array $params = []): void
+    {
+        $sections = $this->buildSettingsPayload();
+
+        try {
+            $this->agentClient()->put('/settings', $sections);
+            \Cronmanager\Web\Session\SessionManager::set('_flash_success', $this->translator()->t('agent_settings_saved'));
+        } catch (\Throwable $e) {
+            $this->logger->error('MaintenanceController: saveAgentSettings failed', [
+                'error' => $e->getMessage(),
+            ]);
+            \Cronmanager\Web\Session\SessionManager::set('_flash_error', $this->translator()->t('agent_settings_error'));
+        }
+
+        (new Response())->redirect('/settings/agent-config');
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /settings/agent-config/copy
+    // -------------------------------------------------------------------------
+
+    /**
+     * Copy all settings from a source agent directly to the current agent.
+     *
+     * Expected POST fields:
+     *   source_agent_id  (int)  ID of the agent to copy settings from.
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     */
+    public function copyAgentSettings(array $params = []): void
+    {
+        $t        = $this->translator();
+        $sourceId = (int) ($_POST['source_agent_id'] ?? 0);
+
+        if ($sourceId <= 0) {
+            \Cronmanager\Web\Session\SessionManager::set('_flash_error', $t->t('agent_settings_copy_error'));
+            (new Response())->redirect('/settings/agent-config');
+            return;
+        }
+
+        $pdo        = \Cronmanager\Web\Database\Connection::getInstance()->getPdo();
+        $repo       = new AgentRepository($pdo);
+        $srcAgent   = $repo->findById($sourceId);
+
+        if ($srcAgent === null) {
+            \Cronmanager\Web\Session\SessionManager::set('_flash_error', $t->t('agent_settings_copy_error'));
+            (new Response())->redirect('/settings/agent-config');
+            return;
+        }
+
+        try {
+            $sourceSettings = $this->buildClientFor($srcAgent)->get('/settings');
+            $this->agentClient()->put('/settings', $sourceSettings);
+            \Cronmanager\Web\Session\SessionManager::set('_flash_success', $t->t('agent_settings_copied'));
+        } catch (\Throwable $e) {
+            $this->logger->error('MaintenanceController: copyAgentSettings failed', [
+                'source_id' => $sourceId,
+                'error'     => $e->getMessage(),
+            ]);
+            \Cronmanager\Web\Session\SessionManager::set('_flash_error', $t->t('agent_settings_copy_error'));
+        }
+
+        (new Response())->redirect('/settings/agent-config');
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Build the settings payload from POST data for all four sections.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function buildSettingsPayload(): array
+    {
+        $boolField = static fn(string $k): bool => isset($_POST[$k]) && $_POST[$k] === '1';
+        $strField  = static fn(string $k, string $d = ''): string => trim((string) ($_POST[$k] ?? $d));
+        $intField  = static fn(string $k, int $d = 0): int => (int) ($_POST[$k] ?? $d);
+
+        return [
+            'mail' => [
+                'enabled'      => $boolField('mail_enabled'),
+                'host'         => $strField('mail_host'),
+                'port'         => $intField('mail_port', 587),
+                'username'     => $strField('mail_username'),
+                'password'     => $strField('mail_password'),
+                'from'         => $strField('mail_from'),
+                'from_name'    => $strField('mail_from_name', 'Cronmanager'),
+                'to'           => $strField('mail_to'),
+                'encryption'   => $strField('mail_encryption', 'tls'),
+                'smtp_timeout' => $intField('mail_smtp_timeout', 15),
+            ],
+            'telegram' => [
+                'enabled'   => $boolField('telegram_enabled'),
+                'bot_token' => $strField('telegram_bot_token'),
+                'chat_id'   => $strField('telegram_chat_id'),
+                'timeout'   => $intField('telegram_timeout', 10),
+            ],
+            'influxdb' => [
+                'enabled' => $boolField('influxdb_enabled'),
+                'url'     => $strField('influxdb_url'),
+                'token'   => $strField('influxdb_token'),
+                'org'     => $strField('influxdb_org'),
+                'bucket'  => $strField('influxdb_bucket'),
+                'timeout' => $intField('influxdb_timeout', 10),
+            ],
+            'notifications' => [
+                'web_url' => $strField('notifications_web_url'),
+            ],
+        ];
     }
 }

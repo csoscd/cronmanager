@@ -315,13 +315,11 @@ final class AgentController extends BaseController
             }
         }
 
-        // Redirect to Referer or dashboard (stay on-site)
-        $referer = (string) ($_SERVER['HTTP_REFERER'] ?? '');
-        $path    = parse_url($referer, PHP_URL_PATH) ?? '';
-        $query   = parse_url($referer, PHP_URL_QUERY) ?? '';
-        $back    = $path !== '' ? $path . ($query !== '' ? '?' . $query : '') : '/dashboard';
-
-        (new Response())->redirect($back);
+        // Always redirect to the dashboard after switching agents.
+        // Staying on the previous page (via Referer) risks a 503/404 when the
+        // current URL contains a resource ID (e.g. /crons/42) that does not
+        // exist on the newly selected agent.
+        (new Response())->redirect('/dashboard');
     }
 
     // -------------------------------------------------------------------------

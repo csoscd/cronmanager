@@ -348,6 +348,12 @@ abstract class BaseController
      */
     protected function filterParam(string $get, string $cookie, string $default = '', bool $persist = true): string
     {
+        // Qualify the cookie name with the active agent ID so each agent has its
+        // own persistent filter state.  The ID is already in the session — no DB
+        // call required here.
+        $agentId = (string) ($_SESSION['selected_agent_id'] ?? '0');
+        $cookie  = $cookie . '_a' . $agentId;
+
         // User clicked "reset filters" – clear the cookie and return the default.
         if (isset($_GET['_reset'])) {
             setcookie($cookie, '', [

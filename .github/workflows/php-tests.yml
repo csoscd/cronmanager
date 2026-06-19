@@ -1,0 +1,56 @@
+################################################################################
+# GitHub Actions – PHP Unit Tests
+#
+# Trigger: every push to any branch and every pull request.
+#          Provides early feedback before a Docker build is attempted.
+#
+# This workflow is also referenced by branch protection rules to block merges
+# to main when tests are red.
+#
+# @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+# @license GNU General Public License version 3 or later
+################################################################################
+
+name: PHP Unit Tests
+
+on:
+  push:
+  pull_request:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  php-tests:
+    name: Unit tests (PHP 8.4)
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # ── PHP 8.4 with required extensions ────────────────────────────────────
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, mbstring, pdo, pdo_mysql
+          coverage: none
+
+      # ── Composer cache ───────────────────────────────────────────────────────
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      # ── Install dependencies ─────────────────────────────────────────────────
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      # ── Run unit tests ───────────────────────────────────────────────────────
+      - name: Run unit tests
+        run: ./vendor/bin/phpunit --testsuite unit

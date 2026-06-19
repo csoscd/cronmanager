@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         stopOnFailure="false">
+
+    <testsuites>
+        <testsuite name="unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+        <testsuite name="e2e">
+            <directory>tests/E2E</directory>
+        </testsuite>
+    </testsuites>
+
+    <source>
+        <include>
+            <directory suffix=".php">agent/src</directory>
+            <directory suffix=".php">web/src</directory>
+        </include>
+    </source>
+
+    <coverage>
+        <!-- Reports are only generated on explicit CLI request (coverage-html, coverage-clover flags) -->
+    </coverage>
+
+    <php>
+        <env name="APP_ENV" value="test"/>
+        <env name="DB_HOST" value="127.0.0.1"/>
+        <env name="DB_PORT" value="13306"/>
+        <env name="DB_NAME" value="cronmanager_test"/>
+        <env name="DB_USER" value="cronmanager_test"/>
+        <env name="DB_PASSWORD" value="cronmanager_test"/>
+    </php>
+
+</phpunit>

@@ -51,6 +51,13 @@
 #   INFLUXDB_ORG        ""
 #   INFLUXDB_BUCKET     cronmanager
 #   INFLUXDB_TIMEOUT    10
+#   AGENT_SETTINGS_KEY  ""  (optional) When set, sensitive fields stored in the
+#                           agent_settings DB table (mail.password, telegram.bot_token,
+#                           influxdb.token) are encrypted with AES-256-CBC at rest.
+#                           Use at least 32 random characters: openssl rand -hex 32
+#                           If unset, values are stored as plaintext (same as before).
+#                           Removing the key after setting it makes stored credentials
+#                           unreadable — re-save all settings via the web UI afterwards.
 #
 # @author  Christian Schulz <technik@meinetechnikwelt.rocks>
 # @license GNU General Public License version 3 or later

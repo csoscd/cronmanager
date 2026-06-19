@@ -44,6 +44,19 @@ final class DbConfig implements ConfigInterface
     /** Sections whose values are stored in and read from the database. */
     private const DB_SECTIONS = ['mail', 'telegram', 'influxdb', 'notifications'];
 
+    /**
+     * Sensitive fields that are encrypted at rest when AGENT_SETTINGS_KEY is set.
+     * All other fields are always stored as plaintext.
+     */
+    private const SENSITIVE_FIELDS = [
+        'mail'     => ['password'],
+        'telegram' => ['bot_token'],
+        'influxdb' => ['token'],
+    ];
+
+    /** Prefix that marks a DB value as AES-256-CBC encrypted. */
+    private const ENC_PREFIX = 'enc:';
+
     // -------------------------------------------------------------------------
     // Properties
     // -------------------------------------------------------------------------
@@ -204,23 +217,26 @@ final class DbConfig implements ConfigInterface
      * Persist a section's configuration to the database.
      *
      * Creates a new row or overwrites the existing one (UPSERT). The in-memory
-     * cache is updated immediately so subsequent get() calls reflect the change
-     * without a DB round-trip.
+     * cache is always kept as plaintext; sensitive fields are encrypted only in
+     * the JSON written to the database (when AGENT_SETTINGS_KEY is set).
      *
      * @param string               $section Section name (e.g. 'mail').
-     * @param array<string, mixed> $values  Key/value pairs to store.
+     * @param array<string, mixed> $values  Key/value pairs to store (plaintext).
      */
     public function setSection(string $section, array $values): void
     {
+        $toStore = $this->applyEncryption($section, $values);
+
         $stmt = $this->pdo->prepare(
             'INSERT INTO agent_settings (section, config) VALUES (:section, :config)
              ON DUPLICATE KEY UPDATE config = VALUES(config)'
         );
         $stmt->execute([
             ':section' => $section,
-            ':config'  => json_encode($values, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ':config'  => json_encode($toStore, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);
 
+        // Keep plaintext in memory so subsequent get() calls work without a re-decrypt.
         $this->dbSettings[$section] = $values;
     }
 
@@ -231,8 +247,10 @@ final class DbConfig implements ConfigInterface
     /**
      * Load all section rows from agent_settings into $this->dbSettings.
      *
-     * Silently swallows exceptions: on first boot before the migration has run
-     * the table does not exist yet, and the file config is used as fallback.
+     * Sensitive fields are decrypted on load so the rest of the application
+     * always works with plaintext values. Silently swallows exceptions: on first
+     * boot before the migration has run the table does not exist yet, and the
+     * file config is used as fallback.
      */
     private function loadFromDb(): void
     {
@@ -244,11 +262,120 @@ final class DbConfig implements ConfigInterface
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $decoded = json_decode((string) ($row['config'] ?? ''), true);
                 if (is_array($decoded)) {
-                    $this->dbSettings[(string) $row['section']] = $decoded;
+                    $section = (string) $row['section'];
+                    $this->dbSettings[$section] = $this->applyDecryption($section, $decoded);
                 }
             }
         } catch (\Throwable) {
             // Table absent before migration — fall back to config.json.
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Encryption helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Encrypt sensitive fields in a section's value array before storing to DB.
+     *
+     * Only applies when AGENT_SETTINGS_KEY is set. Fields not listed in
+     * SENSITIVE_FIELDS are always passed through unchanged.
+     *
+     * @param  string               $section
+     * @param  array<string, mixed> $values  Plaintext values.
+     *
+     * @return array<string, mixed> Values with sensitive fields encrypted.
+     */
+    private function applyEncryption(string $section, array $values): array
+    {
+        foreach (self::SENSITIVE_FIELDS[$section] ?? [] as $field) {
+            if (isset($values[$field])) {
+                $values[$field] = $this->encryptField((string) $values[$field]);
+            }
+        }
+        return $values;
+    }
+
+    /**
+     * Decrypt sensitive fields in a section's value array after reading from DB.
+     *
+     * Plaintext values (no enc: prefix) are returned unchanged, so existing
+     * plaintext rows continue to work without any migration step.
+     *
+     * @param  string               $section
+     * @param  array<string, mixed> $values  Values as stored in DB.
+     *
+     * @return array<string, mixed> Values with sensitive fields decrypted.
+     */
+    private function applyDecryption(string $section, array $values): array
+    {
+        foreach (self::SENSITIVE_FIELDS[$section] ?? [] as $field) {
+            if (isset($values[$field])) {
+                $values[$field] = $this->decryptField((string) $values[$field]);
+            }
+        }
+        return $values;
+    }
+
+    /**
+     * Encrypt a single field value with AES-256-CBC.
+     *
+     * Returns the value unchanged when AGENT_SETTINGS_KEY is not set or the
+     * value is empty. The returned string is prefixed with enc: so decryptField()
+     * can distinguish encrypted from plaintext values.
+     */
+    private function encryptField(string $value): string
+    {
+        $key = (string) getenv('AGENT_SETTINGS_KEY');
+        if ($key === '' || $value === '') {
+            return $value;
+        }
+
+        $iv     = random_bytes(16);
+        $cipher = openssl_encrypt(
+            $value,
+            'AES-256-CBC',
+            hash('sha256', $key, true),
+            OPENSSL_RAW_DATA,
+            $iv,
+        );
+
+        return self::ENC_PREFIX . base64_encode($iv . $cipher);
+    }
+
+    /**
+     * Decrypt a single field value encrypted by encryptField().
+     *
+     * Returns the value unchanged when it has no enc: prefix (plaintext
+     * backward-compatibility). Returns an empty string when the enc: prefix is
+     * present but AGENT_SETTINGS_KEY is absent — this prevents garbled values
+     * from reaching SMTP/Telegram/InfluxDB clients while avoiding a hard crash.
+     */
+    private function decryptField(string $value): string
+    {
+        if (!str_starts_with($value, self::ENC_PREFIX)) {
+            return $value;
+        }
+
+        $key = (string) getenv('AGENT_SETTINGS_KEY');
+        if ($key === '') {
+            // Encrypted value encountered but no key configured.
+            // Return empty string so the notifier fails cleanly instead of
+            // forwarding a garbled ciphertext as a credential.
+            return '';
+        }
+
+        $raw    = (string) base64_decode(substr($value, strlen(self::ENC_PREFIX)));
+        $iv     = substr($raw, 0, 16);
+        $cipher = substr($raw, 16);
+        $plain  = openssl_decrypt(
+            $cipher,
+            'AES-256-CBC',
+            hash('sha256', $key, true),
+            OPENSSL_RAW_DATA,
+            $iv,
+        );
+
+        return ($plain !== false) ? $plain : '';
     }
 }

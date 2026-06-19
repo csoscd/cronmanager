@@ -19,7 +19,6 @@ declare(strict_types=1);
 
 namespace Cronmanager\Web\Controller;
 
-use Cronmanager\Web\Agent\HostAgentClient;
 use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Response;
 use Cronmanager\Web\Repository\AgentRepository;
@@ -354,25 +353,6 @@ final class TransferController extends BaseController
         }
 
         return $warnings;
-    }
-
-    /**
-     * Build an HostAgentClient for an arbitrary agent DB row.
-     *
-     * @param array<string, mixed> $agent Agent DB row.
-     *
-     * @return HostAgentClient
-     */
-    private function buildClientFor(array $agent): HostAgentClient
-    {
-        return new HostAgentClient(
-            logger:      $this->logger,
-            agentUrl:    (string) $agent['url'],
-            hmacSecret:  (string) $agent['hmac_secret'],
-            timeout:     (int)    ($agent['timeout']      ?? 10),
-            sslVerify:   (bool)   ($agent['ssl_verify']   ?? true),
-            sslCaBundle: (string) ($agent['ssl_ca_bundle'] ?? ''),
-        );
     }
 
     /**

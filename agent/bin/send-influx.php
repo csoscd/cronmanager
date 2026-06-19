@@ -52,6 +52,8 @@ spl_autoload_register(function (string $class): void {
 });
 
 use Cronmanager\Agent\Bootstrap;
+use Cronmanager\Agent\Config\DbConfig;
+use Cronmanager\Agent\Database\Connection;
 use Cronmanager\Agent\Influx\InfluxWriter;
 
 // ---------------------------------------------------------------------------
@@ -85,11 +87,13 @@ if (!is_array($data)) {
 // ---------------------------------------------------------------------------
 
 try {
-    $bootstrap = Bootstrap::getInstance();
-    $logger    = $bootstrap->getLogger();
-    $config    = $bootstrap->getConfig();
+    $bootstrap  = Bootstrap::getInstance();
+    $logger     = $bootstrap->getLogger();
+    $fileConfig = $bootstrap->getConfig();
+    $pdo        = Connection::getInstance()->getPdo();
+    $dbConfig   = new DbConfig($fileConfig, $pdo);
 
-    $writer = new InfluxWriter($logger, $config);
+    $writer = new InfluxWriter($logger, $dbConfig);
     $writer->writeExecution($data);
 
 } catch (\Throwable $e) {

@@ -27,7 +27,7 @@ namespace Cronmanager\Agent\Influx;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Monolog\Logger;
-use Noodlehaus\Config;
+use Noodlehaus\ConfigInterface;
 
 /**
  * Class InfluxWriter
@@ -41,12 +41,12 @@ final class InfluxWriter
     // -------------------------------------------------------------------------
 
     /**
-     * @param Logger $logger Monolog logger instance.
-     * @param Config $config Noodlehaus configuration.
+     * @param Logger          $logger Monolog logger instance.
+     * @param ConfigInterface $config Agent configuration (file-based or DB-backed).
      */
     public function __construct(
-        private readonly Logger $logger,
-        private readonly Config $config,
+        private readonly Logger          $logger,
+        private readonly ConfigInterface $config,
     ) {}
 
     // -------------------------------------------------------------------------

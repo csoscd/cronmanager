@@ -28,7 +28,7 @@ declare(strict_types=1);
 namespace Cronmanager\Agent\Notification;
 
 use Monolog\Logger;
-use Noodlehaus\Config;
+use Noodlehaus\ConfigInterface;
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception as MailerException;
 
@@ -48,12 +48,12 @@ final class MailNotifier
     /**
      * MailNotifier constructor.
      *
-     * @param Logger $logger Monolog logger instance for diagnostic messages.
-     * @param Config $config Noodlehaus Config loaded from the agent config.json.
+     * @param Logger          $logger Monolog logger instance for diagnostic messages.
+     * @param ConfigInterface $config Agent configuration (file-based or DB-backed).
      */
     public function __construct(
-        private readonly Logger $logger,
-        private readonly Config $config,
+        private readonly Logger          $logger,
+        private readonly ConfigInterface $config,
     ) {}
 
     // -------------------------------------------------------------------------

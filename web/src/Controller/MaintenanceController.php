@@ -368,4 +368,194 @@ final class MaintenanceController extends BaseController
             (new Response())->redirect('/settings?prune_err=1');
         }
     }
+
+    // -------------------------------------------------------------------------
+    // GET /settings/agent-config
+    // -------------------------------------------------------------------------
+
+    /**
+     * Render the agent notification/integration settings form.
+     *
+     * Loads the effective settings for all sections from the selected agent.
+     * When ?source_id=X is present, the source agent's settings are pre-loaded
+     * into the form so the user can review them before saving.
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     */
+    public function agentSettings(array $params = []): void
+    {
+        $t           = $this->translator();
+        $sourceId    = isset($_GET['source_id']) ? (int) $_GET['source_id'] : 0;
+        $prefilled   = false;
+        $settings    = [];
+
+        // Load current agent's settings as the baseline
+        try {
+            $settings = $this->agentClient()->get('/settings');
+        } catch (\Throwable $e) {
+            $this->logger->warning('MaintenanceController: cannot load agent settings', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Optionally pre-fill with settings from a different source agent
+        if ($sourceId > 0) {
+            $pdo        = \Cronmanager\Web\Database\Connection::getInstance()->getPdo();
+            $repo       = new AgentRepository($pdo);
+            $sourceAgent = $repo->findById($sourceId);
+
+            if ($sourceAgent !== null) {
+                try {
+                    $settings  = $this->buildClientFor($sourceAgent)->get('/settings');
+                    $prefilled = true;
+                } catch (\Throwable $e) {
+                    $this->logger->warning('MaintenanceController: cannot load source agent settings', [
+                        'source_id' => $sourceId,
+                        'error'     => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        // Load all enabled agents except the current one for the copy selector
+        $pdo          = \Cronmanager\Web\Database\Connection::getInstance()->getPdo();
+        $repo         = new AgentRepository($pdo);
+        $currentAgent = $this->selectedAgent();
+        $otherAgents  = array_values(array_filter(
+            $repo->findEnabled(),
+            fn(array $a): bool => (int) $a['id'] !== (int) $currentAgent['id'],
+        ));
+
+        $this->render('housekeeping/agent-settings.php', $t->t('agent_settings_title'), [
+            'settings'     => $settings,
+            'otherAgents'  => $otherAgents,
+            'prefilled'    => $prefilled,
+            'sourceId'     => $sourceId,
+        ], '/settings');
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /settings/agent-config
+    // -------------------------------------------------------------------------
+
+    /**
+     * Save notification and integration settings to the selected agent's DB.
+     *
+     * Builds a PUT /settings payload from the POST body and delegates to the
+     * agent's SettingsEndpoint.
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     */
+    public function saveAgentSettings(array $params = []): void
+    {
+        $sections = $this->buildSettingsPayload();
+
+        try {
+            $this->agentClient()->put('/settings', $sections);
+            \Cronmanager\Web\Session\SessionManager::set('_flash_success', $this->translator()->t('agent_settings_saved'));
+        } catch (\Throwable $e) {
+            $this->logger->error('MaintenanceController: saveAgentSettings failed', [
+                'error' => $e->getMessage(),
+            ]);
+            \Cronmanager\Web\Session\SessionManager::set('_flash_error', $this->translator()->t('agent_settings_error'));
+        }
+
+        (new Response())->redirect('/settings/agent-config');
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /settings/agent-config/copy
+    // -------------------------------------------------------------------------
+
+    /**
+     * Copy all settings from a source agent directly to the current agent.
+     *
+     * Expected POST fields:
+     *   source_agent_id  (int)  ID of the agent to copy settings from.
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     */
+    public function copyAgentSettings(array $params = []): void
+    {
+        $t        = $this->translator();
+        $sourceId = (int) ($_POST['source_agent_id'] ?? 0);
+
+        if ($sourceId <= 0) {
+            \Cronmanager\Web\Session\SessionManager::set('_flash_error', $t->t('agent_settings_copy_error'));
+            (new Response())->redirect('/settings/agent-config');
+            return;
+        }
+
+        $pdo        = \Cronmanager\Web\Database\Connection::getInstance()->getPdo();
+        $repo       = new AgentRepository($pdo);
+        $srcAgent   = $repo->findById($sourceId);
+
+        if ($srcAgent === null) {
+            \Cronmanager\Web\Session\SessionManager::set('_flash_error', $t->t('agent_settings_copy_error'));
+            (new Response())->redirect('/settings/agent-config');
+            return;
+        }
+
+        try {
+            $sourceSettings = $this->buildClientFor($srcAgent)->get('/settings');
+            $this->agentClient()->put('/settings', $sourceSettings);
+            \Cronmanager\Web\Session\SessionManager::set('_flash_success', $t->t('agent_settings_copied'));
+        } catch (\Throwable $e) {
+            $this->logger->error('MaintenanceController: copyAgentSettings failed', [
+                'source_id' => $sourceId,
+                'error'     => $e->getMessage(),
+            ]);
+            \Cronmanager\Web\Session\SessionManager::set('_flash_error', $t->t('agent_settings_copy_error'));
+        }
+
+        (new Response())->redirect('/settings/agent-config');
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Build the settings payload from POST data for all four sections.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function buildSettingsPayload(): array
+    {
+        $boolField = static fn(string $k): bool => isset($_POST[$k]) && $_POST[$k] === '1';
+        $strField  = static fn(string $k, string $d = ''): string => trim((string) ($_POST[$k] ?? $d));
+        $intField  = static fn(string $k, int $d = 0): int => (int) ($_POST[$k] ?? $d);
+
+        return [
+            'mail' => [
+                'enabled'      => $boolField('mail_enabled'),
+                'host'         => $strField('mail_host'),
+                'port'         => $intField('mail_port', 587),
+                'username'     => $strField('mail_username'),
+                'password'     => $strField('mail_password'),
+                'from'         => $strField('mail_from'),
+                'from_name'    => $strField('mail_from_name', 'Cronmanager'),
+                'to'           => $strField('mail_to'),
+                'encryption'   => $strField('mail_encryption', 'tls'),
+                'smtp_timeout' => $intField('mail_smtp_timeout', 15),
+            ],
+            'telegram' => [
+                'enabled'   => $boolField('telegram_enabled'),
+                'bot_token' => $strField('telegram_bot_token'),
+                'chat_id'   => $strField('telegram_chat_id'),
+                'timeout'   => $intField('telegram_timeout', 10),
+            ],
+            'influxdb' => [
+                'enabled' => $boolField('influxdb_enabled'),
+                'url'     => $strField('influxdb_url'),
+                'token'   => $strField('influxdb_token'),
+                'org'     => $strField('influxdb_org'),
+                'bucket'  => $strField('influxdb_bucket'),
+                'timeout' => $intField('influxdb_timeout', 10),
+            ],
+            'notifications' => [
+                'web_url' => $strField('notifications_web_url'),
+            ],
+        ];
+    }
 }

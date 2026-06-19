@@ -240,6 +240,11 @@ try {
     $router->addProtectedRoute('GET',  '/maintenance',                               [$targetCtrl, 'index'],        'admin');
 
     // Settings (formerly "Housekeeping") – admin only; more-specific paths first.
+    // Agent-config routes must be registered before /settings/agents/* so that
+    // "agent-config" is not accidentally matched as an agent ID.
+    $router->addProtectedRoute('GET',  '/settings/agent-config',                     [$maintenanceCtrl, 'agentSettings'],     'admin');
+    $router->addProtectedRoute('POST', '/settings/agent-config',                     [$maintenanceCtrl, 'saveAgentSettings'], 'admin');
+    $router->addProtectedRoute('POST', '/settings/agent-config/copy',                [$maintenanceCtrl, 'copyAgentSettings'], 'admin');
     // Agent CRUD routes must be registered before the generic /settings/{id} patterns.
     $router->addProtectedRoute('GET',  '/settings/agents/create',                    [$agentCtrl, 'create'],               'admin');
     $router->addProtectedRoute('POST', '/settings/agents',                           [$agentCtrl, 'store'],                'admin');

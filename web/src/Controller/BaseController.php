@@ -305,22 +305,27 @@ abstract class BaseController
     }
 
     /**
-     * Resolve a filter parameter from GET, falling back to a persistent cookie.
+     * Build a HostAgentClient for an arbitrary agent DB row.
      *
-     * Resolution order:
-     *   1. If ?_reset is present in the request, expire the cookie and return $default.
-     *   2. If the named GET key is present, use its value (even empty) and save to cookie.
-     *   3. Otherwise fall back to the stored cookie value, or $default when absent.
+     * Used by controllers that need to communicate with an agent other than the
+     * currently selected one (e.g. TransferController, MaintenanceController).
      *
-     * setcookie() silently fails when the browser blocks cookies, degrading
-     * gracefully to the previous stateless behaviour.
+     * @param array<string, mixed> $agent Agent DB row.
      *
-     * @param string $get     Name of the GET query parameter.
-     * @param string $cookie  Cookie name to read from / write to.
-     * @param string $default Value returned when absent from both GET and cookie.
-     *
-     * @return string Resolved, trimmed filter value.
+     * @return HostAgentClient
      */
+    protected function buildClientFor(array $agent): HostAgentClient
+    {
+        return new HostAgentClient(
+            logger:      $this->logger,
+            agentUrl:    (string) $agent['url'],
+            hmacSecret:  (string) $agent['hmac_secret'],
+            timeout:     (int)    ($agent['timeout']      ?? 10),
+            sslVerify:   (bool)   ($agent['ssl_verify']   ?? true),
+            sslCaBundle: (string) ($agent['ssl_ca_bundle'] ?? ''),
+        );
+    }
+
     /**
      * Resolve a filter parameter from GET, falling back to a persistent cookie.
      *

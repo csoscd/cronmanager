@@ -234,6 +234,27 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
     </section>
 
     <!-- ══════════════════════════════════════════════════════════════════════
+         AGENT NOTIFICATION SETTINGS
+         ══════════════════════════════════════════════════════════════════════ -->
+    <section class="cm-card rounded-xl p-6">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <h2 class="text-lg font-semibold" style="color:var(--cm-text)">
+                    <?= htmlspecialchars($t('agent_settings_title'), ENT_QUOTES, 'UTF-8') ?>
+                </h2>
+                <p class="mt-1 text-sm" style="color:var(--cm-text-muted)">
+                    <?= htmlspecialchars($t('agent_settings_desc'), ENT_QUOTES, 'UTF-8') ?>
+                </p>
+            </div>
+            <a href="/settings/agent-config"
+               class="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition"
+               style="background:rgba(59,130,246,.1);color:var(--cm-primary);border:1px solid rgba(59,130,246,.2)">
+                <?= htmlspecialchars($t('agent_settings_link'), ENT_QUOTES, 'UTF-8') ?>
+            </a>
+        </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
          2. CRONTAB SYNC
          ══════════════════════════════════════════════════════════════════════ -->
     <section class="cm-card rounded-xl p-6 space-y-4">

@@ -315,11 +315,15 @@ final class AgentController extends BaseController
             }
         }
 
-        // Always redirect to the dashboard after switching agents.
-        // Staying on the previous page (via Referer) risks a 503/404 when the
-        // current URL contains a resource ID (e.g. /crons/42) that does not
-        // exist on the newly selected agent.
-        (new Response())->redirect('/dashboard');
+        // Restore the last page the user visited on the newly selected agent.
+        // Each agent stores its own last-page URI in the session (written by
+        // BaseController::saveLastPage() on every render).  This lets the user
+        // continue exactly where they left off on the target agent.
+        // Fallback to /dashboard when no page was stored yet (first visit).
+        $lastPage = (string) ($_SESSION['_cm_last_page_' . $agentId] ?? '');
+        $redirect = ($lastPage !== '' && str_starts_with($lastPage, '/')) ? $lastPage : '/dashboard';
+
+        (new Response())->redirect($redirect);
     }
 
     // -------------------------------------------------------------------------

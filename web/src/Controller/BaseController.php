@@ -87,6 +87,8 @@ abstract class BaseController
         array  $data = [],
         string $currentPath = '/',
     ): void {
+        $this->saveLastPage();
+
         $templateFile = $this->templatePath($template);
 
         if (!file_exists($templateFile)) {
@@ -443,6 +445,27 @@ abstract class BaseController
         $_SESSION[$ttlKey]   = time();
 
         return $result;
+    }
+
+    /**
+     * Persist the current request URI as the last visited page for the active agent.
+     *
+     * Called at the start of every render() so the session always reflects the
+     * most recently rendered page per agent.  Login and logout paths are excluded
+     * because restoring them after an agent switch would be confusing.
+     */
+    private function saveLastPage(): void
+    {
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+
+        if ($uri === '' || str_starts_with($uri, '/login') || str_starts_with($uri, '/logout')) {
+            return;
+        }
+
+        $agentId = (int) ($_SESSION['selected_agent_id'] ?? 0);
+        if ($agentId > 0) {
+            $_SESSION['_cm_last_page_' . $agentId] = $uri;
+        }
     }
 
     /**

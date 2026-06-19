@@ -30,7 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`SECURITY.md`** added: documents the security policy (supported versions, vulnerability reporting), the application's security architecture (HMAC-SHA256, agent isolation, AES-256-CBC at-rest encryption), and the automated CI security checks.
 
 ### Fixed
-- **Agent-Switch leitet immer zum Dashboard weiter**: `AgentController::select()` hat bisher den `HTTP_REFERER` für den Redirect verwendet. Befand sich der Nutzer auf einer ressourcenspezifischen Seite (z. B. `/crons/42`), konnte ein Agent-Wechsel zu einem 503-Fehler führen, wenn die Job-ID beim neuen Agenten nicht existiert. Der Redirect zeigt jetzt immer auf `/dashboard`.
+- **Agent-Switch kehrt zur zuletzt besuchten Seite zurück**: Beim Wechsel zwischen Agenten wird nun die jeweils letzte Seite pro Agent in der Session gespeichert. Ein Switch zu Agent B öffnet die letzte B-Seite; ein Rückwechsel zu Agent A öffnet die letzte A-Seite. Fallback auf `/dashboard`, wenn der Agent noch nie besucht wurde. Ressourcen-spezifische URLs (z. B. `/crons/42`) sind dabei sicher, da sie immer nur für den Agenten gespeichert werden, auf dem sie entstanden sind.
 - **Filter-Cookies sind Agent-spezifisch**: Die Filterzustände (Tag, User, Target, Search, Active, Result) wurden bisher in Agent-übergreifenden Cookies gespeichert. Nach einem Agent-Wechsel blieben die Filter des vorherigen Agenten erhalten. Cookie-Namen werden jetzt mit der Agent-ID qualifiziert (z. B. `cronmgr_crons_tag_a1`), sodass jeder Agent eigene persistente Filter hat und beim Zurückwechseln die letzten Einstellungen wiederhergestellt werden.
 
 ### Added

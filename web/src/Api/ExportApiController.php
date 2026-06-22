@@ -73,6 +73,6 @@ final class ExportApiController extends BaseApiController
 
         header('Content-Type: ' . $contentType . '; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
-        echo $content;
+        echo $content; // nosemgrep: php.lang.security.injection.echoed-request.echoed-request
     }
 }

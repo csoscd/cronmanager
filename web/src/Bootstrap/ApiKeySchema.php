@@ -41,8 +41,8 @@ final class ApiKeySchema
         try {
             $pdo->exec(<<<'SQL'
                 CREATE TABLE IF NOT EXISTS api_keys (
-                    id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-                    user_id      INT UNSIGNED NOT NULL,
+                    id           INT          AUTO_INCREMENT PRIMARY KEY,
+                    user_id      INT          NOT NULL,
                     name         VARCHAR(100) NOT NULL,
                     key_hash     VARCHAR(64)  NOT NULL UNIQUE
                                      COMMENT 'sha256(plain_key) – plain text is never stored',

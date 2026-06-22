@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.1.1] – branch: `api-docu-fix`
+
+### Documentation
+
+- **README.md**: added "External REST API" entry to the features table; added dedicated `External REST API` section with brief description and link to `API.md`
+- **API.md**: expanded with §7 Quick Start (end-to-end curl examples), §14 Rate Limiting, §15 What the API does NOT cover, §16 Troubleshooting; renumbered former §7–§13 to §8–§17
+- **TECHNICAL.md**: updated directory layout to include all new API-related files (`web/src/Api/`, `web/src/Auth/ApiKey*.php`, `web/src/Bootstrap/ApiKeySchema.php`, `web/src/Controller/ApiKeyController.php`, `web/templates/api_keys/`); added `ApiKeyController` to the controllers table; added "API key authentication" subsection under Authentication (middleware flow, `ApiKey` value object, `ScopeHelper`); added `api_keys` table to the Database Schema section
+- **SECURITY.md**: added API key as a protected asset in the threat model; added "Compromised API key holder" to threat actors; added Finding 7.5 – External REST API key authentication; expanded Additional Controls table with five API-key-specific controls; added API key rotation and review tasks to the Security Checklist
+
+---
+
 ## [4.1.0] – branch: `extern-api`
 
 ### Added

@@ -15,13 +15,17 @@ agent is never exposed to external callers.
 4. [Base URL & Versioning](#4-base-url--versioning)
 5. [Request & Response Format](#5-request--response-format)
 6. [Error Responses](#6-error-responses)
-7. [Endpoints – Jobs](#7-endpoints--jobs)
-8. [Endpoints – Tags](#8-endpoints--tags)
-9. [Endpoints – Export](#9-endpoints--export)
-10. [Endpoints – Maintenance Windows](#10-endpoints--maintenance-windows)
-11. [Endpoints – Settings](#11-endpoints--settings)
-12. [Endpoints – Timeline](#12-endpoints--timeline)
-13. [Changelog](#13-changelog)
+7. [Quick Start](#7-quick-start)
+8. [Endpoints – Jobs](#8-endpoints--jobs)
+9. [Endpoints – Tags](#9-endpoints--tags)
+10. [Endpoints – Export](#10-endpoints--export)
+11. [Endpoints – Maintenance Windows](#11-endpoints--maintenance-windows)
+12. [Endpoints – Settings](#12-endpoints--settings)
+13. [Endpoints – Timeline](#13-endpoints--timeline)
+14. [Rate Limiting](#14-rate-limiting)
+15. [What the API does NOT cover](#15-what-the-api-does-not-cover)
+16. [Troubleshooting](#16-troubleshooting)
+17. [Changelog](#17-changelog)
 
 ---
 
@@ -209,7 +213,70 @@ Validation errors include a `fields` object:
 
 ---
 
-## 7. Endpoints – Jobs
+## 7. Quick Start
+
+This section shows the most common API calls end-to-end.
+
+### Step 1 – Create an API key in the web UI
+
+Open **API Keys** in the sidebar, click **Create new key**, choose a name and the scopes
+you need, then click **Save**. Copy the displayed `cm_…` token — it will not be shown again.
+
+### Step 2 – Set an environment variable
+
+```bash
+export CM_URL=https://cronmanager.example.com
+export CM_KEY=cm_aB3xQ7rLmP2kZw9sYvUd1nEjTfHgCo6R8iN0pA4e
+```
+
+### Step 3 – Try it
+
+**List all active jobs:**
+```bash
+curl -s -H "Authorization: Bearer $CM_KEY" \
+  "$CM_URL/api/v1/jobs?active=1" | jq '.data[] | {id, description, schedule}'
+```
+
+**Create a new job:**
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $CM_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "linux_user": "deploy",
+    "schedule": "0 3 * * *",
+    "command": "/opt/scripts/backup.sh",
+    "description": "Nightly backup",
+    "active": true,
+    "targets": ["local"]
+  }' \
+  "$CM_URL/api/v1/jobs"
+```
+
+**Trigger a job immediately:**
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $CM_KEY" \
+  "$CM_URL/api/v1/jobs/42/execute"
+```
+
+**Export all jobs as JSON:**
+```bash
+curl -s -H "Authorization: Bearer $CM_KEY" \
+  "$CM_URL/api/v1/export?format=json" | jq .
+```
+
+**Target a specific agent (multi-agent setup):**
+```bash
+curl -s \
+  -H "Authorization: Bearer $CM_KEY" \
+  -H "X-Agent-Id: 2" \
+  "$CM_URL/api/v1/jobs"
+```
+
+---
+
+## 8. Endpoints – Jobs
 
 Required scope for read operations: **`jobs:read`**
 Required scope for write operations: **`jobs:write`**
@@ -406,7 +473,7 @@ Execution history for a specific job.
 
 ---
 
-## 8. Endpoints – Tags
+## 9. Endpoints – Tags
 
 Required scope: **`jobs:read`**
 
@@ -430,7 +497,7 @@ List all tags.
 
 ---
 
-## 9. Endpoints – Export
+## 10. Endpoints – Export
 
 Required scope: **`export:read`**
 
@@ -465,7 +532,7 @@ Export all cron jobs in the requested format.
 
 ---
 
-## 10. Endpoints – Maintenance Windows
+## 11. Endpoints – Maintenance Windows
 
 Required scope for read: **`maintenance:read`**
 Required scope for write: **`maintenance:write`**
@@ -547,7 +614,7 @@ Delete a maintenance window.  Scope: **`maintenance:write`**
 
 ---
 
-## 11. Endpoints – Settings
+## 12. Endpoints – Settings
 
 Required scope for read: **`settings:read`**
 Required scope for write: **`settings:write`**
@@ -623,7 +690,7 @@ Resync crontab from database.  Scope: **`settings:write`**
 
 ---
 
-## 12. Endpoints – Timeline
+## 13. Endpoints – Timeline
 
 Required scope: **`jobs:read`**
 
@@ -669,7 +736,77 @@ Execution history across all jobs.
 
 ---
 
-## 13. Changelog
+## 14. Rate Limiting
+
+The external API currently applies **no rate limiting** at the application level. In production
+deployments it is strongly recommended to configure rate limiting at the reverse proxy or
+load-balancer tier (e.g. nginx `limit_req`, Caddy rate-limit middleware, or a WAF) to protect
+against brute-force token guessing and unintended denial-of-service from misconfigured scripts.
+
+---
+
+## 15. What the API does NOT cover
+
+The following operations are intentionally only available through the web UI and cannot be
+performed via the REST API:
+
+| Operation | Reason |
+|---|---|
+| Create / edit / delete users | User management is always session-based; admin intent must be explicit |
+| Add / edit / delete agents | Agent configuration changes affect the entire installation |
+| Manage API keys | An API key cannot create or revoke other API keys |
+| Change login credentials | Password changes require the current password (security policy) |
+| OIDC / SSO configuration | Sensitive IdP credentials are never exposed over the API |
+
+---
+
+## 16. Troubleshooting
+
+### `401 Unauthorized` – "Missing API key"
+
+The `Authorization` header is missing or malformed. Check that you are sending:
+```http
+Authorization: Bearer cm_<your-key>
+```
+Note: the `Bearer ` prefix (including the space) is required.
+
+### `401 Unauthorized` – "Invalid API key"
+
+The token does not match any stored hash. Possible causes:
+- The key was deleted in the UI.
+- A typo or truncation in the token value.
+- The key was issued for a different Cronmanager instance.
+
+### `401 Unauthorized` – "API key expired"
+
+The key's `expires_at` date has passed. Create a new key in the web UI.
+
+### `403 Forbidden` – "IP address not allowed"
+
+Your client IP is not in the key's IP whitelist. Either update the whitelist in the UI or
+add the calling machine's IP in CIDR notation (e.g. `192.168.1.10/32`).
+
+### `403 Forbidden` – "Insufficient scope"
+
+The key does not have the scope required by the endpoint. Delete the key and create a new
+one with the appropriate scope (scopes cannot be edited after creation).
+
+### `502 Bad Gateway` – "Agent unreachable"
+
+The web container cannot reach the host agent. Check:
+1. The agent container / service is running (`docker ps` or `systemctl status cronmanager-agent`).
+2. The agent URL in the web config (`/var/www/conf/config.json`) is correct.
+3. No firewall rule blocks the internal Docker network traffic.
+
+### API calls succeed but jobs don't run
+
+`POST /api/v1/jobs/{id}/execute` queues an immediate one-time cron entry. The entry is
+executed by the cron daemon inside the agent container, not in real time. There may be up
+to 60 seconds of delay before the daemon picks up the entry.
+
+---
+
+## 17. Changelog
 
 | Version | Change |
 |---|---|

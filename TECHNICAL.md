@@ -186,6 +186,10 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
     │   ├── swimlane.php
     │   ├── export.php
     │   ├── error.php
+    │   ├── api_keys/
+    │   │   ├── index.php          ← list of own API keys with scope badges
+    │   │   ├── create.php         ← key creation form (profile picker, scope checkboxes, expiry, IP list)
+    │   │   └── created.php        ← one-time plain-text display of new key (copy button)
     │   ├── cron/
     │   │   ├── list.php
     │   │   ├── detail.php
@@ -208,17 +212,29 @@ In host-agent mode the web container reaches the agent via `host.docker.internal
         │   ├── Request.php
         │   └── Response.php
         ├── Agent/HostAgentClient.php
+        ├── Api/                               ← external REST API controllers (Bearer token auth)
+        │   ├── BaseApiController.php          ← abstract base: jsonResponse(), errorResponse(), agentClient()
+        │   ├── JobsApiController.php          ← scopes: jobs:read, jobs:write, jobs:execute
+        │   ├── ExportApiController.php        ← scope:  export:read
+        │   ├── MaintenanceApiController.php   ← scopes: maintenance:read, maintenance:write
+        │   └── SettingsApiController.php      ← scopes: settings:read, settings:write
         ├── Auth/
+        │   ├── ApiKey.php                     ← value object (id, userId, name, scopes, agentIds, …)
+        │   ├── ApiKeyMiddleware.php           ← Bearer-token gate: token → hash → expiry → IP → scope
+        │   ├── ApiKeyRepository.php           ← PDO CRUD for api_keys table
         │   ├── LocalAuthProvider.php
-        │   └── OidcAuthProvider.php
+        │   ├── OidcAuthProvider.php
+        │   └── ScopeHelper.php               ← allowedScopesForRole(), PROFILES constant
         ├── Bootstrap/
-        │   └── AgentSchema.php            ← CREATE TABLE IF NOT EXISTS agents + seed from config
+        │   ├── AgentSchema.php            ← CREATE TABLE IF NOT EXISTS agents + seed from config
+        │   └── ApiKeySchema.php           ← CREATE TABLE IF NOT EXISTS api_keys (idempotent)
         ├── Repository/
         │   ├── AgentRepository.php        ← PDO CRUD for the agents table
         │   └── UserPreferenceRepository.php
         └── Controller/
             ├── BaseController.php
             ├── AgentController.php        ← agent CRUD + connectivity test + session switch
+            ├── ApiKeyController.php       ← UI: list, create, delete own API keys
             ├── AuthController.php
             ├── SetupController.php
             ├── DashboardController.php
@@ -1254,6 +1270,7 @@ Currently used by `DashboardController::index()` (returns stats array) and `Cron
 | `ExportController` | `GET /export`, `GET /export/download` | view |
 | `UserController` | `GET /users`, `POST /users/{id}/role`, `POST /users/{id}/delete` | admin |
 | `AgentController` | `GET /settings/agents/create`, `POST /settings/agents`, `GET /settings/agents/{id}/edit`, `POST /settings/agents/{id}`, `POST /settings/agents/{id}/delete`, `POST /settings/agents/{id}/test` (JSON), `POST /agent/select` | admin (select: view) |
+| `ApiKeyController` | `GET /api-keys`, `GET /api-keys/create`, `POST /api-keys`, `POST /api-keys/{id}/delete` | view (own keys only) |
 | `MaintenanceController` | `GET /settings`, `POST /settings/resync`, `POST /settings/executions/{id}/finish`, `POST /settings/executions/{id}/delete`, `POST /settings/executions/bulk`, `POST /settings/history/cleanup`, `POST /settings/once/cleanup`, `POST /settings/logs/prune`, `POST /settings/notification/test` | admin |
 | `TargetController` | `GET /maintenance`, `GET /maintenance/{target}/windows/new`, `POST /maintenance/{target}/windows`, `GET /maintenance/windows/{id}/edit`, `POST /maintenance/windows/{id}/edit`, `POST /maintenance/windows/{id}/delete`, `GET /maintenance/windows/conflict`, `POST /maintenance/ssh/test` | admin |
 
@@ -1328,6 +1345,53 @@ Guzzle `verify` option accordingly:
 | `oidc_ssl_ca_bundle` non-empty | Path string → custom CA bundle |
 | `oidc_ssl_verify = false` | `false` → TLS verification disabled |
 | Default | `true` → system CA bundle |
+
+**API key authentication** (`src/Auth/ApiKeyMiddleware.php`, since v4.1.0):
+
+The external REST API (`/api/v1/*`) uses stateless Bearer-token authentication independent of
+the PHP session. The middleware is invoked at the top of every `ApiController` before any
+business logic:
+
+```php
+$apiKey = $this->middleware->authenticate('jobs:read');
+// Returns ApiKey value object on success; emits JSON error + exits on failure.
+```
+
+**Authentication flow:**
+
+1. Read `Authorization: Bearer cm_<token>` from `$_SERVER['HTTP_AUTHORIZATION']`
+2. Compute `sha256($token)` and look up the hash in `api_keys` via `ApiKeyRepository`
+3. Reject with **401** if no matching row is found or the key has expired (`expires_at < now`)
+4. Reject with **403** if the caller IP (`$_SERVER['REMOTE_ADDR']`) is outside the key's
+   CIDR whitelist (when `ip_whitelist` is set)
+5. Reject with **403** if the required scope is not in the key's `scopes` array
+6. Schedule a non-blocking `touchLastUsed()` call via `register_shutdown_function()`
+7. Return the `ApiKey` value object to the controller
+
+**`ApiKey` value object** (`src/Auth/ApiKey.php`):
+
+```php
+readonly class ApiKey {
+    public int $id;
+    public int $userId;
+    public string $name;
+    public array $scopes;
+    public ?array $agentIds;       // null = all agents
+    public ?\DateTimeImmutable $expiresAt;
+    public ?array $ipWhitelist;    // CIDR strings; null = no restriction
+    public ?\DateTimeImmutable $lastUsedAt;
+}
+```
+
+**`ScopeHelper`** (`src/Auth/ScopeHelper.php`):
+
+```php
+ScopeHelper::allowedScopesForRole(string $role): array  // 'view' or 'admin'
+ScopeHelper::PROFILES  // ['read-only' => [...], 'operator' => [...], ...]
+```
+
+Used at key-creation time to enforce scope inheritance: a user may only grant scopes
+their own role is permitted to use.
 
 ### Session management
 
@@ -1487,6 +1551,25 @@ UNIQUE KEY: `(job_id, target)`
 | `created_at` | DATETIME | |
 
 Added by migration `006_maintenance_windows.sql`.
+
+### `api_keys`
+
+Managed by the web application (`ApiKeySchema::ensure()` on every request start). Stores API keys for the external REST API.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INT PK AUTO_INCREMENT | |
+| `user_id` | INT FK → `users.id` | CASCADE DELETE – key is removed when its owner is deleted |
+| `name` | VARCHAR(100) | Human-readable label set by the key owner |
+| `key_hash` | VARCHAR(64) UNIQUE | `sha256(plain_key)` — plain text is never stored |
+| `scopes` | JSON | Array of granted scope strings, e.g. `["jobs:read", "export:read"]` |
+| `agent_ids` | JSON NULL | `null` = all agents; `[1,3]` = only these agent IDs |
+| `expires_at` | DATETIME NULL | `null` = no expiry |
+| `ip_whitelist` | JSON NULL | `null` = no restriction; array of CIDR strings, e.g. `["10.0.0.0/8"]` |
+| `last_used_at` | DATETIME NULL | Updated asynchronously via `register_shutdown_function()` |
+| `created_at` | DATETIME | Set to `CURRENT_TIMESTAMP` on INSERT |
+
+The table is bootstrapped by `ApiKeySchema::ensure()` using `CREATE TABLE IF NOT EXISTS`, which is idempotent and safe to call on every request. Errors are logged but never thrown so a schema hiccup never prevents the application from serving a page.
 
 ### `schema_migrations`
 

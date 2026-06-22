@@ -27,10 +27,16 @@ spl_autoload_register(function (string $class): void {
     }
 });
 
+use Cronmanager\Web\Api\ExportApiController;
+use Cronmanager\Web\Api\JobsApiController;
+use Cronmanager\Web\Api\MaintenanceApiController;
+use Cronmanager\Web\Api\SettingsApiController;
 use Cronmanager\Web\Auth\OidcAuthProvider;
 use Cronmanager\Web\Bootstrap;
 use Cronmanager\Web\Bootstrap\AgentSchema;
+use Cronmanager\Web\Bootstrap\ApiKeySchema;
 use Cronmanager\Web\Controller\AgentController;
+use Cronmanager\Web\Controller\ApiKeyController;
 use Cronmanager\Web\Controller\AuthController;
 use Cronmanager\Web\Controller\CronController;
 use Cronmanager\Web\Controller\DashboardController;
@@ -105,6 +111,15 @@ try {
     }
 
     // -------------------------------------------------------------------------
+    // API key schema bootstrap – ensure api_keys table exists
+    // -------------------------------------------------------------------------
+    try {
+        ApiKeySchema::ensure(Connection::getInstance()->getPdo(), $logger);
+    } catch (\Throwable $e) {
+        $logger->error('ApiKeySchema::ensure failed', ['message' => $e->getMessage()]);
+    }
+
+    // -------------------------------------------------------------------------
     // Request
     // -------------------------------------------------------------------------
     $request = Request::fromGlobals();
@@ -117,6 +132,58 @@ try {
             (new Response())->redirect('/setup');
             exit;
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // External REST API routes (/api/v1/*)
+    //
+    // These routes use Bearer-token authentication (ApiKeyMiddleware) instead
+    // of sessions and CSRF.  They are registered as public routes so the
+    // Router does not apply session/CSRF checks; auth is handled inside each
+    // controller action.
+    // -------------------------------------------------------------------------
+    if (str_starts_with($request->path, '/api/v1/')) {
+        $pdo            = Connection::getInstance()->getPdo();
+        $jobsApi        = new JobsApiController($config, $logger, $pdo);
+        $exportApi      = new ExportApiController($config, $logger, $pdo);
+        $maintenanceApi = new MaintenanceApiController($config, $logger, $pdo);
+        $settingsApi    = new SettingsApiController($config, $logger, $pdo);
+
+        $apiRouter = new Router($config, $logger);
+
+        // Jobs – read
+        $apiRouter->addPublicRoute('GET',    '/api/v1/jobs',                   [$jobsApi, 'index']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/jobs/{id}',              [$jobsApi, 'show']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/jobs/{id}/history',      [$jobsApi, 'history']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/tags',                   [$jobsApi, 'tags']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/timeline',               [$jobsApi, 'timeline']);
+        // Jobs – write
+        $apiRouter->addPublicRoute('POST',   '/api/v1/jobs',                   [$jobsApi, 'store']);
+        $apiRouter->addPublicRoute('PUT',    '/api/v1/jobs/{id}',              [$jobsApi, 'update']);
+        $apiRouter->addPublicRoute('DELETE', '/api/v1/jobs/{id}',              [$jobsApi, 'destroy']);
+        // Jobs – execute
+        $apiRouter->addPublicRoute('POST',   '/api/v1/jobs/{id}/execute',      [$jobsApi, 'execute']);
+        $apiRouter->addPublicRoute('POST',   '/api/v1/executions/{id}/kill',   [$jobsApi, 'kill']);
+
+        // Export
+        $apiRouter->addPublicRoute('GET',    '/api/v1/export',                 [$exportApi, 'download']);
+
+        // Maintenance windows – resync must be registered before /{section}
+        $apiRouter->addPublicRoute('POST',   '/api/v1/settings/resync',        [$settingsApi, 'resync']);
+        // Maintenance windows
+        $apiRouter->addPublicRoute('GET',    '/api/v1/maintenance/windows',     [$maintenanceApi, 'index']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/maintenance/windows/{id}',[$maintenanceApi, 'show']);
+        $apiRouter->addPublicRoute('POST',   '/api/v1/maintenance/windows',     [$maintenanceApi, 'store']);
+        $apiRouter->addPublicRoute('PUT',    '/api/v1/maintenance/windows/{id}',[$maintenanceApi, 'update']);
+        $apiRouter->addPublicRoute('DELETE', '/api/v1/maintenance/windows/{id}',[$maintenanceApi, 'destroy']);
+
+        // Settings – {section} must come after /settings/resync
+        $apiRouter->addPublicRoute('GET',    '/api/v1/settings',               [$settingsApi, 'index']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/settings/{section}',     [$settingsApi, 'show']);
+        $apiRouter->addPublicRoute('PUT',    '/api/v1/settings/{section}',     [$settingsApi, 'update']);
+
+        $apiRouter->dispatch($request);
+        exit;
     }
 
     // -------------------------------------------------------------------------
@@ -264,6 +331,15 @@ try {
 
     // Agent switcher – available to all authenticated users
     $router->addProtectedRoute('POST', '/agent/select',                              [$agentCtrl, 'select'],              'view');
+
+    // API Key management – available to every authenticated user (own keys only)
+    $apiKeyCtrl = new ApiKeyController($config, $logger);
+    // /api-keys/created and /api-keys/create must be registered before /api-keys/{id}
+    $router->addProtectedRoute('GET',  '/api-keys',                 [$apiKeyCtrl, 'index'],   'view');
+    $router->addProtectedRoute('GET',  '/api-keys/create',          [$apiKeyCtrl, 'create'],  'view');
+    $router->addProtectedRoute('POST', '/api-keys',                 [$apiKeyCtrl, 'store'],   'view');
+    $router->addProtectedRoute('GET',  '/api-keys/created',         [$apiKeyCtrl, 'created'], 'view');
+    $router->addProtectedRoute('POST', '/api-keys/{id}/delete',     [$apiKeyCtrl, 'destroy'], 'view');
 
     // 301 redirect: legacy /housekeeping bookmark → /settings
     $router->addPublicRoute('GET',  '/housekeeping',  fn() => (new Response())->redirect('/settings', 301));

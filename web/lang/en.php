@@ -607,4 +607,8 @@ return [
     'cron_maintenance_skipped_badge' => 'Skipped (maintenance)',
     'cron_during_maintenance_badge'  => 'Maintenance',
     'cron_interrupted_badge'         => 'Interrupted',
+
+    // API Keys
+    'nav_api_keys'        => 'API Keys',
+    'nav_api_keys_create' => 'Create API Key',
 ];

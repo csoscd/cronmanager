@@ -607,4 +607,8 @@ return [
     'cron_maintenance_skipped_badge' => 'Übersprungen (Wartung)',
     'cron_during_maintenance_badge'  => 'Wartung',
     'cron_interrupted_badge'         => 'Unterbrochen',
+
+    // API Keys
+    'nav_api_keys'        => 'API Keys',
+    'nav_api_keys_create' => 'API Key erstellen',
 ];

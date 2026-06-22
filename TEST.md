@@ -111,16 +111,22 @@ tests/
 │   ├── Util/
 │   │   └── ExitCodeMatcherTest.php        # Exit-code filter expression parsing
 │   └── Web/
-│       └── HostAgentClientTest.php        # HTTP client HMAC signing + error handling
+│       ├── HostAgentClientTest.php        # HTTP client HMAC signing + error handling
+│       └── Auth/
+│           ├── ApiKeyTest.php             # ApiKey value object (scope, expiry, IP, agent checks)
+│           └── ScopeHelperTest.php        # Scope constants, profiles, role mapping, filtering
 │
 ├── Integration/
 │   ├── Base/
 │   │   ├── IntegrationTestCase.php        # DB connection, schema bootstrap, TX rollback
 │   │   └── AgentEndpointTestCase.php      # php://input injection, response capture
+│   ├── Auth/
+│   │   └── ApiKeyMiddlewareTest.php       # Bearer-token auth gate (header, expiry, IP, scope)
 │   ├── Endpoints/
 │   │   ├── ExecutionStartEndpointTest.php
 │   │   └── ExecutionFinishEndpointTest.php
 │   ├── Repository/
+│   │   ├── ApiKeyRepositoryTest.php       # API key DB lifecycle (create, lookup, delete, touch)
 │   │   └── MaintenanceWindowRepositoryTest.php
 │   ├── Fixtures/                          # (reserved for shared fixture factories)
 │   └── Support/
@@ -139,7 +145,7 @@ tests/
 **Location:** `tests/Unit/`  
 **Run:** `./vendor/bin/phpunit --testsuite unit`  
 **DB required:** No  
-**Current count:** 85 tests, ~127 assertions
+**Current count:** 120 tests, ~215 assertions
 
 Unit tests cover pure logic classes with no external dependencies. All tests
 execute in under 100 ms.
@@ -215,6 +221,31 @@ X-Agent-Signature = hmac_sha256(SECRET, UPPER(method) + path + rawBody)
 ```
 For GET requests `rawBody = ""` and `path` excludes any `?query=string`.
 
+#### `Web/Auth/ApiKeyTest` (17 tests)
+
+Tests the `ApiKey` value object in isolation. All state is passed through the
+constructor — no database or HTTP dependency.
+
+| Group | Tests |
+|---|---|
+| `hasScope()` | Granted scope → true, missing scope → false, empty list → false |
+| `isExpired()` | No expiry → false, past expiry → true, future expiry → false |
+| `isIpAllowed()` | Null/empty whitelist → true, bare IP exact, /32, /24, /16, multiple CIDRs, malformed CIDR, IPv6 /128 |
+| `isAgentAllowed()` | Null restriction → true, permitted agent → true, non-permitted → false |
+
+#### `Web/Auth/ScopeHelperTest` (18 tests)
+
+Tests the `ScopeHelper` constants, role-to-scope mapping, and the
+`filterScopes()` validation/intersection logic.
+
+| Group | Tests |
+|---|---|
+| `ALL_SCOPES` | Count = 8, contains all 8 expected values, no duplicates |
+| `PROFILES` | Count = 4 named profiles, `full-admin` = all scopes, `read-only` = `:read` only, `operator` has execute but no write, all profile scopes are known |
+| `allowedScopesForRole()` | `admin` → all scopes, `view` → read-only, `view` excludes write/execute, unknown role → view fallback |
+| `filterScopes()` | Removes unknown, enforces allowed list, deduplicates, empty-result on no match, empty-result on empty input |
+| Display helpers | `label()` and `badgeColor()` return non-empty strings for every known scope |
+
 ---
 
 ### 4.2 Integration Tests
@@ -222,7 +253,7 @@ For GET requests `rawBody = ""` and `path` excludes any `?query=string`.
 **Location:** `tests/Integration/`  
 **Run:** `./vendor/bin/phpunit --testsuite integration`  
 **DB required:** Yes (see §5)  
-**Current count:** 68 tests, ~157 assertions
+**Current count:** 101 tests, ~230 assertions
 
 Integration tests use a real MariaDB connection. The full schema and all
 migrations are applied once per PHP process. Each individual test runs inside a
@@ -233,6 +264,7 @@ isolated and leave no residual data.
 
 **`IntegrationTestCase`** provides:
 - `$this->pdo` – PDO connection to the test database
+- `seedUser(array $overrides = []): int` – minimal `users` row (username, password_hash, role)
 - `seedJob(array $overrides = []): int` – minimal `cronjobs` row
 - `seedJobTarget(int $jobId, string $target = 'local'): int`
 - `seedRunningExecution(int $jobId, array $overrides = []): int`
@@ -294,6 +326,43 @@ calls and stores them in static properties for assertion.
 | CRUD (7) | `create` + `findById` round-trip, `findAll` (all + target-filtered + empty), `update` modifies row, `update` returns false for unknown ID, `delete` removes row, `delete` returns false for unknown ID |
 | `isTargetInMaintenance()` (6) | Always-active window (`* * * * *` + 1440 min) → true, inactive window → false, no windows for target → false, window for different target → false, `_agent_` window → `isAgentInMaintenance()` true, no `_agent_` window → false |
 | `detectConflicts()` (5) | Frequent job (`* * * * *`) inside always-active window → `lookAhead` conflicts returned, no windows → `[]`, inactive window → `[]`, result contains required keys (`run_time`, `window_id`, `window_start`, `window_end`), `window_id` matches seeded row ID |
+
+#### `Repository/ApiKeyRepositoryTest` (20 tests)
+
+Tests the full DB lifecycle of `ApiKeyRepository`. Each test uses a fresh
+`users` row via `seedUser()` and rolls back in `tearDown()`.
+`ApiKeySchema::ensure()` is called in `setUp()` to guarantee the `api_keys`
+table exists.
+
+| Group | Tests |
+|---|---|
+| `create()` (7) | Returns key+plainText, correct properties, expiry stored, `agent_ids` stored, `ip_whitelist` stored, `cm_` prefix, uniqueness |
+| `findByPlainText()` (4) | Returns key for valid token, null for unknown, null for empty string, loads all fields (expiry/agentIds/ipWhitelist/scopes) |
+| `listForUser()` (3) | Empty array when no keys, returns only keys for that user, sorted newest-first |
+| `deleteForUser()` (3) | Returns true + removes row, returns false for non-existent ID, returns false for wrong owner |
+| `touchLastUsed()` (2) | Sets timestamp on first touch, ignores unknown ID without throwing |
+| FK cascade (1) | Deleting the owning user removes the API key row |
+
+#### `Auth/ApiKeyMiddlewareTest` (13 tests)
+
+Tests the `ApiKeyMiddleware` authentication gate end-to-end against a real
+database. `$_SERVER` superglobals are set before each call; output is captured
+with `ob_start()`/`ob_get_clean()` and the HTTP status via `http_response_code()`.
+
+| Group | Tests |
+|---|---|
+| Missing/malformed header (3) | No `Authorization` header → 401, non-Bearer scheme → 401, empty Bearer token → 401 |
+| Unknown key (1) | Non-existent token → 401 |
+| Expiry (2) | Past `expires_at` → 401, future `expires_at` → success |
+| IP whitelist (2) | Caller IP outside CIDR → 403, caller IP inside CIDR → success |
+| Scope check (2) | Key lacks required scope → 403, key has required scope → success |
+| Happy path (2) | Returns `ApiKey` instance, returned key has correct `id` |
+| Error format (1) | 401 body contains `error`, `message`, `code` fields |
+
+> **Capture strategy:** `ApiKeyMiddleware::jsonError()` calls `http_response_code($status)`
+> and `echo json_encode(...)` directly (no custom stub). Tests reset the HTTP
+> code to 200 before each `callAuthenticate()` call and read the resulting
+> `http_response_code()` value after the method returns.
 
 ---
 
@@ -514,8 +583,12 @@ Coverage is not enforced on every PR but can be generated on demand:
 | `HmacValidator` | 100 % |
 | `ExitCodeMatcher` | 100 % |
 | `Router` | 100 % |
+| `ApiKey` | 100 % |
+| `ScopeHelper` | 100 % |
 | `ExecutionStartEndpoint` | ≥ 85 % |
 | `ExecutionFinishEndpoint` | ≥ 80 % |
 | `HostAgentClient` | ≥ 90 % |
 | `MaintenanceWindowRepository` | ≥ 85 % |
+| `ApiKeyRepository` | ≥ 85 % |
+| `ApiKeyMiddleware` | ≥ 85 % |
 | Overall (all covered classes) | ≥ 70 % |

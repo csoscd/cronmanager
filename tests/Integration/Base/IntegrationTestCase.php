@@ -69,6 +69,27 @@ abstract class IntegrationTestCase extends TestCase
     // -------------------------------------------------------------------------
 
     /**
+     * Insert a user row and return its auto-increment ID.
+     *
+     * @param array<string, mixed> $overrides Column overrides.
+     */
+    protected function seedUser(array $overrides = []): int
+    {
+        $defaults = [
+            'username'      => 'testuser_' . uniqid(),
+            'password_hash' => password_hash('secret', PASSWORD_BCRYPT),
+            'role'          => 'admin',
+        ];
+        $data = array_merge($defaults, $overrides);
+
+        $this->pdo->prepare(
+            'INSERT INTO users (username, password_hash, role) VALUES (:username, :password_hash, :role)'
+        )->execute($data);
+
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
      * Insert a minimal cron job and return its auto-increment ID.
      *
      * @param array<string, mixed> $overrides Column overrides.

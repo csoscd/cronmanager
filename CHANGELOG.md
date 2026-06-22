@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.1.0] – branch: `extern-api`
+
+### Added
+
+- **External REST API** (`/api/v1/*`): scope-based JSON REST API for external applications.
+  - Bearer-token authentication via API keys generated in the web UI
+  - 8 scopes: `jobs:read`, `jobs:write`, `jobs:execute`, `export:read`, `maintenance:read`, `maintenance:write`, `settings:read`, `settings:write`
+  - Pre-defined profiles for quick key setup: `read-only`, `operator`, `developer`, `full-admin`
+  - Endpoints: jobs CRUD, execution history, tags, timeline, crontab export, maintenance windows CRUD, agent settings, crontab resync
+  - Optional per-key restrictions: expiry date, agent scope, IP whitelist (CIDR)
+  - Key format: `cm_<40-char URL-safe base64>` — only SHA-256 hash stored in DB
+  - `last_used_at` updated via shutdown function (non-blocking)
+  - `X-Agent-Id` header for targeting a specific agent in multi-agent setups
+- **API Key management UI** (`/api-keys`): every user can manage their own keys
+  - Create form with profile quick-select, per-scope checkboxes, expiry date, IP whitelist, agent restriction
+  - One-time plain-text display after creation with clipboard copy button
+  - Scope badges show granted permissions; expired keys are visually marked
+  - Scope inheritance: a `view` user can only grant read scopes; an `admin` user can grant all 8 scopes
+- **`api_keys` database table** (auto-created by `ApiKeySchema::ensure()` on first request)
+- **`API.md`**: complete API reference document covering authentication, all endpoints with request/response examples, error format, scope model, and pagination
+
+---
+
 ## [4.0.0] – branch: `remote_agents`
 
 ### Testing

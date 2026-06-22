@@ -53,6 +53,7 @@ The analysis covers:
 | Execution history / output | Medium | Medium | Medium |
 | HMAC shared secret | **Critical** | High | Medium |
 | Database credentials | **Critical** | High | Medium |
+| API keys (plain text, shown once) | **Critical** | High | Low |
 
 ### Threat actors
 
@@ -62,6 +63,7 @@ The analysis covers:
 | Authenticated low-privilege user | In-app privilege escalation |
 | Attacker with local host access | Reads config files / memory |
 | Malicious cron payload author | Injects commands through job editing |
+| Compromised API key holder | Calls REST API with a stolen or leaked key |
 
 ---
 
@@ -365,6 +367,40 @@ after successful authentication, invalidating the old session and preventing fix
 
 ---
 
+#### Finding 7.5 – External REST API key authentication ✅ Implemented (v4.1.0)
+
+**Risk**: External callers accessing the REST API without adequate authentication or with
+overly broad permissions — equivalent to granting unconstrained admin access to scripts.
+
+**Implementation** (`src/Auth/ApiKeyMiddleware.php`, `src/Auth/ApiKeyRepository.php`):
+
+- **Key format**: `cm_` prefix + 40 cryptographically random URL-safe base64 characters
+  (`random_bytes(30)`). The `cm_` prefix makes leaked keys identifiable.
+- **Storage**: Only `sha256(plain_key)` is stored in the database. The plain-text key
+  is shown exactly once in the UI and cannot be recovered. Leaking the database does not
+  expose usable keys.
+- **Scope-based least-privilege**: Each key is granted a minimal set of the 8 available
+  scopes. A `read-only` key has no write or execute access even if the creating user is
+  an admin.
+- **Scope inheritance**: A user can only grant scopes their own role permits
+  (`view`-users may not grant `jobs:write`, `maintenance:write`, `settings:write`, or
+  `settings:read`).
+- **IP whitelist**: Optional CIDR-notation allowlist enforced by `ApiKey::isIpAllowed()`
+  using `inet_pton` bit-comparison. Requests from unlisted IPs receive HTTP 403.
+- **Expiry**: Optional `expires_at`; expired keys receive HTTP 401.
+- **Non-blocking `last_used_at`**: Updated via `register_shutdown_function()` so the
+  timestamp is recorded without adding latency to the API response.
+- **No session, no CSRF**: The API is fully stateless. Cookie-based CSRF does not apply;
+  the `Authorization` header is the only credential.
+- **HMAC separate concern**: The HMAC channel is between the web container and the
+  internal agent — it is invisible to and independent of external API callers.
+
+**Residual risk**: A stolen API key grants access until it is revoked or expires. There
+is no automatic revocation on suspicious usage patterns. Mitigation: use narrow scopes,
+short expiry dates, and IP whitelists for keys used by automated scripts.
+
+---
+
 ### A09 – Security Logging and Monitoring Failures
 
 #### Finding 9.1 – Security event logging ✅ Already implemented / improved
@@ -453,6 +489,11 @@ represent security best practices:
 | Output escaping | All templates | `htmlspecialchars(ENT_QUOTES, UTF-8)` on all dynamic output |
 | cron-wrapper HMAC | `cron-wrapper.sh` | Execution reports are signed; the agent validates them |
 | Startup orphan cleanup | `agent/bin/startup-cleanup.php` | On agent restart, detects and resolves execution_log rows left "running" by a previous crash/stop; prevents ghost "running" entries in the UI after VM maintenance |
+| API key hashing | `ApiKeyRepository::create()` | Only `sha256(plain_key)` stored; plain text shown once and never persisted |
+| API key scope enforcement | `ApiKeyMiddleware::authenticate()` | Required scope checked on every call; missing scope → HTTP 403 |
+| API key scope inheritance | `ScopeHelper::allowedScopesForRole()` | Users may not grant scopes beyond their own role's permissions |
+| API key IP whitelist | `ApiKey::isIpAllowed()` | CIDR-based IP restriction enforced via `inet_pton` bit-comparison |
+| API key non-blocking timestamp | `register_shutdown_function()` | `last_used_at` updated after response is sent; no latency impact |
 
 ---
 
@@ -516,8 +557,10 @@ Use this checklist when deploying a new instance or reviewing after changes.
 - [ ] Update Composer dependencies and re-run `composer audit` (also enforced by CI)
 - [ ] Rotate HMAC secret (update both agent config and web config; restart agent service)
 - [ ] Review user accounts and remove stale accounts
+- [ ] Review API keys under `/api-keys`: revoke keys that are no longer needed, check `last_used_at` for stale keys, verify scope assignments are still appropriate
+- [ ] Rotate long-lived API keys used by automated scripts
 
 ---
 
-*Analysis performed: 2026-03-18; last updated: 2026-06-19 (v4.0.0 – added automated CI security checks)*
+*Analysis performed: 2026-03-18; last updated: 2026-06-22 (v4.1.0 – external REST API key authentication)*
 *Analyst: Christian Schulz <technik@meinetechnikwelt.rocks>*

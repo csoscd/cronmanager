@@ -41,8 +41,9 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 15. [Maintenance Windows](#maintenance-windows)
 16. [Export](#export)
 17. [User Management](#user-management)
-18. [Updating](#updating)
-19. [Troubleshooting](#troubleshooting)
+18. [External REST API](#external-rest-api)
+19. [Updating](#updating)
+20. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -77,6 +78,7 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Local & SSO auth** | Username/password accounts or OAuth 2.0 / OpenID Connect (OIDC) via Authentik |
 | **Role-based access** | Admin (full access) and Viewer (read-only) roles |
 | **User management** | Admins can promote, demote, or remove users |
+| **External REST API** | Scope-based JSON API for external applications; authenticated via Bearer tokens generated in the web UI — see [API.md](API.md) |
 | **Internationalisation** | English and German out of the box; easy to extend |
 | **Dark mode** | System-preference aware, toggle in the nav bar |
 
@@ -1392,6 +1394,25 @@ Admins can manage accounts via **Users** in the navigation bar.
 - You cannot modify or delete your own account
 - SSO users are auto-created as Viewer on first login and can be promoted by an admin
 - Deleting an SSO user does not revoke their OIDC provider access
+
+---
+
+## External REST API
+
+Since version 4.1.0, Cronmanager exposes a versioned REST API at `/api/v1/*` for external
+applications. Every request must carry a **Bearer token** generated in the web UI under
+**API Keys** (available to every logged-in user):
+
+```http
+Authorization: Bearer cm_<your-api-key>
+```
+
+Access is controlled by **scopes**: each key is granted only the permissions it needs
+(e.g. `jobs:read` for read-only access, `jobs:write` to create and edit jobs).
+Keys can also be restricted by expiry date, IP whitelist, and the set of agents they may target.
+
+For the full API reference including all endpoints, request/response examples, and security
+details, see **[API.md](API.md)**.
 
 ---
 

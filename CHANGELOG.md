@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.1.2] – branch: `api_key_create_fix`
+
+### Fixed
+
+- **API Key creation/deletion**: CSRF token variable mismatch in `templates/api_keys/create.php` and `templates/api_keys/index.php` — both templates used `$csrfToken` (camelCase) instead of `$csrf_token` (snake_case) as provided by `TemplateEngine`. The hidden `_csrf` field was always empty, causing every form submission to fail with 403 Access Denied.
+
+---
+
 ## [4.1.1] – branch: `api-docu-fix`
 
 ### Documentation

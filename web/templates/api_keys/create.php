@@ -40,7 +40,7 @@ $agents        = isset($agents)        && is_array($agents)        ? $agents    
     </div>
 
     <form method="POST" action="/api-keys" id="create-api-key-form">
-        <input type="hidden" name="_csrf" value="<?= $h($csrfToken ?? '') ?>">
+        <input type="hidden" name="_csrf" value="<?= $h($csrf_token ?? '') ?>">
 
         <div class="space-y-6">
 

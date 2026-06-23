@@ -404,9 +404,17 @@ final class JobsApiController extends BaseApiController
 
         ['limit' => $limit, 'offset' => $offset] = $this->pagination();
 
+        $validStatuses = ['success', 'failed', 'running'];
+        $status        = isset($_GET['status']) && $_GET['status'] !== '' ? (string) $_GET['status'] : null;
+
+        if ($status !== null && !in_array($status, $validStatuses, strict: true)) {
+            $this->jsonError(400, 'Bad Request', 'Parameter "status" must be one of: ' . implode(', ', $validStatuses) . '.');
+            return;
+        }
+
         $query = array_filter([
-            'status' => $_GET['status'] ?? null,
-            'tag'    => $_GET['tag']    ?? null,
+            'status' => $status,
+            'tag'    => $_GET['tag'] ?? null,
             'limit'  => (string) $limit,
             'offset' => (string) $offset,
         ], fn($v) => $v !== null);

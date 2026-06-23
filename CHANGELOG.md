@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.1.3] – branch: `api_export_doc_fix`
+
+### Fixed
+
+- **Export `csv`/`cron` formats**: `GET /api/v1/export?format=csv` and `?format=cron` returned 502 because `ExportApiController` forwarded the format directly to the agent, which only supports `json` (and the legacy `crontab` name). The controller now always fetches JSON from the agent and generates CSV/crontab output in the web layer, eliminating the agent round-trip for text formats.
+- **Timeline `status` validation**: invalid `status` values (e.g. `status=failure`) were forwarded to the agent, which returned 400 — the web layer then surfaced this as 502. `JobsApiController::timeline()` now validates the parameter against `success`, `failed`, `running` before the agent call and returns 400 directly.
+
+### Documentation
+
+- **API.md**: corrected `GET /api/v1/jobs/{id}/history` response fields (`id` → `execution_id`, `cronjob_id` → `job_id`, removed `pid`, added `duration_seconds` and `retry_root_execution_id`)
+- **API.md**: corrected `GET /api/v1/export` JSON response structure (`{export:{generated_at,…}, data:[], count}`) and added `user`/`tag` query parameters; expanded csv/cron response descriptions
+- **API.md**: corrected `status` filter values for both `history` and `timeline` endpoints (`failure` → `failed`)
+
+---
+
 ## [4.1.2] – branch: `api_key_create_fix`
 
 ### Fixed

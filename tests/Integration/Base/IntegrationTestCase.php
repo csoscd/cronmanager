@@ -265,6 +265,37 @@ abstract class IntegrationTestCase extends TestCase
         return (int) $this->pdo->lastInsertId();
     }
 
+    /**
+     * Insert an agent row and return its auto-increment ID.
+     *
+     * @param array<string, mixed> $overrides Column overrides.
+     */
+    protected function seedAgent(array $overrides = []): int
+    {
+        $defaults = [
+            'name'        => 'Test Agent ' . uniqid(),
+            'description' => null,
+            'url'         => 'http://agent:8865',
+            'hmac_secret' => 'test-secret',
+            'timeout'     => 10,
+            'ssl_verify'  => 1,
+            'enabled'     => 1,
+            'sort_order'  => 0,
+        ];
+
+        $data = array_merge($defaults, $overrides);
+        // Remove null values so columns with DEFAULT NULL are handled by the DB
+        $data = array_filter($data, fn($v) => $v !== null);
+
+        $columns      = implode(', ', array_keys($data));
+        $placeholders = implode(', ', array_map(fn($k) => ':' . $k, array_keys($data)));
+
+        $this->pdo->prepare("INSERT INTO agents ({$columns}) VALUES ({$placeholders})")
+                  ->execute($data);
+
+        return (int) $this->pdo->lastInsertId();
+    }
+
     // -------------------------------------------------------------------------
     // Query helpers
     // -------------------------------------------------------------------------

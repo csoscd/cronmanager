@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.2.0] – branch: `api-agents-endpoint`
+
+### Added
+
+- **External REST API: `GET /api/v1/agents`** (scope: `settings:read`) – lists all agents
+  visible to the calling API key with fields `id`, `name`, `description`, `enabled`.
+  Sensitive connection fields (`url`, `hmac_secret`, `ssl_ca_bundle`) are intentionally
+  omitted from the response.  If the API key has an `agent_ids` restriction, only the
+  permitted agents are returned.
+  Required as a prerequisite for per-tool agent selection in the Cronmanager MCP server
+  (csoscd/cronmanager-mcp, Issue #92).
+- **`agents` table added to `agent/sql/schema.sql`** so the shared database schema is
+  complete in one place and integration tests can set up the full schema without
+  relying on the PHP-side bootstrap.
+- **Integration test** `tests/Integration/Web/AgentsApiControllerTest.php` with 10
+  test cases covering auth gate, agent_ids filtering, response structure, sensitive-field
+  exclusion, and boolean type correctness of the `enabled` field.
+- **`seedAgent()` fixture helper** added to `IntegrationTestCase` for use in current and
+  future agent-related tests.
+
+---
+
 ## [4.1.3] – branch: `api_export_doc_fix`
 
 ### Fixed

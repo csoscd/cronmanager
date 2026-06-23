@@ -22,10 +22,11 @@ agent is never exposed to external callers.
 11. [Endpoints – Maintenance Windows](#11-endpoints--maintenance-windows)
 12. [Endpoints – Settings](#12-endpoints--settings)
 13. [Endpoints – Timeline](#13-endpoints--timeline)
-14. [Rate Limiting](#14-rate-limiting)
-15. [What the API does NOT cover](#15-what-the-api-does-not-cover)
-16. [Troubleshooting](#16-troubleshooting)
-17. [Changelog](#17-changelog)
+14. [Endpoints – Agents](#14-endpoints--agents)
+15. [Rate Limiting](#15-rate-limiting)
+16. [What the API does NOT cover](#16-what-the-api-does-not-cover)
+17. [Troubleshooting](#17-troubleshooting)
+18. [Changelog](#18-changelog)
 
 ---
 
@@ -760,7 +761,47 @@ Execution history across all jobs.
 
 ---
 
-## 14. Rate Limiting
+## 14. Endpoints – Agents
+
+Required scope: **`settings:read`**
+
+If the API key has an `agent_ids` restriction, only those agents are returned.
+Sensitive connection fields (`url`, `hmac_secret`, `ssl_ca_bundle`) are never included
+in API responses.
+
+---
+
+### GET /api/v1/agents
+
+List all agents visible to this API key.
+
+**Response 200:**
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Default",
+      "description": "Lokaler Agent",
+      "enabled": true
+    },
+    {
+      "id": 2,
+      "name": "Remote-Server",
+      "description": "Agent auf server2.example.com",
+      "enabled": true
+    }
+  ],
+  "count": 2
+}
+```
+
+**Response 401 / 403:** See §6 Error Responses.
+
+---
+
+## 15. Rate Limiting
 
 The external API currently applies **no rate limiting** at the application level. In production
 deployments it is strongly recommended to configure rate limiting at the reverse proxy or
@@ -769,7 +810,7 @@ against brute-force token guessing and unintended denial-of-service from misconf
 
 ---
 
-## 15. What the API does NOT cover
+## 16. What the API does NOT cover
 
 The following operations are intentionally only available through the web UI and cannot be
 performed via the REST API:
@@ -784,7 +825,7 @@ performed via the REST API:
 
 ---
 
-## 16. Troubleshooting
+## 17. Troubleshooting
 
 ### `401 Unauthorized` – "Missing API key"
 
@@ -830,8 +871,9 @@ to 60 seconds of delay before the daemon picks up the entry.
 
 ---
 
-## 17. Changelog
+## 18. Changelog
 
 | Version | Change |
 |---|---|
+| 4.2.0 | Added `GET /api/v1/agents` endpoint (`settings:read` scope; respects `agent_ids` restriction; omits sensitive fields) |
 | 4.1.0 | Initial external REST API with API key authentication and scope-based authorization |

@@ -20,7 +20,7 @@ $h = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
 /** @var \Cronmanager\Web\Auth\ApiKey[] $keys */
 $keys = isset($keys) && is_array($keys) ? $keys : [];
 
-/** @var string $csrfToken */
+/** @var string $csrf_token */
 ?>
 
 <!-- Page header -->
@@ -125,7 +125,7 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
                         <td class="px-4 py-3 text-right">
                             <form method="POST" action="/api-keys/<?= (int) $key->id ?>/delete"
                                   onsubmit="return confirm('API Key &quot;<?= $h(addslashes($key->name)) ?>&quot; wirklich löschen?')">
-                                <input type="hidden" name="_csrf" value="<?= $h($csrfToken ?? '') ?>">
+                                <input type="hidden" name="_csrf" value="<?= $h($csrf_token ?? '') ?>">
                                 <button type="submit"
                                         class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 font-medium transition-colors">
                                     Löschen

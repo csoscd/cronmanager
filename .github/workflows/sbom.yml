@@ -1,0 +1,90 @@
+################################################################################
+# SBOM – Generate and attach a CycloneDX JSON Software Bill of Materials
+#
+# Trigger: every published GitHub release
+#
+# Produces:
+#   cronmanager-<version>-sbom.cyclonedx.json   (attached to the release)
+#
+# Tool: cyclonedx/cyclonedx-php-composer (official CycloneDX Composer plugin)
+#   Reads composer.lock and generates a CycloneDX JSON SBOM covering all
+#   direct and transitive PHP dependencies with purl, license, and hash data.
+#
+# No additional secrets are required – GITHUB_TOKEN (contents: write) is
+# sufficient to upload release assets.
+#
+# @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+# @license GNU General Public License version 3 or later
+################################################################################
+
+name: SBOM
+
+on:
+  release:
+    types: [published]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write   # required to upload the SBOM file as a release asset
+
+jobs:
+  sbom:
+    name: Generate CycloneDX SBOM
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────────────────
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # ── PHP ──────────────────────────────────────────────────────────────────
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring
+          coverage: none
+
+      # ── Composer cache ───────────────────────────────────────────────────────
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      # ── Install production dependencies ──────────────────────────────────────
+      - name: Install Composer dependencies (no dev)
+        run: composer install --no-interaction --prefer-dist --no-progress --no-dev
+
+      # ── Install CycloneDX plugin ─────────────────────────────────────────────
+      - name: Install CycloneDX Composer plugin
+        run: composer require --dev cyclonedx/cyclonedx-php-composer --no-interaction --no-progress
+
+      # ── Generate SBOM ────────────────────────────────────────────────────────
+      - name: Generate SBOM
+        env:
+          SBOM_FILE: cronmanager-${{ github.ref_name }}-sbom.cyclonedx.json
+        run: |
+          composer CycloneDX:make-sbom \
+            --output-format JSON \
+            --output-file "$SBOM_FILE" \
+            --no-interaction
+          echo "Generated ${SBOM_FILE} ($(wc -l < "$SBOM_FILE") lines)"
+
+      # ── Attach to release ────────────────────────────────────────────────────
+      - name: Attach SBOM to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use env variables instead of direct ${{ }} interpolation in run: to
+          # prevent shell injection via a crafted tag name (Semgrep run-shell-injection).
+          RELEASE_TAG: ${{ github.ref_name }}
+          SBOM_FILE: cronmanager-${{ github.ref_name }}-sbom.cyclonedx.json
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            "$SBOM_FILE" \
+            --clobber
+          echo "Uploaded $SBOM_FILE to release $RELEASE_TAG"

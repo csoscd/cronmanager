@@ -27,6 +27,7 @@ spl_autoload_register(function (string $class): void {
     }
 });
 
+use Cronmanager\Web\Api\AgentsApiController;
 use Cronmanager\Web\Api\ExportApiController;
 use Cronmanager\Web\Api\JobsApiController;
 use Cronmanager\Web\Api\MaintenanceApiController;
@@ -144,12 +145,16 @@ try {
     // -------------------------------------------------------------------------
     if (str_starts_with($request->path, '/api/v1/')) {
         $pdo            = Connection::getInstance()->getPdo();
+        $agentsApi      = new AgentsApiController($config, $logger, $pdo);
         $jobsApi        = new JobsApiController($config, $logger, $pdo);
         $exportApi      = new ExportApiController($config, $logger, $pdo);
         $maintenanceApi = new MaintenanceApiController($config, $logger, $pdo);
         $settingsApi    = new SettingsApiController($config, $logger, $pdo);
 
         $apiRouter = new Router($config, $logger);
+
+        // Agents
+        $apiRouter->addPublicRoute('GET',    '/api/v1/agents',                 [$agentsApi, 'index']);
 
         // Jobs – read
         $apiRouter->addPublicRoute('GET',    '/api/v1/jobs',                   [$jobsApi, 'index']);

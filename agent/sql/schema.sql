@@ -167,6 +167,25 @@ CREATE TABLE IF NOT EXISTS job_retry_state (
 -- -----------------------------------------------------------------------------
 -- schema_migrations – tracks which incremental migration files have been applied
 --
+-- -----------------------------------------------------------------------------
+-- agents – registered agent instances (managed by the web container)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS agents (
+    id            INT          AUTO_INCREMENT PRIMARY KEY,
+    name          VARCHAR(100) NOT NULL                  COMMENT 'Display name',
+    description   VARCHAR(255) NULL     DEFAULT NULL     COMMENT 'Optional description',
+    url           VARCHAR(500) NOT NULL                  COMMENT 'Internal HTTP URL of the agent',
+    hmac_secret   VARCHAR(255) NOT NULL                  COMMENT 'Shared HMAC-SHA256 secret',
+    timeout       INT          NOT NULL DEFAULT 10       COMMENT 'HTTP timeout in seconds',
+    ssl_verify    TINYINT(1)   NOT NULL DEFAULT 1        COMMENT '1 = verify TLS certificate',
+    ssl_ca_bundle VARCHAR(500) NULL     DEFAULT NULL     COMMENT 'Path to custom CA bundle',
+    enabled       TINYINT(1)   NOT NULL DEFAULT 1,
+    sort_order    INT          NOT NULL DEFAULT 0,
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                               ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Populated automatically by the Docker entrypoint and simple_debian_setup.sh.
 -- Fresh installs seed this table with all bundled migration filenames so that
 -- already-applied changes are never re-run on first-boot.

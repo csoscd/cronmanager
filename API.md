@@ -445,7 +445,7 @@ Execution history for a specific job.
 |---|---|
 | `limit` | Page size (default: 50) |
 | `offset` | Pagination offset |
-| `status` | Filter: `success`, `failure`, `running` |
+| `status` | Filter: `success`, `failed`, `running` |
 
 **Response 200:**
 
@@ -453,16 +453,21 @@ Execution history for a specific job.
 {
   "data": [
     {
-      "id": 101,
-      "cronjob_id": 1,
+      "execution_id": 101,
+      "job_id": 1,
+      "linux_user": "deploy",
+      "description": "Backup database",
+      "schedule": "*/5 * * * *",
+      "tags": ["backup"],
       "started_at": "2026-06-22T03:00:01Z",
       "finished_at": "2026-06-22T03:00:47Z",
       "exit_code": 0,
       "output": "Backup completed: 1.2 GB",
       "target": "local",
-      "pid": 12345,
       "during_maintenance": false,
-      "retry_attempt": 0
+      "retry_attempt": 0,
+      "retry_root_execution_id": null,
+      "duration_seconds": 46
     }
   ],
   "count": 1,
@@ -513,22 +518,38 @@ Export all cron jobs in the requested format.
 |---|---|---|
 | `format` | `json`, `csv`, `cron` | `json` |
 
+**Query parameters (all optional):**
+
+| Parameter | Description |
+|---|---|
+| `format` | `json` (default), `csv`, `cron` |
+| `user` | Export only jobs for this Linux user |
+| `tag` | Export only jobs carrying this tag |
+
 **Response 200 (`format=json`):**
 
 ```json
 {
-  "exported_at": "2026-06-22T14:00:00Z",
-  "jobs": [ ... ]
+  "export": {
+    "generated_at": "2026-06-22T14:00:00Z",
+    "user_filter": null,
+    "tag_filter": null,
+    "job_count": 6
+  },
+  "data": [ ... ],
+  "count": 6
 }
 ```
 
 **Response 200 (`format=csv`):**
 
-`Content-Type: text/csv` with a CSV download.
+`Content-Type: text/csv` — CSV download with header row.  
+Columns: `id`, `linux_user`, `schedule`, `command`, `description`, `active`, `tags` (pipe-separated), `targets` (pipe-separated), `notify_on_failure`, `execution_limit_seconds`, `retry_count`, `retry_delay_minutes`, `singleton`, `run_in_maintenance`, `retention_days`, `created_at`.
 
 **Response 200 (`format=cron`):**
 
-`Content-Type: text/plain` — raw crontab lines.
+`Content-Type: text/plain` — ready-to-import crontab lines, grouped by Linux user.  
+SSH-target jobs are wrapped as `ssh -o BatchMode=yes <host> '<command>'`.
 
 ---
 
@@ -706,7 +727,7 @@ Execution history across all jobs.
 |---|---|
 | `limit` | Page size (default: 100) |
 | `offset` | Pagination offset |
-| `status` | Filter: `success`, `failure`, `running` |
+| `status` | Filter: `success`, `failed`, `running` |
 | `tag` | Filter by job tag |
 
 **Response 200:**
@@ -725,7 +746,10 @@ Execution history across all jobs.
       "finished_at": "2026-06-22T03:00:47Z",
       "exit_code": 0,
       "target": "local",
-      "during_maintenance": false
+      "during_maintenance": false,
+      "retry_attempt": 0,
+      "retry_root_execution_id": null,
+      "duration_seconds": 46
     }
   ],
   "count": 1,

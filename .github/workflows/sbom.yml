@@ -68,7 +68,9 @@ jobs:
 
       # ── Install CycloneDX plugin ─────────────────────────────────────────────
       - name: Install CycloneDX Composer plugin
-        run: composer require --dev cyclonedx/cyclonedx-php-composer --no-interaction --no-progress
+        run: |
+          composer config allow-plugins.cyclonedx/cyclonedx-php-composer true
+          composer require --dev cyclonedx/cyclonedx-php-composer --no-interaction --no-progress
 
       # ── Generate SBOM ────────────────────────────────────────────────────────
       - name: Generate SBOM

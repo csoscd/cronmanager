@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.3.0] – branch: `audit_log`
+
+### Added
+
+- **Audit-Log** (`GET /audit/logs`): All write operations (cron create/update/delete, bulk
+  actions, tag/maintenance-window/target CRUD, execute-now, kill) are now recorded in a new
+  `audit_log` table in the agent database.  Every entry carries the username and user-id of
+  the actor, the action in dot-notation (e.g. `cron.create`), affected resource type, id,
+  and a human-readable label, plus the client IP address.
+- **HMAC user-context headers**: `HostAgentClient` now sends `X-User-Id` and `X-User-Name`
+  with every request.  Both values are incorporated into the HMAC-SHA256 signature so they
+  cannot be tampered with in transit; for API-key sessions the header reads `api:<key-name>`.
+- **Audit-Log UI** (`/audit`, admin-only): new page in the Administration sidebar section
+  with filter controls (username, category, date range) and server-side pagination.
+- **`prune-audit.php`**: retention-based cleanup script (default 90 days,
+  configurable via `audit_log.retention_days`).
+- **API-Keys i18n**: all three API-keys templates (`index.php`, `create.php`, `created.php`)
+  are now fully internationalised; ~35 new translation keys added (prefix `api_key_`).
+
+---
+
 ## [4.2.0] – branch: `api-agents-endpoint`
 
 ### Added

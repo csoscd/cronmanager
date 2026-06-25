@@ -34,12 +34,13 @@ $agents        = isset($agents)        && is_array($agents)        ? $agents    
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
             </svg>
-            Zurück
+            <?= $h($t('api_key_back')) ?>
         </a>
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Neuer API Key</h1>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100"><?= $h($t('api_key_create_new')) ?></h1>
     </div>
 
-    <form method="POST" action="/api-keys" id="create-api-key-form">
+    <form method="POST" action="/api-keys" id="create-api-key-form"
+          data-msg-scope-required="<?= $h($t('api_key_scope_required')) ?>">
         <input type="hidden" name="_csrf" value="<?= $h($csrf_token ?? '') ?>">
 
         <div class="space-y-6">
@@ -50,18 +51,18 @@ $agents        = isset($agents)        && is_array($agents)        ? $agents    
                     Name <span class="text-red-500">*</span>
                 </label>
                 <input type="text" id="key-name" name="name" required
-                       placeholder="z.B. Grafana Monitoring, Deploy-Pipeline"
+                       placeholder="<?= $h($t('api_key_name_placeholder')) ?>"
                        class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700
                               text-gray-900 dark:text-gray-100 px-3 py-2 text-sm
                               focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                    Erkennbarer Name für diesen Key (nur für dich sichtbar).
+                    <?= $h($t('api_key_name_hint')) ?>
                 </p>
             </div>
 
             <!-- Profiles (quick select) -->
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
-                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Schnellauswahl (Profil)</p>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3"><?= $h($t('api_key_quick_select')) ?></p>
                 <div class="flex flex-wrap gap-2 mb-4" id="profile-buttons">
                     <?php foreach ($profiles as $profileName => $profileScopes): ?>
                         <?php
@@ -81,12 +82,12 @@ $agents        = isset($agents)        && is_array($agents)        ? $agents    
                     <button type="button" id="clear-scopes"
                             class="text-sm px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600
                                    text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                        Alle abwählen
+                        <?= $h($t('api_key_deselect_all')) ?>
                     </button>
                 </div>
 
                 <!-- Scope checkboxes -->
-                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Berechtigungen <span class="text-red-500">*</span></p>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><?= $h($t('api_key_permissions')) ?> <span class="text-red-500">*</span></p>
                 <div class="space-y-2">
                     <?php foreach ($allScopes as $scope): ?>
                         <?php $allowed = in_array($scope, $allowedScopes, strict: true); ?>
@@ -101,7 +102,7 @@ $agents        = isset($agents)        && is_array($agents)        ? $agents    
                                 </span>
                                 <span class="ml-2 text-xs text-gray-400 dark:text-gray-500 font-mono"><?= $h($scope) ?></span>
                                 <?php if (!$allowed): ?>
-                                    <span class="ml-2 text-xs text-gray-400 dark:text-gray-500">(nicht erlaubt für deine Rolle)</span>
+                                    <span class="ml-2 text-xs text-gray-400 dark:text-gray-500"><?= $h($t('api_key_not_allowed')) ?></span>
                                 <?php endif; ?>
                             </div>
                         </label>
@@ -112,9 +113,9 @@ $agents        = isset($agents)        && is_array($agents)        ? $agents    
             <!-- Optional: Agent restriction -->
             <?php if (count($agents) > 1): ?>
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
-                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Agents (optional)</p>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"><?= $h($t('api_key_agents_optional')) ?></p>
                 <p class="text-xs text-gray-400 dark:text-gray-500 mb-3">
-                    Leer lassen = Key gilt für alle Agents.
+                    <?= $h($t('api_key_agents_hint')) ?>
                 </p>
                 <div class="space-y-2">
                     <?php foreach ($agents as $agent): ?>
@@ -135,25 +136,25 @@ $agents        = isset($agents)        && is_array($agents)        ? $agents    
 
             <!-- Optional: Expiry + IP -->
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-5">
-                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">Optionale Einschränkungen</p>
+                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4"><?= $h($t('api_key_optional_restrictions')) ?></p>
                 <div class="space-y-4">
                     <!-- Expiry -->
                     <div>
                         <label for="expires-at" class="block text-sm text-gray-700 dark:text-gray-300 mb-1">
-                            Ablaufdatum
+                            <?= $h($t('api_key_expiry_date')) ?>
                         </label>
                         <input type="date" id="expires-at" name="expires_at"
                                min="<?= date('Y-m-d', strtotime('+1 day')) ?>"
                                class="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700
                                       text-gray-900 dark:text-gray-100 px-3 py-2 text-sm
                                       focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">Leer = kein Ablauf</p>
+                        <p class="mt-1 text-xs text-gray-400 dark:text-gray-500"><?= $h($t('api_key_expiry_hint')) ?></p>
                     </div>
 
                     <!-- IP whitelist -->
                     <div>
                         <label for="ip-whitelist" class="block text-sm text-gray-700 dark:text-gray-300 mb-1">
-                            IP-Whitelist
+                            <?= $h($t('api_key_ip_whitelist')) ?>
                         </label>
                         <input type="text" id="ip-whitelist" name="ip_whitelist"
                                placeholder="10.0.0.0/8, 192.168.1.5/32"
@@ -161,7 +162,7 @@ $agents        = isset($agents)        && is_array($agents)        ? $agents    
                                       text-gray-900 dark:text-gray-100 px-3 py-2 text-sm
                                       focus:outline-none focus:ring-2 focus:ring-blue-500">
                         <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                            Komma-getrennte CIDR-Blöcke. Leer = keine Einschränkung.
+                            <?= $h($t('api_key_ip_hint')) ?>
                         </p>
                     </div>
                 </div>
@@ -171,10 +172,10 @@ $agents        = isset($agents)        && is_array($agents)        ? $agents    
             <div class="flex items-center gap-3">
                 <button type="submit"
                         class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors">
-                    API Key erstellen
+                    <?= $h($t('api_key_submit')) ?>
                 </button>
                 <a href="/api-keys" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
-                    Abbrechen
+                    <?= $h($t('cancel')) ?>
                 </a>
             </div>
 
@@ -184,7 +185,9 @@ $agents        = isset($agents)        && is_array($agents)        ? $agents    
 
 <script>
 (function () {
+    const form      = document.getElementById('create-api-key-form');
     const checkboxes = document.querySelectorAll('.scope-checkbox:not([disabled])');
+    const msgScopeRequired = form?.dataset.msgScopeRequired ?? '';
 
     document.querySelectorAll('.profile-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -199,11 +202,11 @@ $agents        = isset($agents)        && is_array($agents)        ? $agents    
         checkboxes.forEach(cb => { cb.checked = false; });
     });
 
-    document.getElementById('create-api-key-form')?.addEventListener('submit', e => {
+    form?.addEventListener('submit', e => {
         const any = [...checkboxes].some(cb => cb.checked);
         if (!any) {
             e.preventDefault();
-            alert('Bitte wähle mindestens einen Scope aus.');
+            alert(msgScopeRequired);
         }
     });
 }());

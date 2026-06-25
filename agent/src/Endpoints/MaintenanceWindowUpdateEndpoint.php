@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace Cronmanager\Agent\Endpoints;
 
 use Cron\CronExpression;
+use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Repository\MaintenanceWindowRepository;
 use Monolog\Logger;
 use PDOException;
@@ -30,6 +31,7 @@ final class MaintenanceWindowUpdateEndpoint
     public function __construct(
         private readonly MaintenanceWindowRepository $repo,
         private readonly Logger                      $logger,
+        private readonly AuditLogger                 $audit,
     ) {}
 
     /**
@@ -109,6 +111,8 @@ final class MaintenanceWindowUpdateEndpoint
         $this->logger->info('MaintenanceWindowUpdateEndpoint: window updated', ['id' => $id]);
 
         $row = $this->repo->findById($id);
+
+        $this->audit->log('maintenance_window.update', 'maintenance_window', $id, $row['description'] ?? null);
 
         jsonResponse(200, [
             'id'               => (int) $row['id'],

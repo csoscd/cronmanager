@@ -257,6 +257,8 @@ final class AgentController extends BaseController
                 logger:      $this->logger,
                 agentUrl:    (string)  $agent['url'],
                 hmacSecret:  (string)  $agent['hmac_secret'],
+                userId:      SessionManager::getUserId()   ?? 0,
+                username:    SessionManager::getUsername() ?? 'system',
                 timeout:     (int)     ($agent['timeout']     ?? 10),
                 sslVerify:   (bool)    ($agent['ssl_verify']  ?? true),
                 sslCaBundle: (string)  ($agent['ssl_ca_bundle'] ?? ''),

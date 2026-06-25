@@ -48,6 +48,7 @@ use Cronmanager\Web\Controller\TimelineController;
 use Cronmanager\Web\Controller\MaintenanceController;
 use Cronmanager\Web\Controller\TargetController;
 use Cronmanager\Web\Controller\TransferController;
+use Cronmanager\Web\Controller\AuditController;
 use Cronmanager\Web\Controller\UserController;
 use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Request;
@@ -258,6 +259,7 @@ try {
     $swimlaneCtrl   = new SwimlaneController($config, $logger);
     $exportCtrl       = new ExportController($config, $logger);
     $userCtrl         = new UserController($config, $logger);
+    $auditCtrl        = new AuditController($config, $logger);
     $maintenanceCtrl  = new MaintenanceController($config, $logger);
     $targetCtrl       = new TargetController($config, $logger);
     $agentCtrl        = new AgentController($config, $logger);
@@ -293,9 +295,11 @@ try {
     $router->addProtectedRoute('GET',  '/export',              [$exportCtrl, 'index']);
     $router->addProtectedRoute('GET',  '/export/download',     [$exportCtrl, 'download']);
 
-    $router->addProtectedRoute('GET',  '/users',               [$userCtrl, 'index'],      'admin');
-    $router->addProtectedRoute('POST', '/users/{id}/role',     [$userCtrl, 'updateRole'], 'admin');
-    $router->addProtectedRoute('POST', '/users/{id}/delete',   [$userCtrl, 'destroy'],    'admin');
+    $router->addProtectedRoute('GET',  '/users',               [$userCtrl,  'index'],      'admin');
+    $router->addProtectedRoute('POST', '/users/{id}/role',     [$userCtrl,  'updateRole'], 'admin');
+    $router->addProtectedRoute('POST', '/users/{id}/delete',   [$userCtrl,  'destroy'],    'admin');
+
+    $router->addProtectedRoute('GET',  '/audit',               [$auditCtrl, 'index'],      'admin');
 
     // Maintenance / Maintenance Windows (formerly "Targets") – admin only
     // Conflict check uses GET with query params (view role sufficient).

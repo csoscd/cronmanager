@@ -25,6 +25,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Cron\CrontabManager;
 use Monolog\Logger;
 use PDO;
@@ -64,6 +65,7 @@ final class CronDeleteEndpoint
         private readonly PDO            $pdo,
         private readonly Logger         $logger,
         private readonly CrontabManager $crontabManager,
+        private readonly AuditLogger    $audit,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -166,6 +168,8 @@ final class CronDeleteEndpoint
         // ------------------------------------------------------------------
         // 4. Return confirmation
         // ------------------------------------------------------------------
+
+        $this->audit->log('cron.delete', 'cron', $jobId, is_string($job['description'] ?? null) ? $job['description'] : null);
 
         jsonResponse(200, [
             'message' => 'Job deleted',

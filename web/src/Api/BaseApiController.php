@@ -185,6 +185,8 @@ abstract class BaseApiController
             logger:      $this->logger,
             agentUrl:    (string) $agentRow['url'],
             hmacSecret:  (string) $agentRow['hmac_secret'],
+            userId:      $apiKey->userId,
+            username:    'api:' . $apiKey->name,
             timeout:     (int)    ($agentRow['timeout']     ?? 10),
             sslVerify:   (bool)   ($agentRow['ssl_verify']  ?? true),
             sslCaBundle: (string) ($agentRow['ssl_ca_bundle'] ?? ''),

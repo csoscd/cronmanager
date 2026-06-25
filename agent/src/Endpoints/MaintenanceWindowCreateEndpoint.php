@@ -30,6 +30,7 @@ declare(strict_types=1);
 namespace Cronmanager\Agent\Endpoints;
 
 use Cron\CronExpression;
+use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Repository\MaintenanceWindowRepository;
 use Monolog\Logger;
 use PDOException;
@@ -46,6 +47,7 @@ final class MaintenanceWindowCreateEndpoint
     public function __construct(
         private readonly MaintenanceWindowRepository $repo,
         private readonly Logger                      $logger,
+        private readonly AuditLogger                 $audit,
     ) {}
 
     /**
@@ -104,6 +106,8 @@ final class MaintenanceWindowCreateEndpoint
             'id'     => $id,
             'target' => $target,
         ]);
+
+        $this->audit->log('maintenance_window.create', 'maintenance_window', (int) $row['id'], $row['description'] ?? $target);
 
         jsonResponse(201, [
             'id'               => (int) $row['id'],

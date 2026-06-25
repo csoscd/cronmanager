@@ -25,6 +25,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Cron\CrontabManager;
 use Cronmanager\Agent\Util\ExitCodeMatcher;
 use Cron\CronExpression;
@@ -61,6 +62,7 @@ final class CronUpdateEndpoint
         private readonly Logger         $logger,
         private readonly CrontabManager $crontabManager,
         private readonly string         $wrapperScript,
+        private readonly AuditLogger    $audit,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -281,6 +283,8 @@ final class CronUpdateEndpoint
         // ------------------------------------------------------------------
 
         $job = $this->fetchJob($jobId);
+
+        $this->audit->log('cron.update', 'cron', $jobId, is_string($job['description'] ?? null) ? $job['description'] : null);
 
         jsonResponse(200, $job);
     }

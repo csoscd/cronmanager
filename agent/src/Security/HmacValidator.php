@@ -9,7 +9,7 @@ declare(strict_types=1);
  * that all requests originate from the authorised web container.
  *
  * Signature algorithm:
- *   hmac_sha256(SECRET, STRTOUPPER(METHOD) + PATH + RAW_BODY)
+ *   hmac_sha256(SECRET, STRTOUPPER(METHOD) + PATH + RAW_BODY + NUL + USER_ID + NUL + USERNAME)
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
  * @license GNU General Public License version 3 or later
@@ -73,7 +73,7 @@ final class HmacValidator
      * Validate the HMAC-SHA256 signature of an incoming request.
      *
      * The expected signature is computed as:
-     *   hmac_sha256(secret, strtoupper(method) + path + rawBody)
+     *   hmac_sha256(secret, strtoupper(method) + path + rawBody + NUL + userId + NUL + username)
      *
      * Comparison is done via hash_equals() to prevent timing attacks.
      *
@@ -81,11 +81,19 @@ final class HmacValidator
      * @param string $path            Request path including leading slash (e.g. '/crons').
      * @param string $body            Raw request body (may be empty string for GET requests).
      * @param string $signatureHeader Value of the X-Agent-Signature header.
+     * @param int    $userId          Value of the X-User-Id header (0 when absent).
+     * @param string $username        Value of the X-User-Name header (empty when absent).
      *
      * @return bool True when the signature is valid, false otherwise.
      */
-    public function validate(string $method, string $path, string $body, string $signatureHeader): bool
-    {
+    public function validate(
+        string $method,
+        string $path,
+        string $body,
+        string $signatureHeader,
+        int    $userId   = 0,
+        string $username = '',
+    ): bool {
         // Reject immediately if the header is absent or blank
         if ($signatureHeader === '') {
             return false;
@@ -98,8 +106,8 @@ final class HmacValidator
             return false;
         }
 
-        // Build the message that was signed: METHOD + PATH + BODY
-        $message = strtoupper($method) . $path . $body;
+        // Build the message that was signed: METHOD + PATH + BODY + NUL + USER_ID + NUL + USERNAME
+        $message = strtoupper($method) . $path . $body . "\0" . $userId . "\0" . $username;
 
         // Compute the expected HMAC
         $expectedHash = hash_hmac('sha256', $message, $this->secret);
@@ -113,15 +121,22 @@ final class HmacValidator
      *
      * Useful for generating test signatures and for debugging.
      *
-     * @param string $method HTTP method (will be uppercased).
-     * @param string $path   Request path.
-     * @param string $body   Raw request body.
+     * @param string $method   HTTP method (will be uppercased).
+     * @param string $path     Request path.
+     * @param string $body     Raw request body.
+     * @param int    $userId   Acting user ID (0 when absent).
+     * @param string $username Acting username (empty when absent).
      *
      * @return string Lowercase hex HMAC-SHA256 string (64 characters).
      */
-    public function compute(string $method, string $path, string $body): string
-    {
-        $message = strtoupper($method) . $path . $body;
+    public function compute(
+        string $method,
+        string $path,
+        string $body,
+        int    $userId   = 0,
+        string $username = '',
+    ): string {
+        $message = strtoupper($method) . $path . $body . "\0" . $userId . "\0" . $username;
 
         return hash_hmac('sha256', $message, $this->secret);
     }

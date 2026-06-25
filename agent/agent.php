@@ -99,6 +99,10 @@ try {
     // and prepends HTTP_ for non-standard headers)
     $signatureHeader = $_SERVER['HTTP_X_AGENT_SIGNATURE'] ?? '';
 
+    // User-context headers (included in the HMAC, so they can be trusted after validation)
+    $auditUserId   = max(0, (int) ($_SERVER['HTTP_X_USER_ID']   ?? 0));
+    $auditUsername = substr(trim((string) ($_SERVER['HTTP_X_USER_NAME'] ?? 'system')), 0, 128);
+
     // -------------------------------------------------------------------------
     // Skip HMAC validation for the /health endpoint
     // Health checks are used by monitoring tools and do not carry a signature.
@@ -124,7 +128,7 @@ try {
             jsonResponse(500, ['error' => 'Internal Server Error', 'message' => 'Agent misconfigured: HMAC secret missing.', 'code' => 500]);
         }
 
-        if (!$validator->validate($method, $path, $rawBody, $signatureHeader)) {
+        if (!$validator->validate($method, $path, $rawBody, $signatureHeader, $auditUserId, $auditUsername)) {
             $logger->warning('HMAC validation failed – request rejected', [
                 'method'    => $method,
                 'path'      => $path,
@@ -169,6 +173,8 @@ try {
     $pdo           = \Cronmanager\Agent\Database\Connection::getInstance()->getPdo();
     $wrapperScript = (string) $config->get('cron.wrapper_script', '/opt/phpscripts/cronmanager/agent/bin/cron-wrapper.sh');
 
+    $auditLogger = new \Cronmanager\Agent\Audit\AuditLogger($pdo, $logger, $auditUserId, $auditUsername, $clientIp);
+
     // DB-backed config overlay: notification/integration settings stored in
     // agent_settings survive container restarts (entrypoint.sh regenerates
     // config.json on every start). Falls back to config.json when no DB row.
@@ -177,16 +183,16 @@ try {
 
     $cronList    = new \Cronmanager\Agent\Endpoints\CronListEndpoint($pdo, $logger, $crontabManager);
     $cronGet     = new \Cronmanager\Agent\Endpoints\CronGetEndpoint($pdo, $logger);
-    $cronCreate  = new \Cronmanager\Agent\Endpoints\CronCreateEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
-    $cronUpdate  = new \Cronmanager\Agent\Endpoints\CronUpdateEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
-    $cronDelete  = new \Cronmanager\Agent\Endpoints\CronDeleteEndpoint($pdo, $logger, $crontabManager);
+    $cronCreate  = new \Cronmanager\Agent\Endpoints\CronCreateEndpoint($pdo, $logger, $crontabManager, $wrapperScript, $auditLogger);
+    $cronUpdate  = new \Cronmanager\Agent\Endpoints\CronUpdateEndpoint($pdo, $logger, $crontabManager, $wrapperScript, $auditLogger);
+    $cronDelete  = new \Cronmanager\Agent\Endpoints\CronDeleteEndpoint($pdo, $logger, $crontabManager, $auditLogger);
     $cronMonitor = new \Cronmanager\Agent\Endpoints\MonitorEndpoint($pdo, $logger);
 
     $cronUnmanaged   = new \Cronmanager\Agent\Endpoints\CronUnmanagedEndpoint($logger, $crontabManager);
     $cronUsers       = new \Cronmanager\Agent\Endpoints\CronUsersEndpoint($logger, $crontabManager);
-    $cronBulkStatus  = new \Cronmanager\Agent\Endpoints\CronBulkStatusEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
-    $cronBulkDelete  = new \Cronmanager\Agent\Endpoints\CronBulkDeleteEndpoint($pdo, $logger, $crontabManager);
-    $cronBulkTag     = new \Cronmanager\Agent\Endpoints\CronBulkTagEndpoint($pdo, $logger);
+    $cronBulkStatus  = new \Cronmanager\Agent\Endpoints\CronBulkStatusEndpoint($pdo, $logger, $crontabManager, $wrapperScript, $auditLogger);
+    $cronBulkDelete  = new \Cronmanager\Agent\Endpoints\CronBulkDeleteEndpoint($pdo, $logger, $crontabManager, $auditLogger);
+    $cronBulkTag     = new \Cronmanager\Agent\Endpoints\CronBulkTagEndpoint($pdo, $logger, $auditLogger);
 
     $router->addRoute('GET',    '/crons',                [$cronList,      'handle']);
     $router->addRoute('GET',    '/crons/users',          [$cronUsers,     'handle']);
@@ -198,7 +204,7 @@ try {
     $router->addRoute('POST',   '/crons/bulk/tag',       [$cronBulkTag,    'handle']);
     // /crons/{id}/monitor must be registered before /crons/{id} so the router
     // tries the more specific pattern first and does not mis-route the request.
-    $executeNow     = new \Cronmanager\Agent\Endpoints\ExecuteNowEndpoint($pdo, $logger, $crontabManager, $wrapperScript);
+    $executeNow     = new \Cronmanager\Agent\Endpoints\ExecuteNowEndpoint($pdo, $logger, $crontabManager, $wrapperScript, $auditLogger);
     $executeCleanup = new \Cronmanager\Agent\Endpoints\ExecuteCleanupEndpoint($pdo, $logger, $crontabManager);
 
     $router->addRoute('GET',    '/crons/{id}/monitor',          [$cronMonitor,   'handle']);
@@ -221,7 +227,7 @@ try {
     $execStart     = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger, $maintenanceWindowRepo);
     $execFinish    = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier, $telegramNotifier, $crontabManager, $wrapperScript);
     $execUpdatePid = new \Cronmanager\Agent\Endpoints\ExecutionUpdatePidEndpoint($pdo, $logger);
-    $execKill      = new \Cronmanager\Agent\Endpoints\ExecutionKillEndpoint($pdo, $logger);
+    $execKill      = new \Cronmanager\Agent\Endpoints\ExecutionKillEndpoint($pdo, $logger, $auditLogger);
 
     $router->addRoute('POST', '/execution/start',       [$execStart,     'handle']);
     $router->addRoute('POST', '/execution/finish',      [$execFinish,    'handle']);
@@ -232,8 +238,8 @@ try {
     // -- Tags -----------------------------------------------------------------
 
     $tagList   = new \Cronmanager\Agent\Endpoints\TagListEndpoint($pdo, $logger);
-    $tagCreate = new \Cronmanager\Agent\Endpoints\TagCreateEndpoint($pdo, $logger);
-    $tagDelete = new \Cronmanager\Agent\Endpoints\TagDeleteEndpoint($pdo, $logger);
+    $tagCreate = new \Cronmanager\Agent\Endpoints\TagCreateEndpoint($pdo, $logger, $auditLogger);
+    $tagDelete = new \Cronmanager\Agent\Endpoints\TagDeleteEndpoint($pdo, $logger, $auditLogger);
 
     $router->addRoute('GET',    '/tags',        [$tagList,   'handle']);
     $router->addRoute('POST',   '/tags',        [$tagCreate, 'handle']);
@@ -252,6 +258,11 @@ try {
 
     $history = new \Cronmanager\Agent\Endpoints\HistoryEndpoint($pdo, $logger);
     $router->addRoute('GET', '/history', [$history, 'handle']);
+
+    // -- Audit log ------------------------------------------------------------
+
+    $auditLog = new \Cronmanager\Agent\Endpoints\AuditLogEndpoint($pdo, $logger);
+    $router->addRoute('GET', '/audit/logs', [$auditLog, 'handle']);
 
     $maintenanceCleanup = new \Cronmanager\Agent\Endpoints\MaintenanceHistoryCleanupEndpoint($pdo, $logger);
     $router->addRoute('POST', '/maintenance/history/cleanup', [$maintenanceCleanup, 'handle']);
@@ -298,9 +309,9 @@ try {
 
     $mwList     = new \Cronmanager\Agent\Endpoints\MaintenanceWindowListEndpoint($maintenanceWindowRepo, $logger);
     $mwGet      = new \Cronmanager\Agent\Endpoints\MaintenanceWindowGetEndpoint($maintenanceWindowRepo, $logger);
-    $mwCreate   = new \Cronmanager\Agent\Endpoints\MaintenanceWindowCreateEndpoint($maintenanceWindowRepo, $logger);
-    $mwUpdate   = new \Cronmanager\Agent\Endpoints\MaintenanceWindowUpdateEndpoint($maintenanceWindowRepo, $logger);
-    $mwDelete   = new \Cronmanager\Agent\Endpoints\MaintenanceWindowDeleteEndpoint($maintenanceWindowRepo, $logger);
+    $mwCreate   = new \Cronmanager\Agent\Endpoints\MaintenanceWindowCreateEndpoint($maintenanceWindowRepo, $logger, $auditLogger);
+    $mwUpdate   = new \Cronmanager\Agent\Endpoints\MaintenanceWindowUpdateEndpoint($maintenanceWindowRepo, $logger, $auditLogger);
+    $mwDelete   = new \Cronmanager\Agent\Endpoints\MaintenanceWindowDeleteEndpoint($maintenanceWindowRepo, $logger, $auditLogger);
     $mwConflict = new \Cronmanager\Agent\Endpoints\MaintenanceWindowConflictEndpoint($maintenanceWindowRepo, $logger);
 
     $router->addRoute('GET',    '/maintenance/windows/conflict', [$mwConflict, 'handle']);

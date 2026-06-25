@@ -14,7 +14,7 @@ declare(strict_types=1);
  * multiple agents at runtime without re-reading config files.
  *
  * Signature algorithm:
- *   X-Agent-Signature: hmac_sha256(secret, UPPER(method) + path + rawBody)
+ *   X-Agent-Signature: hmac_sha256(secret, UPPER(method) + path + rawBody + "\0" + userId + "\0" + username)
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
  * @license GNU General Public License version 3 or later
@@ -51,6 +51,8 @@ class HostAgentClient
      * @param Logger $logger      Monolog logger.
      * @param string $agentUrl    Base URL of the agent (e.g. https://host.docker.internal:8865).
      * @param string $hmacSecret  Shared secret for HMAC-SHA256 request signing.
+     * @param int    $userId      ID of the acting user (0 for unauthenticated / system calls).
+     * @param string $username    Username of the acting user (e.g. "admin" or "api:key-name").
      * @param int    $timeout     Request timeout in seconds (default: 10).
      * @param bool   $sslVerify   Verify TLS certificate (default: true).
      * @param string $sslCaBundle Path to a custom CA bundle PEM (optional).
@@ -59,6 +61,8 @@ class HostAgentClient
         private readonly Logger $logger,
         private readonly string $agentUrl,
         private readonly string $hmacSecret,
+        private readonly int    $userId      = 0,
+        private readonly string $username    = 'system',
         private readonly int    $timeout     = 10,
         private readonly bool   $sslVerify   = true,
         private readonly string $sslCaBundle = '',
@@ -95,6 +99,8 @@ class HostAgentClient
             $response = $this->client()->request('GET', $path . $queryString, [
                 'headers' => [
                     'X-Agent-Signature' => $signature,
+                    'X-User-Id'         => (string) $this->userId,
+                    'X-User-Name'       => $this->username,
                     'Accept'            => 'application/json',
                 ],
             ]);
@@ -130,6 +136,8 @@ class HostAgentClient
             $response = $this->client()->request('POST', $path, [
                 'headers' => [
                     'X-Agent-Signature' => $signature,
+                    'X-User-Id'         => (string) $this->userId,
+                    'X-User-Name'       => $this->username,
                     'Content-Type'      => 'application/json',
                     'Accept'            => 'application/json',
                 ],
@@ -167,6 +175,8 @@ class HostAgentClient
             $response = $this->client()->request('PUT', $path, [
                 'headers' => [
                     'X-Agent-Signature' => $signature,
+                    'X-User-Id'         => (string) $this->userId,
+                    'X-User-Name'       => $this->username,
                     'Content-Type'      => 'application/json',
                     'Accept'            => 'application/json',
                 ],
@@ -202,6 +212,8 @@ class HostAgentClient
             $response = $this->client()->request('DELETE', $path, [
                 'headers' => [
                     'X-Agent-Signature' => $signature,
+                    'X-User-Id'         => (string) $this->userId,
+                    'X-User-Name'       => $this->username,
                     'Accept'            => 'application/json',
                 ],
             ]);
@@ -352,7 +364,8 @@ class HostAgentClient
     /**
      * Build the HMAC-SHA256 signature for a request.
      *
-     * The message is: UPPER(method) + path + rawBody
+     * The message is: UPPER(method) + path + rawBody + NUL + userId + NUL + username
+     * NUL separators prevent collisions between adjacent fields.
      *
      * @param string $method  HTTP method (will be uppercased).
      * @param string $path    Request path (without query string).
@@ -362,7 +375,8 @@ class HostAgentClient
      */
     private function sign(string $method, string $path, string $rawBody): string
     {
-        $message = strtoupper($method) . $path . $rawBody;
+        $message = strtoupper($method) . $path . $rawBody
+            . "\0" . $this->userId . "\0" . $this->username;
 
         return hash_hmac('sha256', $message, $this->hmacSecret);
     }

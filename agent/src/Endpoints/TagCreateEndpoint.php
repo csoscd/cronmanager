@@ -21,6 +21,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Monolog\Logger;
 use PDO;
 use PDOException;
@@ -67,8 +68,9 @@ final class TagCreateEndpoint
      * @param Logger $logger Monolog logger instance.
      */
     public function __construct(
-        private readonly PDO    $pdo,
-        private readonly Logger $logger,
+        private readonly PDO         $pdo,
+        private readonly Logger      $logger,
+        private readonly AuditLogger $audit,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -174,6 +176,7 @@ final class TagCreateEndpoint
         }
 
         $this->logger->info('TagCreateEndpoint: tag created', ['id' => $result['id'], 'name' => $name]);
+        $this->audit->log('tag.create', 'tag', (int) $result['id'], $name);
         jsonResponse(201, $result);
     }
 

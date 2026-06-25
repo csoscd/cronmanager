@@ -25,6 +25,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Cron\CrontabManager;
 use Monolog\Logger;
 use PDO;
@@ -66,6 +67,7 @@ final class ExecuteNowEndpoint
         private readonly Logger         $logger,
         private readonly CrontabManager $crontabManager,
         private readonly string         $wrapperScript,
+        private readonly AuditLogger    $audit,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -196,6 +198,8 @@ final class ExecuteNowEndpoint
             'targets'      => $targets,
             'scheduled_at' => $scheduledAt,
         ]);
+
+        $this->audit->log('cron.execute_now', 'cron', $jobId, is_string($job['description'] ?? null) ? $job['description'] : null);
 
         jsonResponse(200, [
             'message'      => 'Job scheduled for immediate execution.',

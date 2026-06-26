@@ -124,7 +124,7 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
                         <!-- Actions -->
                         <td class="px-4 py-3 text-right">
                             <form method="POST" action="/api-keys/<?= (int) $key->id ?>/delete"
-                                  onsubmit="return confirm('<?= $h($t('api_key_confirm_delete', ['{name}' => addslashes($key->name)])) ?>')">
+                                  onsubmit="return confirm('<?= $h($t('api_key_confirm_delete', ['name' => addslashes($key->name)])) ?>')">
                                 <input type="hidden" name="_csrf" value="<?= $h($csrf_token ?? '') ?>">
                                 <button type="submit"
                                         class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 font-medium transition-colors">

@@ -133,7 +133,7 @@ $actionBadge = static function (string $action): string {
 <!-- Entry count -->
 <?php if ($total > 0): ?>
     <p class="mb-3 text-sm text-gray-500 dark:text-gray-400">
-        <?= $h($t('pagination_showing', ['{from}' => (string) $showFrom, '{to}' => (string) $showTo, '{total}' => (string) $total])) ?>
+        <?= $h($t('pagination_showing', ['from' => (string) $showFrom, 'to' => (string) $showTo, 'total' => (string) $total])) ?>
     </p>
 <?php endif; ?>
 

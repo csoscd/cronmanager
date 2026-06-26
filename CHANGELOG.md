@@ -51,6 +51,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.3.4] – branch: `audit_log`
+
+### Added
+
+- **REST-API: `GET /api/v1/audit`** (neuer Scope `audit:read`, nur von Admins vergebbar):
+  Gibt eine paginierte Liste aller Audit-Log-Einträge zurück; unterstützt dieselben
+  Filter wie die Web-UI (username, action_prefix, date_from, date_to, limit, offset).
+  Das Agent-Antwortformat (`data`, `total`, `limit`, `offset`) wird 1:1 weitergeleitet.
+- **Neuer Scope `audit:read`** in `ScopeHelper` (9. Scope, wird automatisch in
+  `full-admin`-Profil und Admin-Rolle eingeschlossen; View-Nutzer erhalten ihn nicht).
+- **Übersetzungen**: `scope_audit_read` in `de.php` und `en.php`.
+- **API.md**: Neuer Abschnitt §15 "Endpoints – Audit Log" mit allen Action-Namen,
+  Query-Parametern und Beispiel-Response; Abschnitte 15–18 → 16–19 umnummeriert.
+- **README.md**: Feature-Eintrag "Audit log" in der Feature-Tabelle.
+- **TECHNICAL.md**: `GET /audit/logs`-Endpoint in Agent-HTTP-API-Referenz; `audit_log`-
+  Tabellenschema in DB-Sektion; "Audit Log"-Unterabschnitt im Web-Application-Kapitel.
+- **3 neue Unit-Tests** in `ScopeHelperTest` (`auditReadScopeIsInAllScopes`,
+  `viewRoleDoesNotGrantAuditRead`, `adminRoleGrantsAuditRead`).
+
+---
+
 ## [4.3.3] – branch: `audit_log`
 
 ### Added

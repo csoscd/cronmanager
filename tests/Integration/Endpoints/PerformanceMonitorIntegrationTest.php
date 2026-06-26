@@ -44,8 +44,8 @@ final class PerformanceMonitorIntegrationTest extends AgentEndpointTestCase
         $target  = $this->seedJobTarget($jobId);
 
         // Seed two executions; the second is newer (higher ID / later started_at)
-        $this->seedFinishedExecution($jobId, exitCode: 0, startedAt: '2026-01-01 10:00:00');
-        $this->seedFinishedExecution($jobId, exitCode: 1, startedAt: '2026-06-01 12:00:00');
+        $this->seedFinishedExecution($jobId, ['exit_code' => 0, 'started_at' => '2026-01-01 10:00:00', 'finished_at' => '2026-01-01 10:00:05']);
+        $this->seedFinishedExecution($jobId, ['exit_code' => 1, 'started_at' => '2026-06-01 12:00:00', 'finished_at' => '2026-06-01 12:00:05']);
 
         $endpoint = new CronListEndpoint($this->pdo, $this->createNullLogger(), $this->makeCrontabManager());
         $endpoint->handle([]);
@@ -88,7 +88,7 @@ final class PerformanceMonitorIntegrationTest extends AgentEndpointTestCase
 
         // Seed 5 failed executions
         for ($i = 0; $i < 5; $i++) {
-            $this->seedFinishedExecution($jobId, exitCode: 1);
+            $this->seedFinishedExecution($jobId, ['exit_code' => 1]);
         }
 
         // Request only 2 rows per page
@@ -120,38 +120,6 @@ final class PerformanceMonitorIntegrationTest extends AgentEndpointTestCase
         $body = \Tests\Support\AgentResponse::$body;
         $this->assertSame(200, \Tests\Support\AgentResponse::$statusCode);
         $this->assertSame(0, $body['total']);
-    }
-
-    // =========================================================================
-    // Fixture helpers
-    // =========================================================================
-
-    /**
-     * Insert a finished execution log entry.
-     */
-    protected function seedFinishedExecution(
-        int    $jobId,
-        int    $exitCode  = 0,
-        string $startedAt = '',
-    ): int {
-        if ($startedAt === '') {
-            $startedAt = date('Y-m-d H:i:s');
-        }
-        $finishedAt = date('Y-m-d H:i:s', strtotime($startedAt) + 5);
-
-        $stmt = $this->pdo->prepare(
-            'INSERT INTO execution_log (cronjob_id, started_at, finished_at, exit_code, target, retry_attempt)
-             VALUES (:job_id, :started_at, :finished_at, :exit_code, :target, 0)'
-        );
-        $stmt->execute([
-            ':job_id'      => $jobId,
-            ':started_at'  => $startedAt,
-            ':finished_at' => $finishedAt,
-            ':exit_code'   => $exitCode,
-            ':target'      => 'local',
-        ]);
-
-        return (int) $this->pdo->lastInsertId();
     }
 
     private function makeCrontabManager(): CrontabManager

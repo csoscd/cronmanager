@@ -78,6 +78,7 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Local & SSO auth** | Username/password accounts or OAuth 2.0 / OpenID Connect (OIDC) via Authentik |
 | **Role-based access** | Admin (full access) and Viewer (read-only) roles |
 | **User management** | Admins can promote, demote, or remove users |
+| **Audit log** | Every create, update, and delete operation is recorded with actor, timestamp, and a before/after diff or snapshot; viewable in the web UI (`/audit`, admin-only) and via the REST API (`audit:read` scope) |
 | **External REST API** | Scope-based JSON API for external applications; authenticated via Bearer tokens generated in the web UI — see [API.md](API.md) |
 | **Performance Monitor** | Optionally persist per-request and per-query timing data to a `performance_log` table; optionally display the last API and DB durations in the UI footer — both toggles are independent and configurable under Settings → Agent Settings |
 | **Internationalisation** | English and German out of the box; easy to extend |

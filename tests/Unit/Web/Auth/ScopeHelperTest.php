@@ -27,9 +27,9 @@ final class ScopeHelperTest extends TestCase
     // =========================================================================
 
     #[Test]
-    public function allScopesContainsEightEntries(): void
+    public function allScopesContainsNineEntries(): void
     {
-        $this->assertCount(8, ScopeHelper::ALL_SCOPES);
+        $this->assertCount(9, ScopeHelper::ALL_SCOPES);
     }
 
     #[Test]
@@ -44,11 +44,18 @@ final class ScopeHelperTest extends TestCase
             'maintenance:write',
             'settings:read',
             'settings:write',
+            'audit:read',
         ];
 
         foreach ($expected as $scope) {
             $this->assertContains($scope, ScopeHelper::ALL_SCOPES, "Expected scope '{$scope}' in ALL_SCOPES");
         }
+    }
+
+    #[Test]
+    public function auditReadScopeIsInAllScopes(): void
+    {
+        $this->assertContains('audit:read', ScopeHelper::ALL_SCOPES);
     }
 
     #[Test]
@@ -151,6 +158,18 @@ final class ScopeHelperTest extends TestCase
         $this->assertNotContains('jobs:execute',       $allowed);
         $this->assertNotContains('maintenance:write',  $allowed);
         $this->assertNotContains('settings:write',     $allowed);
+    }
+
+    #[Test]
+    public function viewRoleDoesNotGrantAuditRead(): void
+    {
+        $this->assertNotContains('audit:read', ScopeHelper::allowedScopesForRole('view'));
+    }
+
+    #[Test]
+    public function adminRoleGrantsAuditRead(): void
+    {
+        $this->assertContains('audit:read', ScopeHelper::allowedScopesForRole('admin'));
     }
 
     #[Test]

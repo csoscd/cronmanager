@@ -278,7 +278,7 @@ final class HistoryEndpoint
     {
         $sql = <<<SQL
             SELECT COUNT(DISTINCT el.id)
-            FROM execution_log el
+            FROM execution_log el IGNORE INDEX (idx_el_cronjob_cover, idx_el_cj_finished_cover)
             JOIN cronjobs j ON j.id = el.cronjob_id
             LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
             LEFT JOIN tags t ON t.id = ct.tag_id
@@ -325,7 +325,7 @@ final class HistoryEndpoint
                 el.retry_attempt,
                 el.retry_root_execution_id,
                 TIMESTAMPDIFF(SECOND, el.started_at, el.finished_at) AS duration_seconds
-            FROM execution_log el
+            FROM execution_log el IGNORE INDEX (idx_el_cronjob_cover, idx_el_cj_finished_cover)
             JOIN cronjobs j ON j.id = el.cronjob_id
             LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
             LEFT JOIN tags t ON t.id = ct.tag_id

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.4.2] – branch: `fix/history-ignore-index`
+
+### Fixed
+
+- **`HistoryEndpoint`**: Die in v4.4.1 eingeführten Covering-Indizes `idx_el_cronjob_cover` und
+  `idx_el_cj_finished_cover` wurden vom MariaDB-Optimizer fälschlicherweise auch für die
+  History-Queries gewählt. Das führte zu einem Nested-Loop-Join (65 Jobs × ~8.300 Zeilen =
+  ~540.000 zufällige I/O-Zugriffe) statt eines sequenziellen Table-Scans — bei großen Tabellen
+  deutlich langsamer. Beide Queries erhalten jetzt `IGNORE INDEX (idx_el_cronjob_cover,
+  idx_el_cj_finished_cover)`, sodass der Optimizer für `GROUP BY el.id + ORDER BY started_at DESC`
+  wieder einen Full-Table-Scan wählt. `CronListEndpoint` nutzt die Indizes weiterhin uneingeschränkt.
+
+---
+
 ## [4.4.1] – branch: `performance_optimisation`
 
 ### Changed

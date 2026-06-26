@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.3.2] – branch: `audit_log`
+
+### Fixed
+
+- **`/audit` 503 fix**: `AuditController` was appending the query string directly
+  to the path and passing the full URL (e.g. `/audit/logs?limit=25`) to
+  `HostAgentClient::get()`. The client signs only the bare path, while the agent
+  strips the query string via `parse_url(PHP_URL_PATH)` before validating — causing
+  an HMAC mismatch and a 401 → 503. Fixed by passing query parameters as the `$query`
+  array argument so `HostAgentClient` handles the separation internally.
+
+---
+
 ## [4.3.1] – branch: `audit_log`
 
 ### Fixed

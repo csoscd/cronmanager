@@ -64,23 +64,21 @@ class AuditController extends BaseController
         // Build agent query string
         // ------------------------------------------------------------------
 
-        $agentQuery = http_build_query(array_filter([
+        $agentParams = array_filter([
             'limit'         => self::PAGE_SIZE,
             'offset'        => $offset,
             'username'      => $username,
             'action_prefix' => $actionPrefix,
             'date_from'     => $dateFrom,
             'date_to'       => $dateTo,
-        ], static fn ($v): bool => $v !== '' && $v !== 0));
-
-        $agentPath = '/audit/logs' . ($agentQuery !== '' ? '?' . $agentQuery : '');
+        ], static fn ($v): bool => $v !== '' && $v !== 0);
 
         // ------------------------------------------------------------------
         // Fetch from agent
         // ------------------------------------------------------------------
 
         try {
-            $response = $this->agentClient()->get($agentPath);
+            $response = $this->agentClient()->get('/audit/logs', $agentParams);
         } catch (\Throwable $e) {
             $this->logger->error('AuditController::index: agent request failed', [
                 'message' => $e->getMessage(),

@@ -229,11 +229,7 @@ final class HistoryEndpoint
         // ------------------------------------------------------------------
 
         try {
-            $data  = $this->fetchData($whereClause, $queryParams, $limit, $offset);
-            // FOUND_ROWS() returns the count without the LIMIT that was applied
-            // in fetchData() (which uses SQL_CALC_FOUND_ROWS), avoiding a
-            // redundant second query with identical JOIN-heavy conditions.
-            $total = (int) $this->pdo->query('SELECT FOUND_ROWS()')->fetchColumn();
+            ['data' => $data, 'total' => $total] = $this->fetchData($whereClause, $queryParams, $limit, $offset);
         } catch (PDOException $e) {
             $this->logger->error('HistoryEndpoint: database error', [
                 'message' => $e->getMessage(),
@@ -265,21 +261,27 @@ final class HistoryEndpoint
     // -------------------------------------------------------------------------
 
     /**
-     * Execute the paginated data query and return normalised execution records.
+     * Execute the paginated data query and return normalised execution records
+     * together with the total matching row count (before LIMIT).
+     *
+     * Uses `COUNT(*) OVER()` (window function) to obtain the total in a single
+     * query pass — avoids a separate COUNT query with identical JOINs, and is
+     * compatible with MariaDB 10.2+ (SQL_CALC_FOUND_ROWS was removed in 11.0).
      *
      * @param string               $whereClause Dynamic WHERE clause (may be empty).
      * @param array<string, mixed> $params      Named parameter bindings (without limit/offset).
      * @param int                  $limit       Maximum number of rows to return.
      * @param int                  $offset      Number of rows to skip.
      *
-     * @return array<int, array<string, mixed>> Normalised execution records.
+     * @return array{data: list<array<string, mixed>>, total: int}
      *
      * @throws PDOException On database errors.
      */
     private function fetchData(string $whereClause, array $params, int $limit, int $offset): array
     {
         $sql = <<<SQL
-            SELECT SQL_CALC_FOUND_ROWS
+            SELECT
+                COUNT(*) OVER() AS total_count,
                 el.id AS execution_id,
                 j.id AS job_id,
                 j.linux_user,
@@ -316,13 +318,14 @@ final class HistoryEndpoint
 
         \Cronmanager\Agent\Database\Connection::timedExecute($stmt);
         $rows    = $stmt->fetchAll();
+        $total   = !empty($rows) ? (int) $rows[0]['total_count'] : 0;
         $records = [];
 
         foreach ($rows as $row) {
             $records[] = $this->normaliseRow($row);
         }
 
-        return $records;
+        return ['data' => $records, 'total' => $total];
     }
 
     /**

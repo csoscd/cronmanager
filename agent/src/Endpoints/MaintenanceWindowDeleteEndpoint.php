@@ -81,8 +81,14 @@ final class MaintenanceWindowDeleteEndpoint
 
         $this->logger->info('MaintenanceWindowDeleteEndpoint: window deleted', ['id' => $id]);
 
-        $label = $window !== null ? ($window['description'] ?? $window['target'] ?? null) : null;
-        $this->audit->log('maintenance_window.delete', 'maintenance_window', $id, $label);
+        $label   = $window !== null ? ($window['description'] ?? $window['target'] ?? null) : null;
+        $details = $window !== null ? [
+            'target'           => (string) ($window['target']           ?? ''),
+            'cron_schedule'    => (string) ($window['cron_schedule']    ?? ''),
+            'duration_minutes' => (int)    ($window['duration_minutes'] ?? 0),
+            'active'           => !empty($window['active']) ? 'true' : 'false',
+        ] : null;
+        $this->audit->log('maintenance_window.delete', 'maintenance_window', $id, $label, $details);
 
         jsonResponse(200, ['deleted' => true, 'id' => $id]);
     }

@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.3.3] – branch: `audit_log`
+
+### Added
+
+- **Audit-Log Details – Diffs und Snapshots**: Alle schreibenden Endpoints füllen
+  nun das `details`-Feld im Audit-Log:
+  - `cron.update` / `maintenance_window.update`: Before/After-Diff — nur geänderte
+    Felder werden als `'feldname' => 'alt → neu'` eingetragen.
+  - `cron.create` / `maintenance_window.create`: Snapshot der Initialwerte
+    (schedule, command, linux_user, active, targets, tags).
+  - `cron.delete` / `maintenance_window.delete`: Snapshot der gelöschten
+    Konfiguration (fetchJob-Query in CronDeleteEndpoint erweitert auf schedule,
+    command, description, targets, tags).
+  - `settings.update`: Loggt die geänderten Sektionsnamen (`['sections' => ['mail']]`);
+    keine sensitiven Werte (Passwörter, Tokens) werden mitgeschrieben.
+  - `user.update_role`: Neuer Audit-Eintrag im Web-Layer via `WebAuditLogger`
+    (`'from' => 'view', 'to' => 'admin'`). Liest die alte Rolle vor dem UPDATE.
+  - `user.delete`: Neuer Audit-Eintrag mit Username des gelöschten Benutzers.
+- **`WebAuditLogger`** (`web/src/Audit/WebAuditLogger.php`): Neue Klasse für
+  Audit-Einträge aus dem Web-Layer, die direkt in die gemeinsame `audit_log`-Tabelle
+  schreiben. Gespiegelt aus `agent/src/Audit/AuditLogger.php`.
+- **`BaseController::auditLogger()`**: Lazy-Hilfsmethode, die einen `WebAuditLogger`
+  mit Session-Benutzer und Client-IP erstellt.
+- **3 neue Unit-Tests** für `WebAuditLogger` (Parameter, JSON-Encoding, Fehlertoleranz).
+
+### Changed
+
+- `SettingsEndpoint` erhält `AuditLogger` als Konstruktor-Argument; `agent.php`
+  übergibt `$auditLogger`.
+- `MaintenanceWindowUpdateEndpoint` lädt den bestehenden Datensatz vor dem Update
+  (für den Diff); 404-Behandlung erfolgt jetzt bereits vor dem UPDATE statt nach.
+
+---
+
 ## [4.3.2] – branch: `audit_log`
 
 ### Fixed

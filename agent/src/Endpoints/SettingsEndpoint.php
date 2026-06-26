@@ -35,6 +35,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Config\DbConfig;
 use Monolog\Logger;
 
@@ -57,12 +58,14 @@ final class SettingsEndpoint
     // -------------------------------------------------------------------------
 
     /**
-     * @param DbConfig $dbConfig DB-backed configuration wrapper.
-     * @param Logger   $logger   Monolog logger instance.
+     * @param DbConfig    $dbConfig DB-backed configuration wrapper.
+     * @param Logger      $logger   Monolog logger instance.
+     * @param AuditLogger $audit    Audit logger instance.
      */
     public function __construct(
-        private readonly DbConfig $dbConfig,
-        private readonly Logger   $logger,
+        private readonly DbConfig    $dbConfig,
+        private readonly Logger      $logger,
+        private readonly AuditLogger $audit,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -124,6 +127,11 @@ final class SettingsEndpoint
         }
 
         $this->logger->info('SettingsEndpoint: sections saved to DB', ['sections' => $saved]);
+
+        if ($saved !== []) {
+            $this->audit->log('settings.update', 'settings', null, null, ['sections' => $saved]);
+        }
+
         jsonResponse(200, ['success' => true, 'saved' => $saved]);
     }
 }

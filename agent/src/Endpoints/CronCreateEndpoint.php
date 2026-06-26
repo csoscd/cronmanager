@@ -274,7 +274,20 @@ final class CronCreateEndpoint
 
         $job = $this->fetchJob($jobId);
 
-        $this->audit->log('cron.create', 'cron', $jobId, is_string($job['description'] ?? null) ? $job['description'] : null);
+        $this->audit->log(
+            'cron.create',
+            'cron',
+            $jobId,
+            is_string($job['description'] ?? null) ? $job['description'] : null,
+            [
+                'schedule'   => (string) ($job['schedule']   ?? ''),
+                'command'    => (string) ($job['command']    ?? ''),
+                'linux_user' => (string) ($job['linux_user'] ?? ''),
+                'active'     => !empty($job['active']) ? 'true' : 'false',
+                'targets'    => implode(', ', is_array($job['targets'] ?? null) ? $job['targets'] : ['local']),
+                'tags'       => implode(', ', is_array($job['tags']    ?? null) ? $job['tags']    : []) ?: '-',
+            ],
+        );
 
         jsonResponse(201, $job);
     }

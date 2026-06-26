@@ -282,7 +282,7 @@ try {
 
     // -- Persistent agent settings (notification / integration config in DB) --
 
-    $settingsEndpoint = new \Cronmanager\Agent\Endpoints\SettingsEndpoint($dbConfig, $logger);
+    $settingsEndpoint = new \Cronmanager\Agent\Endpoints\SettingsEndpoint($dbConfig, $logger, $auditLogger);
     $router->addRoute('GET', '/settings', [$settingsEndpoint, 'handle']);
     $router->addRoute('PUT', '/settings', [$settingsEndpoint, 'handle']);
 

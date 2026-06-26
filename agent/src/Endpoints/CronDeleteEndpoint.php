@@ -169,7 +169,22 @@ final class CronDeleteEndpoint
         // 4. Return confirmation
         // ------------------------------------------------------------------
 
-        $this->audit->log('cron.delete', 'cron', $jobId, is_string($job['description'] ?? null) ? $job['description'] : null);
+        $targetsRaw = isset($job['targets']) && $job['targets'] !== null ? (string) $job['targets'] : 'local';
+        $tagsRaw    = isset($job['tags'])    && $job['tags']    !== null ? (string) $job['tags']    : '';
+        $this->audit->log(
+            'cron.delete',
+            'cron',
+            $jobId,
+            is_string($job['description'] ?? null) ? $job['description'] : null,
+            [
+                'schedule'   => (string) ($job['schedule']   ?? ''),
+                'command'    => (string) ($job['command']    ?? ''),
+                'linux_user' => (string) ($job['linux_user'] ?? ''),
+                'active'     => !empty($job['active']) ? 'true' : 'false',
+                'targets'    => $targetsRaw,
+                'tags'       => $tagsRaw ?: '-',
+            ],
+        );
 
         jsonResponse(200, [
             'message' => 'Job deleted',
@@ -182,7 +197,7 @@ final class CronDeleteEndpoint
     // -------------------------------------------------------------------------
 
     /**
-     * Fetch a minimal job record to determine its active state and linux_user.
+     * Fetch a job record including key fields needed for crontab cleanup and audit snapshot.
      *
      * Returns null when no row exists for the given ID.
      *
@@ -195,7 +210,15 @@ final class CronDeleteEndpoint
     private function fetchJob(int $jobId): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT id, linux_user, active FROM cronjobs WHERE id = :id'
+            'SELECT j.id, j.linux_user, j.active, j.schedule, j.command, j.description,
+                    GROUP_CONCAT(DISTINCT t.name    ORDER BY t.name    SEPARATOR \',\') AS tags,
+                    GROUP_CONCAT(DISTINCT jt.target ORDER BY jt.target SEPARATOR \',\') AS targets
+               FROM cronjobs j
+               LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
+               LEFT JOIN tags t          ON t.id = ct.tag_id
+               LEFT JOIN job_targets jt  ON jt.job_id = j.id
+              WHERE j.id = :id
+              GROUP BY j.id'
         );
         $stmt->execute([':id' => $jobId]);
         $row = $stmt->fetch();

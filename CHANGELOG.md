@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.4.0] – branch: `feature/performance-monitor`
+
+### Added
+
+- **Performance Monitor** (Settings → Agent-Einstellungen): Zwei unabhängig aktivierbare Funktionen:
+  - *Performance-Daten persistieren*: Schreibt Request-Gesamtdauer und akkumulierte DB-Query-Zeit
+    nach jedem Agent-Request in die neue Tabelle `performance_log`.
+  - *Performance-Info im Frontend anzeigen*: Reichert jede Agent-JSON-Response um ein `_perf`-Feld
+    an (`request_ms`, `db_ms`, `db_queries`); der Seitenfuß zeigt die Werte an. Funktioniert
+    unabhängig von der Persistierungs-Option.
+- **`PerformanceCollector`** (`agent/src/Performance/PerformanceCollector.php`): Neues Singleton,
+  das Request-Startzeit und akkumulierte DB-Zeiten sammelt und auf Anfrage in `performance_log`
+  schreibt oder als `_perf`-Feld in die Response injiziert.
+- **`Connection::timedExecute()`**: Neue statische Methode — Drop-in-Ersatz für
+  `$stmt->execute()`, der die Ausführungszeit misst und an den `PerformanceCollector` meldet.
+  Genutzt in `CronListEndpoint` und `HistoryEndpoint`.
+- **`HostAgentClient::getMultiple()`**: Neue Methode, die mehrere GET-Requests parallel
+  über Guzzle Async Promises abfeuert und assoziativ gebündelte Responses zurückgibt.
+- **`HostAgentClient::getLastPerf()`**: Gibt das `_perf`-Feld der zuletzt abgeschlossenen
+  Agent-Response zurück (oder `null`).
+- **Migration `014_performance_log.sql`**: Legt die `performance_log`-Tabelle an.
+- **3 neue Testdateien**: `PerformanceCollectorTest` (Unit), Erweiterungen in
+  `HostAgentClientTest` (Unit), `PerformanceMonitorIntegrationTest` (Integration).
+
+### Changed
+
+- **`DashboardController`**: Die drei sequenziellen Agent-Calls (`/crons`, `/history`, `/tags`)
+  werden jetzt parallel über `getMultiple()` abgefeuert — reduziert die Dashboard-Ladezeit
+  von ~Summe(Latenzen) auf ~Max(Latenz).
+- **`CronListEndpoint`**: Korrelierte Subqueries für `last_run` und `last_exit_code` wurden
+  durch Derived-Table LEFT JOINs ersetzt (`GROUP BY cronjob_id / MAX(id)`). Vermeidet
+  N×2 Subqueries bei N Jobs; skaliert mit wachsender `execution_log`-Tabelle besser.
+- **`HistoryEndpoint`**: `fetchTotal()` (separate `COUNT(DISTINCT …)`-Query) wurde entfernt;
+  stattdessen nutzt `fetchData()` jetzt `SQL_CALC_FOUND_ROWS` + `SELECT FOUND_ROWS()`.
+  Spart eine vollständige JOIN-Abfrage pro History-Request.
+- **`DbConfig`**: `performance_monitor` zu `DB_SECTIONS` hinzugefügt.
+- **`SettingsEndpoint`**: `performance_monitor` zu `ALLOWED_SECTIONS` hinzugefügt.
+- **`BaseController::render()`**: Leitet `$perfData` aus dem letzten Agent-Call ans Layout weiter.
+- **`layout.php`** Footer: Zeigt Performance-Daten an, wenn `$perfData !== null`.
+- **`agent-settings.php`**: Neue Sektion "Performance Monitor" mit zwei Checkboxen.
+- **`MaintenanceController::buildSettingsPayload()`**: Liest `perf_persist_data` und
+  `perf_show_in_frontend` aus dem POST-Body und übergibt sie als `performance_monitor`-Section.
+
+---
+
 ## [4.3.4] – branch: `audit_log`
 
 ### Added

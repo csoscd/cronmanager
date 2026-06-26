@@ -262,20 +262,22 @@ final class HistoryEndpoint
     // -------------------------------------------------------------------------
 
     /**
-     * Execute the COUNT query to determine the total number of matching rows,
-     * ignoring pagination (LIMIT/OFFSET).
+     * Count all execution records matching the given WHERE clause.
+     *
+     * Uses COUNT(DISTINCT el.id) so that the LEFT JOINs on cronjob_tags / tags
+     * do not inflate the count when a job has multiple tags.
      *
      * @param string               $whereClause Dynamic WHERE clause (may be empty).
      * @param array<string, mixed> $params      Named parameter bindings.
      *
-     * @return int Total number of distinct execution log rows matching the filter.
+     * @return int Total matching row count (ignoring LIMIT).
      *
      * @throws PDOException On database errors.
      */
     private function fetchTotal(string $whereClause, array $params): int
     {
         $sql = <<<SQL
-            SELECT COUNT(DISTINCT el.id) AS total
+            SELECT COUNT(DISTINCT el.id)
             FROM execution_log el
             JOIN cronjobs j ON j.id = el.cronjob_id
             LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
@@ -284,10 +286,12 @@ final class HistoryEndpoint
             SQL;
 
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-        $row = $stmt->fetch();
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        \Cronmanager\Agent\Database\Connection::timedExecute($stmt);
 
-        return $row !== false ? (int) $row['total'] : 0;
+        return (int) $stmt->fetchColumn();
     }
 
     /**
@@ -340,7 +344,7 @@ final class HistoryEndpoint
         $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
 
-        $stmt->execute();
+        \Cronmanager\Agent\Database\Connection::timedExecute($stmt);
         $rows    = $stmt->fetchAll();
         $records = [];
 

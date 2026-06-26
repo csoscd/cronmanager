@@ -46,6 +46,10 @@ use Cronmanager\Agent\Security\HmacValidator;
 /**
  * Emit a JSON HTTP response and terminate the script.
  *
+ * When the PerformanceCollector has been configured for the current request
+ * it is given the chance to flush its timing data (DB write + optional _perf
+ * injection) before the response body is encoded.
+ *
  * @param int   $statusCode HTTP status code.
  * @param array $data       Associative array to encode as JSON.
  *
@@ -55,6 +59,12 @@ function jsonResponse(int $statusCode, array $data): void
 {
     http_response_code($statusCode);
     header('Content-Type: application/json');
+
+    $perf = \Cronmanager\Agent\Performance\PerformanceCollector::getInstance()->collectForResponse();
+    if ($perf !== null) {
+        $data['_perf'] = $perf;
+    }
+
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -62,6 +72,10 @@ function jsonResponse(int $statusCode, array $data): void
 // =============================================================================
 // Top-level exception boundary
 // =============================================================================
+
+// Capture the request start timestamp as early as possible so that the
+// PerformanceCollector can measure the total wall-clock duration accurately.
+$requestStart = microtime(true);
 
 try {
 
@@ -179,6 +193,17 @@ try {
     // agent_settings survive container restarts (entrypoint.sh regenerates
     // config.json on every start). Falls back to config.json when no DB row.
     $dbConfig = new \Cronmanager\Agent\Config\DbConfig($config, $pdo);
+
+    // Configure the PerformanceCollector for this request.  Settings are read
+    // from the performance_monitor section in agent_settings (DB-backed).
+    $perfSettings = $dbConfig->getSection('performance_monitor');
+    \Cronmanager\Agent\Performance\PerformanceCollector::getInstance()->configure(
+        persist:        (bool) ($perfSettings['persist_data']     ?? false),
+        showInFrontend: (bool) ($perfSettings['show_in_frontend'] ?? false),
+        requestStart:   $requestStart,
+        endpoint:       $path,
+    );
+
     $crontabManager = new \Cronmanager\Agent\Cron\CrontabManager($logger, $wrapperScript);
 
     $cronList    = new \Cronmanager\Agent\Endpoints\CronListEndpoint($pdo, $logger, $crontabManager);

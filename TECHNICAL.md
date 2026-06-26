@@ -1875,6 +1875,118 @@ docker exec <container> php -r "var_dump(extension_loaded('apcu'));"
 # → bool(true)
 ```
 
+### Performance Monitor (v4.4.0)
+
+The Performance Monitor is a toggleable feature in *Settings → Agent-Einstellungen* that
+measures per-request timing on the agent side and optionally persists or displays it.
+
+#### Architecture
+
+```
+agent.php
+  │  $requestStart = microtime(true)   ← captured before routing
+  │
+  ├─ DbConfig reads performance_monitor section from agent_settings
+  │
+  ├─ PerformanceCollector::getInstance()->configure(persist, showInFrontend, start, path)
+  │
+  └─ Endpoint::handle()
+       │  Connection::timedExecute($stmt)  ← measures execute() time, calls addDbQuery()
+       │
+       └─ jsonResponse(200, $data)
+            │  PerformanceCollector::collectForResponse()
+            ├─  if persist   → INSERT INTO performance_log
+            └─  if frontend  → $data['_perf'] = [request_ms, db_ms, db_queries]
+```
+
+#### PerformanceCollector singleton
+
+`agent/src/Performance/PerformanceCollector.php` — single instance per PHP process:
+
+| Method | Purpose |
+|---|---|
+| `configure(…)` | Called once per request from agent.php after settings are loaded |
+| `addDbQuery(float $ms)` | Accumulates DB time; called by `Connection::timedExecute()` |
+| `collectForResponse(): ?array` | Calculates elapsed time, writes to DB if `persist`, returns payload if `showInFrontend` |
+
+#### Connection::timedExecute()
+
+Static method added to `agent/src/Database/Connection.php`. Drop-in replacement for
+`$stmt->execute($params)` in endpoints that should contribute to DB timing:
+
+```php
+// Before (not timed):
+$stmt->execute($params);
+
+// After (timed — used in CronListEndpoint, HistoryEndpoint):
+\Cronmanager\Agent\Database\Connection::timedExecute($stmt, $params);
+```
+
+Endpoints that do NOT call `timedExecute()` still work correctly — their DB time simply
+does not appear in `db_ms` (it remains 0 for those endpoints).
+
+#### _perf response field
+
+When `show_in_frontend` is enabled, every JSON response from the agent includes:
+
+```json
+{
+  "data": [...],
+  "_perf": {
+    "request_ms": 45.2,
+    "db_ms": 12.1,
+    "db_queries": 2
+  }
+}
+```
+
+`HostAgentClient::handleResponse()` captures this into `$this->lastPerf`.
+`BaseController::render()` forwards it as `$perfData` to `layout.php`, which displays it
+in the footer span when non-null.
+
+#### performance_log table
+
+```sql
+CREATE TABLE performance_log (
+    id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    endpoint    VARCHAR(255)  NOT NULL,
+    request_ms  DECIMAL(10,3) NOT NULL,
+    db_ms       DECIMAL(10,3) NOT NULL DEFAULT 0,
+    db_queries  INT UNSIGNED  NOT NULL DEFAULT 0,
+    created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+Populated only when `persist_data = true`. Non-fatal: if the table is missing (migration
+not yet applied), the INSERT is silently swallowed and the agent response is unaffected.
+
+#### Dashboard parallelisation (v4.4.0)
+
+`DashboardController` previously made three sequential GET calls to the agent.  They are
+now dispatched in parallel via `HostAgentClient::getMultiple()`, which uses
+`GuzzleHttp\Promise\Utils::unwrap()`.  Each request is signed independently (HMAC over
+`method + path + body + userId + username`).
+
+#### Query optimisations (v4.4.0)
+
+**CronListEndpoint**: The two correlated subqueries for `last_run` / `last_exit_code` were
+replaced by derived-table LEFT JOINs:
+
+```sql
+-- Before (O(N*M) correlated subqueries):
+(SELECT el.started_at FROM execution_log el WHERE el.cronjob_id = j.id ORDER BY el.id DESC LIMIT 1)
+
+-- After (O(N) derived-table JOIN):
+LEFT JOIN (
+    SELECT cronjob_id, MAX(id) AS max_id FROM execution_log GROUP BY cronjob_id
+) el_latest ON el_latest.cronjob_id = j.id
+LEFT JOIN execution_log el_last ON el_last.id = el_latest.max_id
+```
+
+**HistoryEndpoint**: The separate `COUNT(DISTINCT el.id)` query was removed.  The data
+query now uses `SQL_CALC_FOUND_ROWS`; `SELECT FOUND_ROWS()` retrieves the count on the
+same connection after the data fetch.
+
 ### Timing instrumentation
 
 Server-side timing is always written to the application log at `DEBUG` level:

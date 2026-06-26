@@ -133,6 +133,14 @@ abstract class BaseController
         $data['webContainerVersion']   = getenv('APP_VERSION') ?: 'unknown';
         [$data['agentVersion'], $data['agentContainerVersion']] = $this->resolveAgentVersion();
 
+        // Forward _perf data from the most recent agent call so the layout
+        // footer can display it when the Performance Monitor is enabled.
+        try {
+            $data['perfData'] = $this->agentClientInstance?->getLastPerf();
+        } catch (\Throwable) {
+            $data['perfData'] = null;
+        }
+
         // ------------------------------------------------------------------
         // Step 1-4: capture the sub-template output
         // ------------------------------------------------------------------

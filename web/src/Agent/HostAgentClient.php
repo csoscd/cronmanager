@@ -24,6 +24,7 @@ namespace Cronmanager\Web\Agent;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Promise\Utils as PromiseUtils;
 use Monolog\Logger;
 
 /**
@@ -42,6 +43,13 @@ class HostAgentClient
 
     /** @var Client|null Lazily-created Guzzle client instance. */
     private ?Client $guzzle = null;
+
+    /**
+     * @var array{request_ms: float, db_ms: float, db_queries: int}|null
+     *      Performance data from the most recently completed agent request, or
+     *      null when the agent did not include a _perf field in its response.
+     */
+    private ?array $lastPerf = null;
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -226,6 +234,86 @@ class HostAgentClient
         }
 
         return $this->handleResponse('DELETE', $path, $response);
+    }
+
+    // =========================================================================
+    // Parallel requests
+    // =========================================================================
+
+    /**
+     * Execute multiple GET requests in parallel and return all decoded bodies.
+     *
+     * Each entry in $requests must have a 'path' key and an optional 'query'
+     * array (same format as the $query parameter of get()).  The return array
+     * uses the same keys as the input array.
+     *
+     * Example:
+     *   $results = $client->getMultiple([
+     *       'crons'   => ['path' => '/crons'],
+     *       'history' => ['path' => '/history', 'query' => ['limit' => 50]],
+     *   ]);
+     *
+     * On individual request failure a \RuntimeException is thrown (same
+     * behaviour as get()).  The _perf field of the last settled response is
+     * stored in $this->lastPerf.
+     *
+     * @param array<string, array{path: string, query?: array<string, mixed>}> $requests
+     *
+     * @throws \RuntimeException When any agent request fails.
+     *
+     * @return array<string, array<string, mixed>> Key-matched decoded responses.
+     */
+    public function getMultiple(array $requests): array
+    {
+        $promises = [];
+
+        foreach ($requests as $key => $spec) {
+            $path        = (string) $spec['path'];
+            $query       = isset($spec['query']) && is_array($spec['query']) ? $spec['query'] : [];
+            $queryString = $query !== [] ? '?' . http_build_query($query) : '';
+            $signature   = $this->sign('GET', $path, '');
+
+            $this->logger->debug('HostAgentClient getMultiple GET', ['key' => $key, 'path' => $path]);
+
+            $promises[$key] = $this->client()->requestAsync('GET', $path . $queryString, [
+                'headers' => [
+                    'X-Agent-Signature' => $signature,
+                    'X-User-Id'         => (string) $this->userId,
+                    'X-User-Name'       => $this->username,
+                    'Accept'            => 'application/json',
+                ],
+            ]);
+        }
+
+        try {
+            $responses = PromiseUtils::unwrap($promises);
+        } catch (ConnectException $e) {
+            $this->logger->error('HostAgentClient: connection failed in getMultiple', [
+                'message' => $e->getMessage(),
+            ]);
+            throw new \RuntimeException('Agent unreachable: ' . $e->getMessage(), 0, $e);
+        }
+
+        $results = [];
+        foreach ($responses as $key => $response) {
+            $path        = (string) $requests[$key]['path'];
+            $results[$key] = $this->handleResponse('GET', $path, $response);
+        }
+
+        return $results;
+    }
+
+    /**
+     * Return the _perf payload from the most recent agent response, or null.
+     *
+     * Populated by handleResponse() whenever the agent includes a _perf key.
+     * Useful when the caller wants to forward timing data to the UI layer.
+     *
+     * @return array{request_ms: float, db_ms: float, db_queries: int}|null
+     */
+    public function getLastPerf(): ?array
+    {
+        return $this->lastPerf;
     }
 
     // =========================================================================
@@ -414,6 +502,15 @@ class HostAgentClient
 
         $decoded = json_decode($body, associative: true);
 
-        return is_array($decoded) ? $decoded : [];
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        // Capture optional _perf payload added by the agent PerformanceCollector.
+        if (isset($decoded['_perf']) && is_array($decoded['_perf'])) {
+            $this->lastPerf = $decoded['_perf'];
+        }
+
+        return $decoded;
     }
 }

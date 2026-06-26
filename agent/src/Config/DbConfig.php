@@ -42,7 +42,7 @@ final class DbConfig implements ConfigInterface
     // -------------------------------------------------------------------------
 
     /** Sections whose values are stored in and read from the database. */
-    private const DB_SECTIONS = ['mail', 'telegram', 'influxdb', 'notifications'];
+    private const DB_SECTIONS = ['mail', 'telegram', 'influxdb', 'notifications', 'performance_monitor'];
 
     /**
      * Sensitive fields that are encrypted at rest when AGENT_SETTINGS_KEY is set.

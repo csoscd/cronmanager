@@ -347,6 +347,15 @@ $icon = static function (string $name): string {
         <footer class="cm-layout-footer">
             <span>Web: <?= htmlspecialchars((string) ($webVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?>, Container: <?= htmlspecialchars((string) ($webContainerVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?></span>
             <span>Agent: <?= htmlspecialchars((string) ($agentVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?>, Container: <?= htmlspecialchars((string) ($agentContainerVersion ?? 'unknown'), ENT_QUOTES, 'UTF-8') ?></span>
+            <?php if (isset($perfData) && is_array($perfData)): ?>
+            <span title="<?= htmlspecialchars($translator->t('perf_footer_title'), ENT_QUOTES, 'UTF-8') ?>">
+                <?= htmlspecialchars($translator->t('perf_footer_label', [
+                    'api'     => number_format((float) ($perfData['request_ms'] ?? 0), 1),
+                    'db'      => number_format((float) ($perfData['db_ms']      ?? 0), 1),
+                    'queries' => (int) ($perfData['db_queries'] ?? 0),
+                ]), ENT_QUOTES, 'UTF-8') ?>
+            </span>
+            <?php endif; ?>
         </footer>
 
     </div><!-- /cm-main-col -->

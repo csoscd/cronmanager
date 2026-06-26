@@ -205,6 +205,20 @@ CREATE TABLE IF NOT EXISTS audit_log (
     INDEX idx_audit_action     (action(32))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- -----------------------------------------------------------------------------
+-- performance_log – per-request timing data (Performance Monitor feature)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS performance_log (
+    id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    endpoint    VARCHAR(255)  NOT NULL                         COMMENT 'Agent endpoint path (e.g. /crons)',
+    request_ms  DECIMAL(10,3) NOT NULL                        COMMENT 'Total request duration in milliseconds',
+    db_ms       DECIMAL(10,3) NOT NULL DEFAULT 0              COMMENT 'Accumulated DB query time in milliseconds',
+    db_queries  INT UNSIGNED  NOT NULL DEFAULT 0              COMMENT 'Number of timed DB queries in this request',
+    created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_perf_created_at (created_at),
+    INDEX idx_perf_endpoint   (endpoint(64))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Populated automatically by the Docker entrypoint and simple_debian_setup.sh.
 -- Fresh installs seed this table with all bundled migration filenames so that
 -- already-applied changes are never re-run on first-boot.

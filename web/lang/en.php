@@ -666,6 +666,18 @@ return [
     'scope_settings_write'     => 'Write settings',
     'scope_audit_read'         => 'Read audit log',
 
+    // -------------------------------------------------------------------------
+    // Performance Monitor
+    // -------------------------------------------------------------------------
+    'settings_perf_monitor_title'   => 'Performance Monitor',
+    'settings_perf_monitor_desc'    => 'Measures total request duration and database execution times on the agent. Both features can be enabled independently.',
+    'settings_perf_persist_data'    => 'Persist performance data',
+    'settings_perf_persist_help'    => 'Writes request runtimes and database statement times to the performance_log table after every request.',
+    'settings_perf_show_in_frontend'=> 'Show performance info in the frontend',
+    'settings_perf_frontend_help'   => 'Displays the duration of the last agent call and the accumulated database time in the page footer. Works independently of "Persist data".',
+    'perf_footer_label'             => 'API {api} ms · DB {db} ms ({queries} queries)',
+    'perf_footer_title'             => 'Performance data for the last agent call',
+
     // Audit Log
     'nav_audit_log'               => 'Audit Log',
     'audit_subtitle'              => 'Record of all write operations in the system.',

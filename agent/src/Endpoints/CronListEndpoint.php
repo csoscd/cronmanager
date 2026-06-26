@@ -254,21 +254,28 @@ final class CronListEndpoint
                 j.created_at,
                 GROUP_CONCAT(DISTINCT t.name    ORDER BY t.name    SEPARATOR ',') AS tags,
                 GROUP_CONCAT(DISTINCT jt.target ORDER BY jt.target SEPARATOR ',') AS targets,
-                (SELECT el.started_at
-                   FROM execution_log el
-                  WHERE el.cronjob_id = j.id
-                  ORDER BY el.id DESC
-                  LIMIT 1) AS last_run,
-                (SELECT el.exit_code
-                   FROM execution_log el
-                  WHERE el.cronjob_id = j.id
-                    AND el.finished_at IS NOT NULL
-                  ORDER BY el.id DESC
-                  LIMIT 1) AS last_exit_code
+                el_last.started_at     AS last_run,
+                el_last_fin.exit_code  AS last_exit_code
             FROM cronjobs j
             LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
             LEFT JOIN tags t          ON t.id = ct.tag_id
             LEFT JOIN job_targets jt  ON jt.job_id = j.id
+            -- Derived-table JOINs replace the previous correlated subqueries.
+            -- Each GROUP BY runs once over execution_log (with index on cronjob_id)
+            -- instead of once per job row, making this O(N) rather than O(N*M).
+            LEFT JOIN (
+                SELECT cronjob_id, MAX(id) AS max_id
+                FROM execution_log
+                GROUP BY cronjob_id
+            ) el_latest ON el_latest.cronjob_id = j.id
+            LEFT JOIN execution_log el_last ON el_last.id = el_latest.max_id
+            LEFT JOIN (
+                SELECT cronjob_id, MAX(id) AS max_id
+                FROM execution_log
+                WHERE finished_at IS NOT NULL
+                GROUP BY cronjob_id
+            ) el_latest_fin ON el_latest_fin.cronjob_id = j.id
+            LEFT JOIN execution_log el_last_fin ON el_last_fin.id = el_latest_fin.max_id
             WHERE (:user1 IS NULL OR j.linux_user = :user2)
               AND (:tag1 IS NULL OR j.id IN (
                     SELECT ct2.cronjob_id
@@ -286,7 +293,7 @@ final class CronListEndpoint
             SQL;
 
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute([
+        \Cronmanager\Agent\Database\Connection::timedExecute($stmt, [
             ':user1'    => $userFilter,
             ':user2'    => $userFilter,
             ':tag1'     => $tagFilter,

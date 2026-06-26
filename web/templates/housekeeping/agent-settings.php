@@ -23,10 +23,11 @@ $settings    = isset($settings)    && is_array($settings)    ? $settings    : []
 $otherAgents = isset($otherAgents) && is_array($otherAgents) ? $otherAgents : [];
 $prefilled   = isset($prefilled)   && $prefilled;
 
-$mail   = is_array($settings['mail']          ?? null) ? $settings['mail']          : [];
-$tg     = is_array($settings['telegram']      ?? null) ? $settings['telegram']      : [];
-$influx = is_array($settings['influxdb']      ?? null) ? $settings['influxdb']      : [];
-$notif  = is_array($settings['notifications'] ?? null) ? $settings['notifications'] : [];
+$mail  = is_array($settings['mail']               ?? null) ? $settings['mail']               : [];
+$tg    = is_array($settings['telegram']           ?? null) ? $settings['telegram']           : [];
+$influx = is_array($settings['influxdb']          ?? null) ? $settings['influxdb']          : [];
+$notif = is_array($settings['notifications']      ?? null) ? $settings['notifications']      : [];
+$perf  = is_array($settings['performance_monitor'] ?? null) ? $settings['performance_monitor'] : [];
 
 $sv = static fn(string $section, string $key, mixed $default = ''): mixed
     => $settings[$section][$key] ?? $default;
@@ -446,6 +447,50 @@ $selEnc  = static fn(string $val, string $current): string
                                   focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
 
+            </div>
+        </section>
+
+        <!-- ── Performance Monitor ───────────────────────────────────────────── -->
+        <section class="cm-card rounded-xl p-6 space-y-4">
+            <h2 class="text-lg font-semibold" style="color:var(--cm-text)">
+                <?= htmlspecialchars($t('settings_perf_monitor_title'), ENT_QUOTES, 'UTF-8') ?>
+            </h2>
+            <p class="text-sm" style="color:var(--cm-text-muted)">
+                <?= htmlspecialchars($t('settings_perf_monitor_desc'), ENT_QUOTES, 'UTF-8') ?>
+            </p>
+
+            <div class="space-y-3">
+                <!-- Persist data -->
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="hidden"   name="perf_persist_data" value="0">
+                    <input type="checkbox" name="perf_persist_data" value="1"
+                           class="w-4 h-4 rounded text-blue-600"
+                        <?= $checked($perf['persist_data'] ?? false) ?>>
+                    <div>
+                        <span class="text-sm font-medium" style="color:var(--cm-text)">
+                            <?= htmlspecialchars($t('settings_perf_persist_data'), ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                        <p class="text-xs mt-0.5" style="color:var(--cm-text-muted)">
+                            <?= htmlspecialchars($t('settings_perf_persist_help'), ENT_QUOTES, 'UTF-8') ?>
+                        </p>
+                    </div>
+                </label>
+
+                <!-- Show in frontend -->
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="hidden"   name="perf_show_in_frontend" value="0">
+                    <input type="checkbox" name="perf_show_in_frontend" value="1"
+                           class="w-4 h-4 rounded text-blue-600"
+                        <?= $checked($perf['show_in_frontend'] ?? false) ?>>
+                    <div>
+                        <span class="text-sm font-medium" style="color:var(--cm-text)">
+                            <?= htmlspecialchars($t('settings_perf_show_in_frontend'), ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                        <p class="text-xs mt-0.5" style="color:var(--cm-text-muted)">
+                            <?= htmlspecialchars($t('settings_perf_frontend_help'), ENT_QUOTES, 'UTF-8') ?>
+                        </p>
+                    </div>
+                </label>
             </div>
         </section>
 

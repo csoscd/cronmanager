@@ -55,13 +55,21 @@ class DashboardController extends BaseController
         $agent = $this->agentClient();
 
         // ------------------------------------------------------------------
-        // Fetch data from the host agent
+        // Fetch data from the host agent (three requests in parallel)
         // ------------------------------------------------------------------
         try {
-            $jobs           = $agent->get('/crons')['data']                                    ?? [];
-            // Fetch more than needed so that filtering maintenance skips still leaves enough entries
-            $recentFailures = $agent->get('/history', ['limit' => 50, 'status' => 'failed'])['data'] ?? [];
-            $tags           = $agent->get('/tags')['data']                                    ?? [];
+            // Dispatch all three GET requests concurrently via Guzzle promises,
+            // reducing wall-clock time from ~sum(latencies) to ~max(latency).
+            $results = $agent->getMultiple([
+                'crons'   => ['path' => '/crons'],
+                // Fetch more than needed so that filtering maintenance skips
+                // still leaves enough entries after the -4 exit-code filter.
+                'history' => ['path' => '/history', 'query' => ['limit' => 50, 'status' => 'failed']],
+                'tags'    => ['path' => '/tags'],
+            ]);
+            $jobs           = $results['crons']['data']   ?? [];
+            $recentFailures = $results['history']['data'] ?? [];
+            $tags           = $results['tags']['data']    ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('DashboardController: agent request failed', [
                 'message' => $e->getMessage(),

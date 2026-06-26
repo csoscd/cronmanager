@@ -375,4 +375,99 @@ final class HostAgentClientTest extends TestCase
 
         $this->assertNotSame($sig1, $sig2);
     }
+
+    // =========================================================================
+    // 8. getLastPerf – _perf extraction
+    // =========================================================================
+
+    #[Test]
+    public function getLastPerfIsNullWhenResponseContainsNoPerf(): void
+    {
+        $history = [];
+        $stack   = $this->buildStack([new Response(200, [], '{"data":[]}')], $history);
+        $client  = $this->makeClient($stack);
+
+        $client->get('/crons');
+
+        $this->assertNull($client->getLastPerf());
+    }
+
+    #[Test]
+    public function getLastPerfReturnsArrayWhenResponseContainsPerf(): void
+    {
+        $perfPayload = ['request_ms' => 45.2, 'db_ms' => 12.1, 'db_queries' => 3];
+        $body        = json_encode(['data' => [], '_perf' => $perfPayload]);
+        $history     = [];
+        $stack       = $this->buildStack([new Response(200, [], $body)], $history);
+        $client      = $this->makeClient($stack);
+
+        $client->get('/crons');
+
+        $this->assertSame($perfPayload, $client->getLastPerf());
+    }
+
+    #[Test]
+    public function getLastPerfIgnoresNonArrayPerfField(): void
+    {
+        $body    = json_encode(['data' => [], '_perf' => 'invalid']);
+        $history = [];
+        $stack   = $this->buildStack([new Response(200, [], $body)], $history);
+        $client  = $this->makeClient($stack);
+
+        $client->get('/crons');
+
+        $this->assertNull($client->getLastPerf());
+    }
+
+    // =========================================================================
+    // 9. getMultiple – parallel requests
+    // =========================================================================
+
+    #[Test]
+    public function getMultipleReturnsKeyedResultsForEachRequest(): void
+    {
+        $cronsBody   = json_encode(['data' => [['id' => 1]]]);
+        $historyBody = json_encode(['data' => [], 'total' => 0]);
+        $tagsBody    = json_encode(['data' => [['name' => 'backup']]]);
+
+        $history = [];
+        $stack   = $this->buildStack([
+            new Response(200, [], $cronsBody),
+            new Response(200, [], $historyBody),
+            new Response(200, [], $tagsBody),
+        ], $history);
+        $client  = $this->makeClient($stack);
+
+        $results = $client->getMultiple([
+            'crons'   => ['path' => '/crons'],
+            'history' => ['path' => '/history', 'query' => ['limit' => 50]],
+            'tags'    => ['path' => '/tags'],
+        ]);
+
+        $this->assertArrayHasKey('crons',   $results);
+        $this->assertArrayHasKey('history', $results);
+        $this->assertArrayHasKey('tags',    $results);
+        $this->assertSame([['id' => 1]], $results['crons']['data']);
+        $this->assertSame([['name' => 'backup']], $results['tags']['data']);
+    }
+
+    #[Test]
+    public function getMultipleSignsEachRequestIndependently(): void
+    {
+        $history = [];
+        $stack   = $this->buildStack([
+            new Response(200, [], '{}'),
+            new Response(200, [], '{}'),
+        ], $history);
+        $client  = $this->makeClient($stack);
+
+        $client->getMultiple([
+            'crons' => ['path' => '/crons'],
+            'tags'  => ['path' => '/tags'],
+        ]);
+
+        // Both requests must carry a signature header
+        $this->assertNotEmpty($history[0]['request']->getHeaderLine('X-Agent-Signature'));
+        $this->assertNotEmpty($history[1]['request']->getHeaderLine('X-Agent-Signature'));
+    }
 }

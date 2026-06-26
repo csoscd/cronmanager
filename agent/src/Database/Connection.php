@@ -110,6 +110,32 @@ final class Connection
     // -------------------------------------------------------------------------
 
     /**
+     * Execute a prepared statement and record its duration in the PerformanceCollector.
+     *
+     * Drop-in replacement for $stmt->execute($params) in endpoints that should
+     * contribute DB-query time to the Performance Monitor.  All other endpoints
+     * may continue calling $stmt->execute() directly — they simply won't be
+     * included in the timing summary.
+     *
+     * @param \PDOStatement        $stmt   Prepared statement to execute.
+     * @param array<string, mixed> $params Named parameter bindings.
+     *
+     * @throws \PDOException When the statement execution fails.
+     *
+     * @return bool True on success (matches the return type of PDOStatement::execute).
+     */
+    public static function timedExecute(\PDOStatement $stmt, array $params = []): bool
+    {
+        $start  = microtime(true);
+        $result = $stmt->execute($params);
+        $ms     = (microtime(true) - $start) * 1000.0;
+
+        \Cronmanager\Agent\Performance\PerformanceCollector::getInstance()->addDbQuery($ms);
+
+        return $result;
+    }
+
+    /**
      * Return the active PDO instance, reconnecting if the connection was lost.
      *
      * Uses a lightweight ping (SELECT 1) to detect a stale connection caused by

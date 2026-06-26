@@ -79,6 +79,7 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Role-based access** | Admin (full access) and Viewer (read-only) roles |
 | **User management** | Admins can promote, demote, or remove users |
 | **External REST API** | Scope-based JSON API for external applications; authenticated via Bearer tokens generated in the web UI — see [API.md](API.md) |
+| **Performance Monitor** | Optionally persist per-request and per-query timing data to a `performance_log` table; optionally display the last API and DB durations in the UI footer — both toggles are independent and configurable under Settings → Agent Settings |
 | **Internationalisation** | English and German out of the box; easy to extend |
 | **Dark mode** | System-preference aware, toggle in the nav bar |
 
@@ -1225,6 +1226,15 @@ The lookback threshold is adjustable with an inline hour selector without leavin
 ### History Cleanup
 
 Bulk-deletes finished execution records older than a configurable number of days (default: 90). Only records with a non-NULL `finished_at` are eligible; running executions are never deleted. Use this to reclaim database space on long-running installations.
+
+### Performance Monitor
+
+Two independently configurable options under **Settings → Agent Settings**:
+
+| Option | Description |
+|---|---|
+| **Persist performance data** | Writes request duration, aggregated DB query time, and query count to the `performance_log` table after every agent request. Useful for identifying slow endpoints over time. |
+| **Show performance info in frontend** | Enriches every agent JSON response with a `_perf` field containing `request_ms`, `db_ms`, and `db_queries`. The web UI footer displays these values for the most recent agent call. Works independently of the persist option. |
 
 ### Agents
 

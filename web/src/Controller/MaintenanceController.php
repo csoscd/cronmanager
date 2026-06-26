@@ -556,6 +556,10 @@ final class MaintenanceController extends BaseController
             'notifications' => [
                 'web_url' => $strField('notifications_web_url'),
             ],
+            'performance_monitor' => [
+                'persist_data'     => $boolField('perf_persist_data'),
+                'show_in_frontend' => $boolField('perf_show_in_frontend'),
+            ],
         ];
     }
 }

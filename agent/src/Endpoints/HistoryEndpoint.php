@@ -229,8 +229,11 @@ final class HistoryEndpoint
         // ------------------------------------------------------------------
 
         try {
-            $total = $this->fetchTotal($whereClause, $queryParams);
             $data  = $this->fetchData($whereClause, $queryParams, $limit, $offset);
+            // FOUND_ROWS() returns the count without the LIMIT that was applied
+            // in fetchData() (which uses SQL_CALC_FOUND_ROWS), avoiding a
+            // redundant second query with identical JOIN-heavy conditions.
+            $total = (int) $this->pdo->query('SELECT FOUND_ROWS()')->fetchColumn();
         } catch (PDOException $e) {
             $this->logger->error('HistoryEndpoint: database error', [
                 'message' => $e->getMessage(),
@@ -262,35 +265,6 @@ final class HistoryEndpoint
     // -------------------------------------------------------------------------
 
     /**
-     * Execute the COUNT query to determine the total number of matching rows,
-     * ignoring pagination (LIMIT/OFFSET).
-     *
-     * @param string               $whereClause Dynamic WHERE clause (may be empty).
-     * @param array<string, mixed> $params      Named parameter bindings.
-     *
-     * @return int Total number of distinct execution log rows matching the filter.
-     *
-     * @throws PDOException On database errors.
-     */
-    private function fetchTotal(string $whereClause, array $params): int
-    {
-        $sql = <<<SQL
-            SELECT COUNT(DISTINCT el.id) AS total
-            FROM execution_log el
-            JOIN cronjobs j ON j.id = el.cronjob_id
-            LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
-            LEFT JOIN tags t ON t.id = ct.tag_id
-            {$whereClause}
-            SQL;
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-        $row = $stmt->fetch();
-
-        return $row !== false ? (int) $row['total'] : 0;
-    }
-
-    /**
      * Execute the paginated data query and return normalised execution records.
      *
      * @param string               $whereClause Dynamic WHERE clause (may be empty).
@@ -305,7 +279,7 @@ final class HistoryEndpoint
     private function fetchData(string $whereClause, array $params, int $limit, int $offset): array
     {
         $sql = <<<SQL
-            SELECT
+            SELECT SQL_CALC_FOUND_ROWS
                 el.id AS execution_id,
                 j.id AS job_id,
                 j.linux_user,
@@ -340,7 +314,7 @@ final class HistoryEndpoint
         $stmt->bindValue(':limit',  $limit,  PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
 
-        $stmt->execute();
+        \Cronmanager\Agent\Database\Connection::timedExecute($stmt);
         $rows    = $stmt->fetchAll();
         $records = [];
 

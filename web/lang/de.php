@@ -665,6 +665,18 @@ return [
     'scope_settings_read'      => 'Einstellungen lesen',
     'scope_settings_write'     => 'Einstellungen schreiben',
 
+    // -------------------------------------------------------------------------
+    // Performance Monitor
+    // -------------------------------------------------------------------------
+    'settings_perf_monitor_title'   => 'Performance Monitor',
+    'settings_perf_monitor_desc'    => 'Misst Request-Gesamtdauer und Datenbank-Ausführungszeiten des Agents. Beide Funktionen sind unabhängig voneinander aktivierbar.',
+    'settings_perf_persist_data'    => 'Performance-Daten persistieren',
+    'settings_perf_persist_help'    => 'Schreibt Request-Laufzeiten und Datenbank-Statement-Zeiten nach jeder Anfrage in die Tabelle performance_log.',
+    'settings_perf_show_in_frontend'=> 'Performance-Info im Frontend anzeigen',
+    'settings_perf_frontend_help'   => 'Zeigt im Seitenfuß die Dauer des letzten Agent-Calls und die akkumulierte Datenbank-Zeit an. Funktioniert unabhängig von "Persistieren".',
+    'perf_footer_label'             => 'API {api} ms · DB {db} ms ({queries} Queries)',
+    'perf_footer_title'             => 'Performance-Daten des letzten Agent-Calls',
+
     // Audit Log
     'nav_audit_log'               => 'Audit-Log',
     'audit_subtitle'              => 'Protokoll aller schreibenden Aktionen im System.',

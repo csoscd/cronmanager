@@ -51,7 +51,7 @@ final class SettingsEndpoint
     // -------------------------------------------------------------------------
 
     /** @var string[] Sections that may be stored via this endpoint. */
-    private const ALLOWED_SECTIONS = ['mail', 'telegram', 'influxdb', 'notifications'];
+    private const ALLOWED_SECTIONS = ['mail', 'telegram', 'influxdb', 'notifications', 'performance_monitor'];
 
     // -------------------------------------------------------------------------
     // Constructor

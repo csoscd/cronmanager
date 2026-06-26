@@ -229,7 +229,8 @@ final class HistoryEndpoint
         // ------------------------------------------------------------------
 
         try {
-            ['data' => $data, 'total' => $total] = $this->fetchData($whereClause, $queryParams, $limit, $offset);
+            $total = $this->fetchTotal($whereClause, $queryParams);
+            $data  = $this->fetchData($whereClause, $queryParams, $limit, $offset);
         } catch (PDOException $e) {
             $this->logger->error('HistoryEndpoint: database error', [
                 'message' => $e->getMessage(),
@@ -261,19 +262,47 @@ final class HistoryEndpoint
     // -------------------------------------------------------------------------
 
     /**
-     * Execute the paginated data query and return normalised execution records
-     * together with the total matching row count (before LIMIT).
+     * Count all execution records matching the given WHERE clause.
      *
-     * Uses `COUNT(*) OVER()` (window function) to obtain the total in a single
-     * query pass — avoids a separate COUNT query with identical JOINs, and is
-     * compatible with MariaDB 10.2+ (SQL_CALC_FOUND_ROWS was removed in 11.0).
+     * Uses COUNT(DISTINCT el.id) so that the LEFT JOINs on cronjob_tags / tags
+     * do not inflate the count when a job has multiple tags.
+     *
+     * @param string               $whereClause Dynamic WHERE clause (may be empty).
+     * @param array<string, mixed> $params      Named parameter bindings.
+     *
+     * @return int Total matching row count (ignoring LIMIT).
+     *
+     * @throws PDOException On database errors.
+     */
+    private function fetchTotal(string $whereClause, array $params): int
+    {
+        $sql = <<<SQL
+            SELECT COUNT(DISTINCT el.id)
+            FROM execution_log el
+            JOIN cronjobs j ON j.id = el.cronjob_id
+            LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
+            LEFT JOIN tags t ON t.id = ct.tag_id
+            {$whereClause}
+            SQL;
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        \Cronmanager\Agent\Database\Connection::timedExecute($stmt);
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * Execute the paginated data query and return normalised execution records.
      *
      * @param string               $whereClause Dynamic WHERE clause (may be empty).
      * @param array<string, mixed> $params      Named parameter bindings (without limit/offset).
      * @param int                  $limit       Maximum number of rows to return.
      * @param int                  $offset      Number of rows to skip.
      *
-     * @return array{data: list<array<string, mixed>>, total: int}
+     * @return array<int, array<string, mixed>> Normalised execution records.
      *
      * @throws PDOException On database errors.
      */
@@ -281,7 +310,6 @@ final class HistoryEndpoint
     {
         $sql = <<<SQL
             SELECT
-                COUNT(*) OVER() AS total_count,
                 el.id AS execution_id,
                 j.id AS job_id,
                 j.linux_user,
@@ -318,14 +346,13 @@ final class HistoryEndpoint
 
         \Cronmanager\Agent\Database\Connection::timedExecute($stmt);
         $rows    = $stmt->fetchAll();
-        $total   = !empty($rows) ? (int) $rows[0]['total_count'] : 0;
         $records = [];
 
         foreach ($rows as $row) {
             $records[] = $this->normaliseRow($row);
         }
 
-        return ['data' => $records, 'total' => $total];
+        return $records;
     }
 
     /**

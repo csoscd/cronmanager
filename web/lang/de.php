@@ -664,6 +664,7 @@ return [
     'scope_maintenance_write'  => 'Wartungsfenster schreiben',
     'scope_settings_read'      => 'Einstellungen lesen',
     'scope_settings_write'     => 'Einstellungen schreiben',
+    'scope_audit_read'         => 'Audit-Log lesen',
 
     // Audit Log
     'nav_audit_log'               => 'Audit-Log',

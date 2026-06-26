@@ -921,6 +921,48 @@ Test SSH connectivity to a named host alias. The host must exist in at least one
 
 ---
 
+### GET /audit/logs
+
+Return a paginated list of audit log entries.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `limit` | int | `50` | Max rows to return (1–500) |
+| `offset` | int | `0` | Pagination offset |
+| `username` | string | — | Filter by exact username |
+| `action_prefix` | string | — | Filter by action prefix (`LIKE '<prefix>%'`), e.g. `cron` |
+| `date_from` | string | — | Lower bound on `created_at` (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`) |
+| `date_to` | string | — | Upper bound on `created_at` |
+
+**Response (HTTP 200):**
+```json
+{
+    "data": [
+        {
+            "id": 42,
+            "user_id": 1,
+            "username": "admin",
+            "action": "cron.update",
+            "resource_type": "cron",
+            "resource_id": 17,
+            "resource_label": "Nightly backup",
+            "details": { "schedule": "0 2 * * * → 0 3 * * *" },
+            "ip_address": "10.0.0.5",
+            "created_at": "2026-06-24 14:30:00"
+        }
+    ],
+    "total": 1,
+    "limit": 50,
+    "offset": 0
+}
+```
+
+`details` is `null` for simple actions (tag create/delete, execute-now) and a decoded JSON object for updates (diff: only changed fields) and creates/deletes (snapshot of initial or final state). Sensitive values (passwords, tokens) are never logged.
+
+---
+
 ### GET /history
 
 Paginated execution history.
@@ -1268,11 +1310,33 @@ Currently used by `DashboardController::index()` (returns stats array) and `Cron
 | `TimelineController` | `GET /timeline` | view |
 | `SwimlaneController` | `GET /swimlane`, `GET /swimlane?debug=1` | view |
 | `ExportController` | `GET /export`, `GET /export/download` | view |
+| `AuditController` | `GET /audit` | admin |
 | `UserController` | `GET /users`, `POST /users/{id}/role`, `POST /users/{id}/delete` | admin |
 | `AgentController` | `GET /settings/agents/create`, `POST /settings/agents`, `GET /settings/agents/{id}/edit`, `POST /settings/agents/{id}`, `POST /settings/agents/{id}/delete`, `POST /settings/agents/{id}/test` (JSON), `POST /agent/select` | admin (select: view) |
 | `ApiKeyController` | `GET /api-keys`, `GET /api-keys/create`, `POST /api-keys`, `POST /api-keys/{id}/delete` | view (own keys only) |
 | `MaintenanceController` | `GET /settings`, `POST /settings/resync`, `POST /settings/executions/{id}/finish`, `POST /settings/executions/{id}/delete`, `POST /settings/executions/bulk`, `POST /settings/history/cleanup`, `POST /settings/once/cleanup`, `POST /settings/logs/prune`, `POST /settings/notification/test` | admin |
 | `TargetController` | `GET /maintenance`, `GET /maintenance/{target}/windows/new`, `POST /maintenance/{target}/windows`, `GET /maintenance/windows/{id}/edit`, `POST /maintenance/windows/{id}/edit`, `POST /maintenance/windows/{id}/delete`, `GET /maintenance/windows/conflict`, `POST /maintenance/ssh/test` | admin |
+
+### Audit Log
+
+The audit log records every create, update, and delete operation performed in Cronmanager.
+
+**Storage:** The `audit_log` table lives in the shared MariaDB database.
+
+**Two writers** populate it:
+
+- **Agent-side (`AuditLogger`)** — all operations that the web UI delegates to the agent: cron jobs, maintenance windows, tags, settings, and execution operations. Instantiated in `agent.php` and injected into every endpoint that performs mutations.
+- **Web-side (`WebAuditLogger`)** — operations that never reach the agent because they affect the web layer's own DB tables: `UserController::updateRole()` (logs `user.update_role` with `from`/`to` role) and `UserController::destroy()` (logs `user.delete`). `WebAuditLogger` writes directly via `Connection::getInstance()->getPdo()` and is exposed through `BaseController::auditLogger()`.
+
+**Detail format in `details` column:**
+- `null` — simple action (e.g. `cron.execute_now`, `tag.delete`)
+- Object with diff entries `"field": "old → new"` — for updates (only changed fields)
+- Object with snapshot fields — for creates (initial state) and deletes (state at deletion time)
+- Sensitive fields (passwords, bot tokens, InfluxDB tokens) are **never** written to the audit log; for `settings.update` only the section names are recorded.
+
+**Web UI:** Accessible at `GET /audit` (admin-only, rendered by `AuditController`). Supports the same filters as the agent endpoint (username, action prefix, date range, pagination).
+
+**REST API:** `GET /api/v1/audit` requires the `audit:read` scope, which only admin users can grant.
 
 ### HostAgentClient
 
@@ -1570,6 +1634,27 @@ Managed by the web application (`ApiKeySchema::ensure()` on every request start)
 | `created_at` | DATETIME | Set to `CURRENT_TIMESTAMP` on INSERT |
 
 The table is bootstrapped by `ApiKeySchema::ensure()` using `CREATE TABLE IF NOT EXISTS`, which is idempotent and safe to call on every request. Errors are logged but never thrown so a schema hiccup never prevents the application from serving a page.
+
+### `audit_log`
+
+Created by migration `011_audit_log.sql`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INT PK AUTO_INCREMENT | |
+| `user_id` | INT | ID of the acting user (0 = system / cron-wrapper) |
+| `username` | VARCHAR(128) | Username of the actor, or `"api:<key-name>"` for API key requests |
+| `action` | VARCHAR(100) | Dot-notation event name (e.g. `cron.update`, `user.delete`) |
+| `resource_type` | VARCHAR(50) NULL | Entity type: `cron`, `maintenance_window`, `tag`, `settings`, or `user` |
+| `resource_id` | INT NULL | Primary key of the affected row; `NULL` for settings changes |
+| `resource_label` | VARCHAR(255) NULL | Human-readable name of the affected resource (job description, username, …) |
+| `details` | TEXT NULL | JSON object — diff (only changed fields) for updates, snapshot for creates/deletes, `null` for simple actions |
+| `ip_address` | VARCHAR(45) NULL | Client IP address |
+| `created_at` | DATETIME | Timestamp of the event (DEFAULT CURRENT_TIMESTAMP) |
+
+Populated by two writers:
+- **`AuditLogger`** (`agent/src/Audit/AuditLogger.php`) — used by all agent endpoints (cron, maintenance window, tag, settings, execution operations).
+- **`WebAuditLogger`** (`web/src/Audit/WebAuditLogger.php`) — used by the web layer for operations that never reach the agent (user role changes, user deletion). Writes directly to the shared MariaDB via `Connection::getInstance()->getPdo()`. Failures are caught and logged silently so an audit write never aborts the actual operation.
 
 ### `schema_migrations`
 

@@ -23,10 +23,11 @@ agent is never exposed to external callers.
 12. [Endpoints – Settings](#12-endpoints--settings)
 13. [Endpoints – Timeline](#13-endpoints--timeline)
 14. [Endpoints – Agents](#14-endpoints--agents)
-15. [Rate Limiting](#15-rate-limiting)
-16. [What the API does NOT cover](#16-what-the-api-does-not-cover)
-17. [Troubleshooting](#17-troubleshooting)
-18. [Changelog](#18-changelog)
+15. [Endpoints – Audit Log](#15-endpoints--audit-log)
+16. [Rate Limiting](#16-rate-limiting)
+17. [What the API does NOT cover](#17-what-the-api-does-not-cover)
+18. [Troubleshooting](#18-troubleshooting)
+19. [Changelog](#19-changelog)
 
 ---
 
@@ -109,6 +110,7 @@ A user can only grant scopes they are allowed to use themselves:
 | `maintenance:write` | Create, edit, delete maintenance windows |
 | `settings:read` | Read agent settings (mail, Telegram, InfluxDB, notifications) |
 | `settings:write` | Update agent settings; resync crontab; cleanup operations |
+| `audit:read` | Read the audit log — who changed what and when (admin-only scope) |
 
 ### Pre-defined profiles
 
@@ -117,7 +119,7 @@ A user can only grant scopes they are allowed to use themselves:
 | `read-only` | `jobs:read`, `maintenance:read`, `export:read` |
 | `operator` | `jobs:read`, `jobs:execute`, `maintenance:read` |
 | `developer` | `jobs:read`, `jobs:write`, `jobs:execute`, `export:read` |
-| `full-admin` | all 8 scopes |
+| `full-admin` | all 9 scopes |
 
 ---
 
@@ -801,7 +803,81 @@ List all agents visible to this API key.
 
 ---
 
-## 15. Rate Limiting
+## 15. Endpoints – Audit Log
+
+Required scope: **`audit:read`**
+
+This scope can only be granted by admin users. It provides read-only access to the audit log,
+which records all create, update, and delete operations performed in the UI or via the API —
+including before/after diffs for updates and snapshots for creates and deletes.
+
+---
+
+### GET /api/v1/audit
+
+Return a paginated list of audit log entries with optional filters.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `limit` | int | `100` | Max entries per page (max: `500`) |
+| `offset` | int | `0` | Skip this many entries |
+| `username` | string | — | Filter by exact username |
+| `action_prefix` | string | — | Filter by action prefix (e.g. `cron` matches `cron.create`, `cron.update`, …) |
+| `date_from` | string | — | Lower bound on `created_at` (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`) |
+| `date_to` | string | — | Upper bound on `created_at` |
+
+**Response 200:**
+
+```json
+{
+  "data": [
+    {
+      "id": 42,
+      "user_id": 1,
+      "username": "admin",
+      "action": "cron.update",
+      "resource_type": "cron",
+      "resource_id": 17,
+      "resource_label": "Nightly backup",
+      "details": { "schedule": "0 2 * * * → 0 3 * * *" },
+      "ip_address": "10.0.0.5",
+      "created_at": "2026-06-24 14:30:00"
+    }
+  ],
+  "total": 1,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+**Known action names:**
+
+| Action | Trigger |
+|---|---|
+| `cron.create` | New job created (snapshot of initial settings) |
+| `cron.update` | Job settings changed (only the changed fields, old → new) |
+| `cron.delete` | Job deleted (snapshot of settings at deletion time) |
+| `cron.bulk_status` | Bulk activate/deactivate |
+| `cron.bulk_delete` | Bulk delete |
+| `cron.bulk_tag` | Bulk re-tag |
+| `cron.execute_now` | "Run Now" triggered |
+| `cron.kill` | Running execution killed |
+| `maintenance_window.create` | Maintenance window created (snapshot) |
+| `maintenance_window.update` | Maintenance window settings changed (diff) |
+| `maintenance_window.delete` | Maintenance window deleted (snapshot) |
+| `tag.create` | Tag created |
+| `tag.delete` | Tag deleted |
+| `settings.update` | Agent settings changed (section names only; no credentials logged) |
+| `user.update_role` | User role changed (`from`/`to` in `details`) |
+| `user.delete` | User account deleted |
+
+**Response 401 / 403:** See §6 Error Responses.
+
+---
+
+## 16. Rate Limiting
 
 The external API currently applies **no rate limiting** at the application level. In production
 deployments it is strongly recommended to configure rate limiting at the reverse proxy or
@@ -810,7 +886,7 @@ against brute-force token guessing and unintended denial-of-service from misconf
 
 ---
 
-## 16. What the API does NOT cover
+## 17. What the API does NOT cover
 
 The following operations are intentionally only available through the web UI and cannot be
 performed via the REST API:
@@ -825,7 +901,7 @@ performed via the REST API:
 
 ---
 
-## 17. Troubleshooting
+## 18. Troubleshooting
 
 ### `401 Unauthorized` – "Missing API key"
 
@@ -871,9 +947,10 @@ to 60 seconds of delay before the daemon picks up the entry.
 
 ---
 
-## 18. Changelog
+## 19. Changelog
 
 | Version | Change |
 |---|---|
+| 4.3.4 | Added `GET /api/v1/audit` endpoint (`audit:read` scope, admin-only); added §15 Audit Log |
 | 4.2.0 | Added `GET /api/v1/agents` endpoint (`settings:read` scope; respects `agent_ids` restriction; omits sensitive fields) |
 | 4.1.0 | Initial external REST API with API key authentication and scope-based authorization |

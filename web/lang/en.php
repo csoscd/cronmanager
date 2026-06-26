@@ -664,6 +664,7 @@ return [
     'scope_maintenance_write'  => 'Write maintenance windows',
     'scope_settings_read'      => 'Read settings',
     'scope_settings_write'     => 'Write settings',
+    'scope_audit_read'         => 'Read audit log',
 
     // Audit Log
     'nav_audit_log'               => 'Audit Log',

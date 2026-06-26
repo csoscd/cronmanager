@@ -33,6 +33,7 @@ final class ScopeHelper
     public const SCOPE_MAINTENANCE_WRITE = 'maintenance:write';
     public const SCOPE_SETTINGS_READ     = 'settings:read';
     public const SCOPE_SETTINGS_WRITE    = 'settings:write';
+    public const SCOPE_AUDIT_READ        = 'audit:read';
 
     /** @var string[] All defined scopes in display order */
     public const ALL_SCOPES = [
@@ -44,6 +45,7 @@ final class ScopeHelper
         self::SCOPE_MAINTENANCE_WRITE,
         self::SCOPE_SETTINGS_READ,
         self::SCOPE_SETTINGS_WRITE,
+        self::SCOPE_AUDIT_READ,
     ];
 
     // -------------------------------------------------------------------------

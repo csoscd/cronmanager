@@ -81,10 +81,19 @@ final class HostAgentClientTest extends TestCase
         return $stack;
     }
 
-    /** Compute the expected HMAC the way HostAgentClient does. */
-    private function expectedHmac(string $method, string $path, string $body = ''): string
-    {
-        return hash_hmac('sha256', strtoupper($method) . $path . $body, self::SECRET);
+    /**
+     * Compute the expected HMAC the way HostAgentClient does.
+     * Matches the extended formula: METHOD + PATH + BODY + NUL + userId + NUL + username.
+     */
+    private function expectedHmac(
+        string $method,
+        string $path,
+        string $body     = '',
+        int    $userId   = 0,
+        string $username = 'system',
+    ): string {
+        $message = strtoupper($method) . $path . $body . "\0" . $userId . "\0" . $username;
+        return hash_hmac('sha256', $message, self::SECRET);
     }
 
     // =========================================================================
@@ -282,5 +291,88 @@ final class HostAgentClientTest extends TestCase
         $result = $client->get('/ping');
 
         $this->assertSame([], $result);
+    }
+
+    // =========================================================================
+    // 7. User-context headers (audit support)
+    // =========================================================================
+
+    #[Test]
+    public function userHeadersAreSentWithCorrectValues(): void
+    {
+        $history = [];
+        $stack   = $this->buildStack([new Response(200, [], '{}')], $history);
+
+        $client = new HostAgentClient(
+            logger:     new Logger('test'),
+            agentUrl:   self::AGENT_URL,
+            hmacSecret: self::SECRET,
+            userId:     7,
+            username:   'alice',
+            sslVerify:  false,
+        );
+        $prop = new \ReflectionProperty(HostAgentClient::class, 'guzzle');
+        $prop->setValue($client, new Client(['handler' => $stack, 'base_uri' => self::AGENT_URL, 'http_errors' => false]));
+
+        $client->get('/crons');
+
+        $req = $history[0]['request'];
+        $this->assertSame('7',     $req->getHeaderLine('X-User-Id'));
+        $this->assertSame('alice', $req->getHeaderLine('X-User-Name'));
+    }
+
+    #[Test]
+    public function userContextIsIncludedInHmacSignature(): void
+    {
+        $history = [];
+        $stack   = $this->buildStack([new Response(200, [], '{}')], $history);
+
+        $client = new HostAgentClient(
+            logger:     new Logger('test'),
+            agentUrl:   self::AGENT_URL,
+            hmacSecret: self::SECRET,
+            userId:     42,
+            username:   'bob',
+            sslVerify:  false,
+        );
+        $prop = new \ReflectionProperty(HostAgentClient::class, 'guzzle');
+        $prop->setValue($client, new Client(['handler' => $stack, 'base_uri' => self::AGENT_URL, 'http_errors' => false]));
+
+        $client->get('/crons');
+
+        $actual   = $history[0]['request']->getHeaderLine('X-Agent-Signature');
+        $expected = $this->expectedHmac('GET', '/crons', '', 42, 'bob');
+
+        $this->assertSame($expected, $actual);
+    }
+
+    #[Test]
+    public function differentUserContextProducesDifferentSignature(): void
+    {
+        $history1 = [];
+        $history2 = [];
+
+        $makeClientWithUser = function (int $userId, string $username, mixed &$history): HostAgentClient {
+            $stack = $this->buildStack([new Response(200, [], '{}')], $history);
+            $c = new HostAgentClient(
+                logger:     new Logger('test'),
+                agentUrl:   self::AGENT_URL,
+                hmacSecret: self::SECRET,
+                userId:     $userId,
+                username:   $username,
+                sslVerify:  false,
+            );
+            $prop = new \ReflectionProperty(HostAgentClient::class, 'guzzle');
+            $prop->setValue($c, new Client(['handler' => $stack, 'base_uri' => self::AGENT_URL, 'http_errors' => false]));
+            return $c;
+        };
+
+        $makeClientWithUser(1, 'admin', $history1)->get('/crons');
+        $makeClientWithUser(2, 'editor', $history2)->get('/crons');
+
+        $sig1 = $history1[0]['request']->getHeaderLine('X-Agent-Signature');
+        $sig2 = $history2[0]['request']->getHeaderLine('X-Agent-Signature');
+
+        $this->assertNotSame($sig1, $sig2);
     }
 }

@@ -21,6 +21,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Monolog\Logger;
 use PDO;
 use PDOException;
@@ -40,8 +41,9 @@ final class CronBulkTagEndpoint
      * @param Logger $logger Monolog logger.
      */
     public function __construct(
-        private readonly PDO    $pdo,
-        private readonly Logger $logger,
+        private readonly PDO         $pdo,
+        private readonly Logger      $logger,
+        private readonly AuditLogger $audit,
     ) {}
 
     /**
@@ -141,6 +143,8 @@ final class CronBulkTagEndpoint
         }
 
         $this->logger->info('CronBulkTagEndpoint: updated', ['ids' => $intIds, 'tag' => $tag, 'action' => $action]);
+
+        $this->audit->log('cron.bulk.tag', 'tag', null, $tag, ['count' => count($intIds), 'ids' => $intIds, 'action' => $action]);
 
         jsonResponse(200, ['updated' => count($intIds)]);
     }

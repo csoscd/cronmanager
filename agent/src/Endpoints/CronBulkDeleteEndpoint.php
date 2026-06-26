@@ -22,6 +22,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Cron\CrontabManager;
 use Monolog\Logger;
 use PDO;
@@ -44,6 +45,7 @@ final class CronBulkDeleteEndpoint
         private readonly PDO            $pdo,
         private readonly Logger         $logger,
         private readonly CrontabManager $crontabManager,
+        private readonly AuditLogger    $audit,
     ) {}
 
     /**
@@ -128,6 +130,8 @@ final class CronBulkDeleteEndpoint
         }
 
         $this->logger->info('CronBulkDeleteEndpoint: deleted', ['ids' => $intIds]);
+
+        $this->audit->log('cron.bulk.delete', 'cron', null, null, ['count' => count($jobs), 'ids' => $intIds]);
 
         jsonResponse(200, ['deleted' => count($jobs)]);
     }

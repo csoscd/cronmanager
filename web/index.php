@@ -28,6 +28,7 @@ spl_autoload_register(function (string $class): void {
 });
 
 use Cronmanager\Web\Api\AgentsApiController;
+use Cronmanager\Web\Api\AuditApiController;
 use Cronmanager\Web\Api\ExportApiController;
 use Cronmanager\Web\Api\JobsApiController;
 use Cronmanager\Web\Api\MaintenanceApiController;
@@ -48,6 +49,7 @@ use Cronmanager\Web\Controller\TimelineController;
 use Cronmanager\Web\Controller\MaintenanceController;
 use Cronmanager\Web\Controller\TargetController;
 use Cronmanager\Web\Controller\TransferController;
+use Cronmanager\Web\Controller\AuditController;
 use Cronmanager\Web\Controller\UserController;
 use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Request;
@@ -146,6 +148,7 @@ try {
     if (str_starts_with($request->path, '/api/v1/')) {
         $pdo            = Connection::getInstance()->getPdo();
         $agentsApi      = new AgentsApiController($config, $logger, $pdo);
+        $auditApi       = new AuditApiController($config, $logger, $pdo);
         $jobsApi        = new JobsApiController($config, $logger, $pdo);
         $exportApi      = new ExportApiController($config, $logger, $pdo);
         $maintenanceApi = new MaintenanceApiController($config, $logger, $pdo);
@@ -155,6 +158,9 @@ try {
 
         // Agents
         $apiRouter->addPublicRoute('GET',    '/api/v1/agents',                 [$agentsApi, 'index']);
+
+        // Audit log
+        $apiRouter->addPublicRoute('GET',    '/api/v1/audit',                  [$auditApi, 'index']);
 
         // Jobs – read
         $apiRouter->addPublicRoute('GET',    '/api/v1/jobs',                   [$jobsApi, 'index']);
@@ -258,6 +264,7 @@ try {
     $swimlaneCtrl   = new SwimlaneController($config, $logger);
     $exportCtrl       = new ExportController($config, $logger);
     $userCtrl         = new UserController($config, $logger);
+    $auditCtrl        = new AuditController($config, $logger);
     $maintenanceCtrl  = new MaintenanceController($config, $logger);
     $targetCtrl       = new TargetController($config, $logger);
     $agentCtrl        = new AgentController($config, $logger);
@@ -293,9 +300,11 @@ try {
     $router->addProtectedRoute('GET',  '/export',              [$exportCtrl, 'index']);
     $router->addProtectedRoute('GET',  '/export/download',     [$exportCtrl, 'download']);
 
-    $router->addProtectedRoute('GET',  '/users',               [$userCtrl, 'index'],      'admin');
-    $router->addProtectedRoute('POST', '/users/{id}/role',     [$userCtrl, 'updateRole'], 'admin');
-    $router->addProtectedRoute('POST', '/users/{id}/delete',   [$userCtrl, 'destroy'],    'admin');
+    $router->addProtectedRoute('GET',  '/users',               [$userCtrl,  'index'],      'admin');
+    $router->addProtectedRoute('POST', '/users/{id}/role',     [$userCtrl,  'updateRole'], 'admin');
+    $router->addProtectedRoute('POST', '/users/{id}/delete',   [$userCtrl,  'destroy'],    'admin');
+
+    $router->addProtectedRoute('GET',  '/audit',               [$auditCtrl, 'index'],      'admin');
 
     // Maintenance / Maintenance Windows (formerly "Targets") – admin only
     // Conflict check uses GET with query params (view role sufficient).

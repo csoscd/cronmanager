@@ -20,6 +20,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Cron\CrontabManager;
 use Monolog\Logger;
 use PDO;
@@ -44,6 +45,7 @@ final class CronBulkStatusEndpoint
         private readonly Logger         $logger,
         private readonly CrontabManager $crontabManager,
         private readonly string         $wrapperScript,
+        private readonly AuditLogger    $audit,
     ) {}
 
     /**
@@ -134,6 +136,9 @@ final class CronBulkStatusEndpoint
         }
 
         $this->logger->info('CronBulkStatusEndpoint: updated', ['ids' => $intIds, 'active' => $active]);
+
+        $auditAction = $active ? 'cron.bulk.activate' : 'cron.bulk.deactivate';
+        $this->audit->log($auditAction, 'cron', null, null, ['count' => count($jobs), 'ids' => $intIds]);
 
         jsonResponse(200, ['updated' => count($jobs)]);
     }

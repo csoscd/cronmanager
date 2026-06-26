@@ -77,6 +77,7 @@ $icon = static function (string $name): string {
         'users'     => '<circle cx="7" cy="7" r="3"/><path stroke-linecap="round" d="M1 18c0-3.3 2.7-6 6-6"/><circle cx="15" cy="9" r="2.5"/><path stroke-linecap="round" d="M11 18c0-2.8 1.8-5 4-5s4 2.2 4 5"/>',
         'export'    => '<line x1="10" y1="12" x2="10" y2="3"/><polyline points="6,7 10,3 14,7"/><line x1="4" y1="15" x2="16" y2="15"/>',
         'key'       => '<path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" transform="scale(0.83) translate(0,0)"/>',
+        'shield'    => '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" transform="scale(0.83) translate(0,0)"/>',
     ];
     $d = $paths[$name] ?? '';
     return sprintf(
@@ -252,6 +253,10 @@ $icon = static function (string $name): string {
                     <a href="/users" class="<?= $navClass('/users') ?>">
                         <?= $icon('users') ?>
                         <?= htmlspecialchars($t('nav_users'), ENT_QUOTES, 'UTF-8') ?>
+                    </a>
+                    <a href="/audit" class="<?= $navClass('/audit') ?>">
+                        <?= $icon('shield') ?>
+                        <?= htmlspecialchars($t('nav_audit_log'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
                 </div>
 

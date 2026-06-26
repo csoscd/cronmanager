@@ -6,6 +6,107 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.3.4] – branch: `audit_log`
+
+### Added
+
+- **REST-API: `GET /api/v1/audit`** (neuer Scope `audit:read`, nur von Admins vergebbar):
+  Gibt eine paginierte Liste aller Audit-Log-Einträge zurück; unterstützt dieselben
+  Filter wie die Web-UI (username, action_prefix, date_from, date_to, limit, offset).
+  Das Agent-Antwortformat (`data`, `total`, `limit`, `offset`) wird 1:1 weitergeleitet.
+- **Neuer Scope `audit:read`** in `ScopeHelper` (9. Scope, wird automatisch in
+  `full-admin`-Profil und Admin-Rolle eingeschlossen; View-Nutzer erhalten ihn nicht).
+- **Übersetzungen**: `scope_audit_read` in `de.php` und `en.php`.
+- **API.md**: Neuer Abschnitt §15 "Endpoints – Audit Log" mit allen Action-Namen,
+  Query-Parametern und Beispiel-Response; Abschnitte 15–18 → 16–19 umnummeriert.
+- **README.md**: Feature-Eintrag "Audit log" in der Feature-Tabelle.
+- **TECHNICAL.md**: `GET /audit/logs`-Endpoint in Agent-HTTP-API-Referenz; `audit_log`-
+  Tabellenschema in DB-Sektion; "Audit Log"-Unterabschnitt im Web-Application-Kapitel.
+- **3 neue Unit-Tests** in `ScopeHelperTest` (`auditReadScopeIsInAllScopes`,
+  `viewRoleDoesNotGrantAuditRead`, `adminRoleGrantsAuditRead`).
+
+---
+
+## [4.3.3] – branch: `audit_log`
+
+### Added
+
+- **Audit-Log Details – Diffs und Snapshots**: Alle schreibenden Endpoints füllen
+  nun das `details`-Feld im Audit-Log:
+  - `cron.update` / `maintenance_window.update`: Before/After-Diff — nur geänderte
+    Felder werden als `'feldname' => 'alt → neu'` eingetragen.
+  - `cron.create` / `maintenance_window.create`: Snapshot der Initialwerte
+    (schedule, command, linux_user, active, targets, tags).
+  - `cron.delete` / `maintenance_window.delete`: Snapshot der gelöschten
+    Konfiguration (fetchJob-Query in CronDeleteEndpoint erweitert auf schedule,
+    command, description, targets, tags).
+  - `settings.update`: Loggt die geänderten Sektionsnamen (`['sections' => ['mail']]`);
+    keine sensitiven Werte (Passwörter, Tokens) werden mitgeschrieben.
+  - `user.update_role`: Neuer Audit-Eintrag im Web-Layer via `WebAuditLogger`
+    (`'from' => 'view', 'to' => 'admin'`). Liest die alte Rolle vor dem UPDATE.
+  - `user.delete`: Neuer Audit-Eintrag mit Username des gelöschten Benutzers.
+- **`WebAuditLogger`** (`web/src/Audit/WebAuditLogger.php`): Neue Klasse für
+  Audit-Einträge aus dem Web-Layer, die direkt in die gemeinsame `audit_log`-Tabelle
+  schreiben. Gespiegelt aus `agent/src/Audit/AuditLogger.php`.
+- **`BaseController::auditLogger()`**: Lazy-Hilfsmethode, die einen `WebAuditLogger`
+  mit Session-Benutzer und Client-IP erstellt.
+- **3 neue Unit-Tests** für `WebAuditLogger` (Parameter, JSON-Encoding, Fehlertoleranz).
+
+### Changed
+
+- `SettingsEndpoint` erhält `AuditLogger` als Konstruktor-Argument; `agent.php`
+  übergibt `$auditLogger`.
+- `MaintenanceWindowUpdateEndpoint` lädt den bestehenden Datensatz vor dem Update
+  (für den Diff); 404-Behandlung erfolgt jetzt bereits vor dem UPDATE statt nach.
+
+---
+
+## [4.3.2] – branch: `audit_log`
+
+### Fixed
+
+- **`/audit` 503 fix**: `AuditController` was appending the query string directly
+  to the path and passing the full URL (e.g. `/audit/logs?limit=25`) to
+  `HostAgentClient::get()`. The client signs only the bare path, while the agent
+  strips the query string via `parse_url(PHP_URL_PATH)` before validating — causing
+  an HMAC mismatch and a 401 → 503. Fixed by passing query parameters as the `$query`
+  array argument so `HostAgentClient` handles the separation internally.
+
+---
+
+## [4.3.1] – branch: `audit_log`
+
+### Fixed
+
+- **Scope label i18n**: `ScopeHelper::label()` now accepts an optional translator callable
+  and looks up scope names via translation keys (`scope_jobs_read`, `scope_jobs_write`, etc.)
+  instead of returning hardcoded German strings. Both `api_keys/index.php` and
+  `api_keys/create.php` pass `$t` to the method. New keys added to `de.php` and `en.php`
+  (prefix `scope_`).
+
+---
+
+## [4.3.0] – branch: `audit_log`
+
+### Added
+
+- **Audit-Log** (`GET /audit/logs`): All write operations (cron create/update/delete, bulk
+  actions, tag/maintenance-window/target CRUD, execute-now, kill) are now recorded in a new
+  `audit_log` table in the agent database.  Every entry carries the username and user-id of
+  the actor, the action in dot-notation (e.g. `cron.create`), affected resource type, id,
+  and a human-readable label, plus the client IP address.
+- **HMAC user-context headers**: `HostAgentClient` now sends `X-User-Id` and `X-User-Name`
+  with every request.  Both values are incorporated into the HMAC-SHA256 signature so they
+  cannot be tampered with in transit; for API-key sessions the header reads `api:<key-name>`.
+- **Audit-Log UI** (`/audit`, admin-only): new page in the Administration sidebar section
+  with filter controls (username, category, date range) and server-side pagination.
+- **`prune-audit.php`**: retention-based cleanup script (default 90 days,
+  configurable via `audit_log.retention_days`).
+- **API-Keys i18n**: all three API-keys templates (`index.php`, `create.php`, `created.php`)
+  are now fully internationalised; ~35 new translation keys added (prefix `api_key_`).
+
+---
+
 ## [4.2.0] – branch: `api-agents-endpoint`
 
 ### Added

@@ -21,6 +21,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Monolog\Logger;
 use PDO;
 use PDOException;
@@ -53,8 +54,9 @@ final class TagDeleteEndpoint
      * @param Logger $logger Monolog logger instance.
      */
     public function __construct(
-        private readonly PDO    $pdo,
-        private readonly Logger $logger,
+        private readonly PDO         $pdo,
+        private readonly Logger      $logger,
+        private readonly AuditLogger $audit,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -141,6 +143,8 @@ final class TagDeleteEndpoint
             'id'   => $result['id'],
             'name' => $result['name'],
         ]);
+
+        $this->audit->log('tag.delete', 'tag', (int) $result['id'], (string) $result['name']);
 
         jsonResponse(200, [
             'message' => 'Tag deleted',

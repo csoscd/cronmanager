@@ -25,6 +25,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Cron\CrontabManager;
 use Cronmanager\Agent\Util\ExitCodeMatcher;
 use Cron\CronExpression;
@@ -61,6 +62,7 @@ final class CronUpdateEndpoint
         private readonly Logger         $logger,
         private readonly CrontabManager $crontabManager,
         private readonly string         $wrapperScript,
+        private readonly AuditLogger    $audit,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -281,6 +283,15 @@ final class CronUpdateEndpoint
         // ------------------------------------------------------------------
 
         $job = $this->fetchJob($jobId);
+
+        $changes = $this->buildChanges($existing, $merged);
+        $this->audit->log(
+            'cron.update',
+            'cron',
+            $jobId,
+            is_string($job['description'] ?? null) ? $job['description'] : null,
+            $changes !== [] ? $changes : null,
+        );
 
         jsonResponse(200, $job);
     }
@@ -724,6 +735,91 @@ final class CronUpdateEndpoint
             'created_at'               => (string) $row['created_at'],
             'tags'                     => $tags,
         ];
+    }
+
+    /**
+     * Build a before/after diff between the raw DB row and the normalised merged values.
+     *
+     * Only fields whose value actually changed are included in the result.
+     * Each entry has the form: 'field_name' => 'old → new'.
+     *
+     * @param array<string, mixed> $existing Raw database row fetched before the update.
+     * @param array<string, mixed> $merged   Normalised field set after merging request data.
+     *
+     * @return array<string, string>
+     */
+    private function buildChanges(array $existing, array $merged): array
+    {
+        $changes = [];
+
+        // Scalar fields: normalise the raw DB value to match $merged types, then compare.
+        $scalars = [
+            'schedule'                    => static fn($v) => (string) ($v ?? ''),
+            'command'                     => static fn($v) => (string) ($v ?? ''),
+            'description'                 => static fn($v) => $v !== null ? (string) $v : null,
+            'linux_user'                  => static fn($v) => (string) ($v ?? ''),
+            'active'                      => static fn($v) => (bool) $v,
+            'notify_on_failure'           => static fn($v) => (bool) $v,
+            'notify_on_recovery'          => static fn($v) => (bool) ($v ?? false),
+            'execution_limit_seconds'     => static fn($v) => $v !== null ? (int) $v : null,
+            'auto_kill_on_limit'          => static fn($v) => (bool) ($v ?? false),
+            'singleton'                   => static fn($v) => (bool) ($v ?? false),
+            'run_in_maintenance'          => static fn($v) => (bool) ($v ?? false),
+            'retention_days'              => static fn($v) => $v !== null ? (int) $v : null,
+            'retry_count'                 => static fn($v) => (int) ($v ?? 0),
+            'retry_delay_minutes'         => static fn($v) => max(1, (int) ($v ?? 1)),
+            'restart_on_exitcodes'        => static fn($v) => ($v !== null && $v !== '') ? (string) $v : null,
+            'notify_after_failures'       => static fn($v) => max(1, (int) ($v ?? 1)),
+            'notify_after_limit_exceeded' => static fn($v) => max(1, (int) ($v ?? 1)),
+        ];
+
+        foreach ($scalars as $field => $normalise) {
+            $old = $normalise($existing[$field] ?? null);
+            $new = $merged[$field];
+            if ($old !== $new) {
+                $changes[$field] = $this->formatValue($old) . ' → ' . $this->formatValue($new);
+            }
+        }
+
+        // Targets: GROUP_CONCAT string from DB → sorted array; compare to $merged['targets'].
+        $existingTargetsStr = isset($existing['targets']) && $existing['targets'] !== null
+            ? (string) $existing['targets'] : '';
+        $existingTargets = $existingTargetsStr !== '' ? explode(',', $existingTargetsStr) : $this->legacyTargets($existing);
+        $mergedTargets   = $merged['targets'];
+        sort($existingTargets);
+        $sortedMerged = $mergedTargets;
+        sort($sortedMerged);
+        if ($existingTargets !== $sortedMerged) {
+            $changes['targets'] = implode(', ', $existingTargets) . ' → ' . implode(', ', $sortedMerged);
+        }
+
+        // Tags: GROUP_CONCAT string from DB → sorted array; compare to $merged['tags'].
+        $existingTagsStr = isset($existing['tags']) && $existing['tags'] !== null
+            ? (string) $existing['tags'] : '';
+        $existingTags = $existingTagsStr !== '' ? explode(',', $existingTagsStr) : [];
+        $mergedTags   = is_array($merged['tags']) ? $merged['tags'] : [];
+        sort($existingTags);
+        sort($mergedTags);
+        if ($existingTags !== $mergedTags) {
+            $changes['tags'] = (implode(', ', $existingTags) ?: '-') . ' → ' . (implode(', ', $mergedTags) ?: '-');
+        }
+
+        return $changes;
+    }
+
+    /**
+     * Format a scalar value for display in the audit-log diff.
+     *
+     * @param mixed $value
+     *
+     * @return string
+     */
+    private function formatValue(mixed $value): string
+    {
+        if ($value === null)  return '-';
+        if ($value === true)  return 'true';
+        if ($value === false) return 'false';
+        return (string) $value;
     }
 
     /**

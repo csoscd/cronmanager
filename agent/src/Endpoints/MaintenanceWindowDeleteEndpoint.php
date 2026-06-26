@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Repository\MaintenanceWindowRepository;
 use Monolog\Logger;
 use PDOException;
@@ -29,6 +30,7 @@ final class MaintenanceWindowDeleteEndpoint
     public function __construct(
         private readonly MaintenanceWindowRepository $repo,
         private readonly Logger                      $logger,
+        private readonly AuditLogger                 $audit,
     ) {}
 
     /**
@@ -50,6 +52,8 @@ final class MaintenanceWindowDeleteEndpoint
         $this->logger->debug('MaintenanceWindowDeleteEndpoint: handling DELETE /maintenance/windows/{id}', [
             'id' => $id,
         ]);
+
+        $window = $this->repo->findById($id);
 
         try {
             $deleted = $this->repo->delete($id);
@@ -76,6 +80,15 @@ final class MaintenanceWindowDeleteEndpoint
         }
 
         $this->logger->info('MaintenanceWindowDeleteEndpoint: window deleted', ['id' => $id]);
+
+        $label   = $window !== null ? ($window['description'] ?? $window['target'] ?? null) : null;
+        $details = $window !== null ? [
+            'target'           => (string) ($window['target']           ?? ''),
+            'cron_schedule'    => (string) ($window['cron_schedule']    ?? ''),
+            'duration_minutes' => (int)    ($window['duration_minutes'] ?? 0),
+            'active'           => !empty($window['active']) ? 'true' : 'false',
+        ] : null;
+        $this->audit->log('maintenance_window.delete', 'maintenance_window', $id, $label, $details);
 
         jsonResponse(200, ['deleted' => true, 'id' => $id]);
     }

@@ -38,6 +38,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Cron\CrontabManager;
 use Cronmanager\Agent\Util\ExitCodeMatcher;
 use Cron\CronExpression;
@@ -73,6 +74,7 @@ final class CronCreateEndpoint
         private readonly Logger         $logger,
         private readonly CrontabManager $crontabManager,
         private readonly string         $wrapperScript,
+        private readonly AuditLogger    $audit,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -271,6 +273,21 @@ final class CronCreateEndpoint
         // ------------------------------------------------------------------
 
         $job = $this->fetchJob($jobId);
+
+        $this->audit->log(
+            'cron.create',
+            'cron',
+            $jobId,
+            is_string($job['description'] ?? null) ? $job['description'] : null,
+            [
+                'schedule'   => (string) ($job['schedule']   ?? ''),
+                'command'    => (string) ($job['command']    ?? ''),
+                'linux_user' => (string) ($job['linux_user'] ?? ''),
+                'active'     => !empty($job['active']) ? 'true' : 'false',
+                'targets'    => implode(', ', is_array($job['targets'] ?? null) ? $job['targets'] : ['local']),
+                'tags'       => implode(', ', is_array($job['tags']    ?? null) ? $job['tags']    : []) ?: '-',
+            ],
+        );
 
         jsonResponse(201, $job);
     }

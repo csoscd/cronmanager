@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace Cronmanager\Web\Controller;
 
 use Cronmanager\Web\Agent\HostAgentClient;
+use Cronmanager\Web\Audit\WebAuditLogger;
 use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\I18n\Translator;
 use Cronmanager\Web\Repository\AgentRepository;
@@ -170,6 +171,26 @@ abstract class BaseController
      *
      * @return HostAgentClient
      */
+    /**
+     * Return a WebAuditLogger for the current session user.
+     *
+     * Used by controllers that perform write operations entirely in the web
+     * layer (e.g. user management) and therefore cannot rely on the agent's
+     * AuditLogger.  Writes directly to the shared audit_log table.
+     *
+     * @return WebAuditLogger
+     */
+    protected function auditLogger(): WebAuditLogger
+    {
+        return new WebAuditLogger(
+            pdo:       Connection::getInstance()->getPdo(),
+            logger:    $this->logger,
+            userId:    SessionManager::getUserId()   ?? 0,
+            username:  SessionManager::getUsername() ?? 'system',
+            ipAddress: $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+        );
+    }
+
     protected function agentClient(): HostAgentClient
     {
         if ($this->agentClientInstance === null) {
@@ -179,6 +200,8 @@ abstract class BaseController
                 logger:      $this->logger,
                 agentUrl:    (string)  $agent['url'],
                 hmacSecret:  (string)  $agent['hmac_secret'],
+                userId:      SessionManager::getUserId()    ?? 0,
+                username:    SessionManager::getUsername()  ?? 'system',
                 timeout:     (int)     ($agent['timeout']     ?? 10),
                 sslVerify:   (bool)    ($agent['ssl_verify']  ?? true),
                 sslCaBundle: (string)  ($agent['ssl_ca_bundle'] ?? ''),
@@ -322,6 +345,8 @@ abstract class BaseController
             logger:      $this->logger,
             agentUrl:    (string) $agent['url'],
             hmacSecret:  (string) $agent['hmac_secret'],
+            userId:      SessionManager::getUserId()   ?? 0,
+            username:    SessionManager::getUsername() ?? 'system',
             timeout:     (int)    ($agent['timeout']      ?? 10),
             sslVerify:   (bool)   ($agent['ssl_verify']   ?? true),
             sslCaBundle: (string) ($agent['ssl_ca_bundle'] ?? ''),

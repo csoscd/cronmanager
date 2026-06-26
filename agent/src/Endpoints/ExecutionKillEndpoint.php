@@ -42,6 +42,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Audit\AuditLogger;
 use Monolog\Logger;
 use PDO;
 use PDOException;
@@ -66,8 +67,9 @@ final class ExecutionKillEndpoint
      * @param Logger $logger Monolog logger instance.
      */
     public function __construct(
-        private readonly PDO    $pdo,
-        private readonly Logger $logger,
+        private readonly PDO         $pdo,
+        private readonly Logger      $logger,
+        private readonly AuditLogger $audit,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -192,6 +194,8 @@ final class ExecutionKillEndpoint
                 'target'       => $target,
             ]);
         }
+
+        $this->audit->log('cron.kill', 'cron', (int) ($row['cronjob_id'] ?? 0) ?: null, null, ['execution_id' => $executionId, 'killed' => $killed]);
 
         jsonResponse(200, [
             'execution_id' => $executionId,

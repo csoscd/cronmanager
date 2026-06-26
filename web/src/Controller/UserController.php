@@ -100,7 +100,17 @@ class UserController extends BaseController
         }
 
         try {
-            $pdo  = Connection::getInstance()->getPdo();
+            $pdo = Connection::getInstance()->getPdo();
+
+            $fetch = $pdo->prepare('SELECT id, username, role FROM users WHERE id = :id');
+            $fetch->execute([':id' => $id]);
+            $user = $fetch->fetch(PDO::FETCH_ASSOC);
+
+            if ($user === false) {
+                (new Response())->redirect('/users');
+                return;
+            }
+
             $stmt = $pdo->prepare('UPDATE users SET role = :role WHERE id = :id');
             $stmt->execute([':role' => $role, ':id' => $id]);
 
@@ -108,6 +118,14 @@ class UserController extends BaseController
                 'user_id' => $id,
                 'role'    => $role,
             ]);
+
+            $this->auditLogger()->log(
+                'user.update_role',
+                'user',
+                $id,
+                (string) $user['username'],
+                ['from' => (string) $user['role'], 'to' => $role],
+            );
         } catch (PDOException $e) {
             $this->logger->error('UserController::updateRole: database error', [
                 'user_id' => $id,
@@ -143,11 +161,23 @@ class UserController extends BaseController
         }
 
         try {
-            $pdo  = Connection::getInstance()->getPdo();
+            $pdo = Connection::getInstance()->getPdo();
+
+            $fetch = $pdo->prepare('SELECT id, username FROM users WHERE id = :id');
+            $fetch->execute([':id' => $id]);
+            $user = $fetch->fetch(PDO::FETCH_ASSOC);
+
+            if ($user === false) {
+                (new Response())->redirect('/users');
+                return;
+            }
+
             $stmt = $pdo->prepare('DELETE FROM users WHERE id = :id');
             $stmt->execute([':id' => $id]);
 
             $this->logger->info('UserController::destroy: user deleted', ['user_id' => $id]);
+
+            $this->auditLogger()->log('user.delete', 'user', $id, (string) $user['username']);
         } catch (PDOException $e) {
             $this->logger->error('UserController::destroy: database error', [
                 'user_id' => $id,

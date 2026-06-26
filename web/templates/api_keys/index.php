@@ -26,9 +26,9 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
 <!-- Page header -->
 <div class="mb-6 flex items-center justify-between">
     <div>
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">API Keys</h1>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100"><?= $h($t('api_key_title')) ?></h1>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Persönliche API Keys für externe Anwendungen.
+            <?= $h($t('api_key_subtitle')) ?>
         </p>
     </div>
     <a href="/api-keys/create"
@@ -36,7 +36,7 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
         </svg>
-        Neuer API Key
+        <?= $h($t('api_key_create_new')) ?>
     </a>
 </div>
 
@@ -46,9 +46,9 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                   d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
         </svg>
-        <p class="text-gray-500 dark:text-gray-400 text-sm">Noch keine API Keys vorhanden.</p>
+        <p class="text-gray-500 dark:text-gray-400 text-sm"><?= $h($t('api_key_empty')) ?></p>
         <a href="/api-keys/create" class="mt-3 inline-block text-blue-600 dark:text-blue-400 text-sm hover:underline">
-            Ersten API Key erstellen
+            <?= $h($t('api_key_create_first')) ?>
         </a>
     </div>
 <?php else: ?>
@@ -59,9 +59,9 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Scopes</th>
                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Agents</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Ablauf</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Letzter Zugriff</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Erstellt</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"><?= $h($t('api_key_col_expiry')) ?></th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"><?= $h($t('api_key_col_last_used')) ?></th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"><?= $h($t('api_key_col_created')) ?></th>
                     <th class="px-4 py-3"></th>
                 </tr>
             </thead>
@@ -79,7 +79,7 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
                                 </span>
                                 <?php if ($expired): ?>
                                     <span class="text-xs bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 px-1.5 py-0.5 rounded font-medium">
-                                        Abgelaufen
+                                        <?= $h($t('api_key_expired')) ?>
                                     </span>
                                 <?php endif; ?>
                             </div>
@@ -95,7 +95,7 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
                             <div class="flex flex-wrap gap-1">
                                 <?php foreach ($key->scopes as $scope): ?>
                                     <span class="text-xs px-1.5 py-0.5 rounded font-medium <?= $h($scopeHelper::badgeColor($scope)) ?>">
-                                        <?= $h($scopeHelper::label($scope)) ?>
+                                        <?= $h($scopeHelper::label($scope, $t)) ?>
                                     </span>
                                 <?php endforeach; ?>
                             </div>
@@ -103,7 +103,7 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
 
                         <!-- Agents -->
                         <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                            <?= $key->agentIds === null ? 'Alle' : implode(', ', array_map(fn($id) => '#' . $id, $key->agentIds)) ?>
+                            <?= $key->agentIds === null ? $h($t('api_key_all_agents')) : implode(', ', array_map(fn($id) => '#' . $id, $key->agentIds)) ?>
                         </td>
 
                         <!-- Expiry -->
@@ -113,7 +113,7 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
 
                         <!-- Last used -->
                         <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                            <?= $key->lastUsedAt !== null ? $h($key->lastUsedAt->format('d.m.Y H:i')) : 'Noch nie' ?>
+                            <?= $key->lastUsedAt !== null ? $h($key->lastUsedAt->format('d.m.Y H:i')) : $h($t('api_key_never_used')) ?>
                         </td>
 
                         <!-- Created -->
@@ -124,11 +124,11 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
                         <!-- Actions -->
                         <td class="px-4 py-3 text-right">
                             <form method="POST" action="/api-keys/<?= (int) $key->id ?>/delete"
-                                  onsubmit="return confirm('API Key &quot;<?= $h(addslashes($key->name)) ?>&quot; wirklich löschen?')">
+                                  onsubmit="return confirm('<?= $h($t('api_key_confirm_delete', ['name' => addslashes($key->name)])) ?>')">
                                 <input type="hidden" name="_csrf" value="<?= $h($csrf_token ?? '') ?>">
                                 <button type="submit"
                                         class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 font-medium transition-colors">
-                                    Löschen
+                                    <?= $h($t('api_key_delete')) ?>
                                 </button>
                             </form>
                         </td>
@@ -141,7 +141,6 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
 
 <!-- Info box -->
 <div class="mt-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-sm text-blue-800 dark:text-blue-300">
-    <strong>Hinweis:</strong> Der API Key wird beim Erstellen nur einmal im Klartext angezeigt.
-    Speichere ihn sicher, bevor du die Seite verlässt.
-    Authentifiziere dich mit: <code class="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">Authorization: Bearer &lt;key&gt;</code>
+    <strong><?= $h($t('api_key_note')) ?>:</strong> <?= $h($t('api_key_note_once')) ?>
+    <?= $h($t('api_key_note_auth')) ?> <code class="bg-blue-100 dark:bg-blue-900/40 px-1 rounded">Authorization: Bearer &lt;key&gt;</code>
 </div>

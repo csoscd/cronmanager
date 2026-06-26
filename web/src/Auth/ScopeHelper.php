@@ -33,6 +33,7 @@ final class ScopeHelper
     public const SCOPE_MAINTENANCE_WRITE = 'maintenance:write';
     public const SCOPE_SETTINGS_READ     = 'settings:read';
     public const SCOPE_SETTINGS_WRITE    = 'settings:write';
+    public const SCOPE_AUDIT_READ        = 'audit:read';
 
     /** @var string[] All defined scopes in display order */
     public const ALL_SCOPES = [
@@ -44,6 +45,7 @@ final class ScopeHelper
         self::SCOPE_MAINTENANCE_WRITE,
         self::SCOPE_SETTINGS_READ,
         self::SCOPE_SETTINGS_WRITE,
+        self::SCOPE_AUDIT_READ,
     ];
 
     // -------------------------------------------------------------------------
@@ -125,25 +127,35 @@ final class ScopeHelper
     // -------------------------------------------------------------------------
 
     /**
-     * Return a human-readable label for a scope string.
+     * Return a translation key for a scope string.
      *
      * @param string $scope Scope identifier.
      *
+     * @return string Translation key of the form "scope_<group>_<action>".
+     */
+    public static function translationKey(string $scope): string
+    {
+        return 'scope_' . str_replace(':', '_', $scope);
+    }
+
+    /**
+     * Return a human-readable label for a scope string.
+     *
+     * When a translator callable is provided it is used to look up the
+     * localised label; otherwise the scope identifier itself is returned as a
+     * last-resort fallback.
+     *
+     * @param string        $scope Scope identifier.
+     * @param callable|null $t     Optional translator: fn(string $key): string.
+     *
      * @return string
      */
-    public static function label(string $scope): string
+    public static function label(string $scope, ?callable $t = null): string
     {
-        return match ($scope) {
-            self::SCOPE_JOBS_READ         => 'Jobs lesen',
-            self::SCOPE_JOBS_WRITE        => 'Jobs schreiben',
-            self::SCOPE_JOBS_EXECUTE      => 'Jobs ausführen',
-            self::SCOPE_EXPORT_READ       => 'Export',
-            self::SCOPE_MAINTENANCE_READ  => 'Wartungsfenster lesen',
-            self::SCOPE_MAINTENANCE_WRITE => 'Wartungsfenster schreiben',
-            self::SCOPE_SETTINGS_READ     => 'Einstellungen lesen',
-            self::SCOPE_SETTINGS_WRITE    => 'Einstellungen schreiben',
-            default                       => $scope,
-        };
+        if ($t !== null) {
+            return $t(self::translationKey($scope));
+        }
+        return $scope;
     }
 
     /**

@@ -181,6 +181,43 @@ final class HmacValidatorTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // validate() – user-context fields
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function validateReturnsTrueWhenUserContextMatches(): void
+    {
+        $sig = $this->validator->compute('POST', '/crons', '{}', 5, 'alice');
+
+        $this->assertTrue($this->validator->validate('POST', '/crons', '{}', $sig, 5, 'alice'));
+    }
+
+    #[Test]
+    public function validateReturnsFalseWhenUserIdTampered(): void
+    {
+        $sig = $this->validator->compute('POST', '/crons', '{}', 5, 'alice');
+
+        $this->assertFalse($this->validator->validate('POST', '/crons', '{}', $sig, 99, 'alice'));
+    }
+
+    #[Test]
+    public function validateReturnsFalseWhenUsernameTampered(): void
+    {
+        $sig = $this->validator->compute('POST', '/crons', '{}', 5, 'alice');
+
+        $this->assertFalse($this->validator->validate('POST', '/crons', '{}', $sig, 5, 'mallory'));
+    }
+
+    #[Test]
+    public function defaultUserContextProducesStableSignature(): void
+    {
+        $sig = $this->validator->compute('GET', '/crons', '');
+
+        // validate() without user params uses same defaults → should match
+        $this->assertTrue($this->validator->validate('GET', '/crons', '', $sig));
+    }
+
+    // -------------------------------------------------------------------------
     // Data providers
     // -------------------------------------------------------------------------
 

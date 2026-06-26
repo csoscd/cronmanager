@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.3.1] – branch: `audit_log`
+
+### Fixed
+
+- **Scope label i18n**: `ScopeHelper::label()` now accepts an optional translator callable
+  and looks up scope names via translation keys (`scope_jobs_read`, `scope_jobs_write`, etc.)
+  instead of returning hardcoded German strings. Both `api_keys/index.php` and
+  `api_keys/create.php` pass `$t` to the method. New keys added to `de.php` and `en.php`
+  (prefix `scope_`).
+
+---
+
 ## [4.3.0] – branch: `audit_log`
 
 ### Added

@@ -655,6 +655,16 @@ return [
     'api_key_copied'              => '✓ Copied',
     'api_key_to_list'             => 'Back to key list',
 
+    // API Scopes
+    'scope_jobs_read'          => 'Read jobs',
+    'scope_jobs_write'         => 'Write jobs',
+    'scope_jobs_execute'       => 'Execute jobs',
+    'scope_export_read'        => 'Export',
+    'scope_maintenance_read'   => 'Read maintenance windows',
+    'scope_maintenance_write'  => 'Write maintenance windows',
+    'scope_settings_read'      => 'Read settings',
+    'scope_settings_write'     => 'Write settings',
+
     // Audit Log
     'nav_audit_log'               => 'Audit Log',
     'audit_subtitle'              => 'Record of all write operations in the system.',

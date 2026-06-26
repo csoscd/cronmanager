@@ -98,7 +98,7 @@ $agents        = isset($agents)        && is_array($agents)        ? $agents    
                                    <?= $allowed ? '' : 'disabled' ?>>
                             <div>
                                 <span class="text-sm font-medium text-gray-800 dark:text-gray-200">
-                                    <?= $h($scopeHelper::label($scope)) ?>
+                                    <?= $h($scopeHelper::label($scope, $t)) ?>
                                 </span>
                                 <span class="ml-2 text-xs text-gray-400 dark:text-gray-500 font-mono"><?= $h($scope) ?></span>
                                 <?php if (!$allowed): ?>

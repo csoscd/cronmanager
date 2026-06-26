@@ -95,7 +95,7 @@ $keys = isset($keys) && is_array($keys) ? $keys : [];
                             <div class="flex flex-wrap gap-1">
                                 <?php foreach ($key->scopes as $scope): ?>
                                     <span class="text-xs px-1.5 py-0.5 rounded font-medium <?= $h($scopeHelper::badgeColor($scope)) ?>">
-                                        <?= $h($scopeHelper::label($scope)) ?>
+                                        <?= $h($scopeHelper::label($scope, $t)) ?>
                                     </span>
                                 <?php endforeach; ?>
                             </div>

@@ -129,7 +129,7 @@ final class PerformanceMonitorIntegrationTest extends AgentEndpointTestCase
     /**
      * Insert a finished execution log entry.
      */
-    private function seedFinishedExecution(
+    protected function seedFinishedExecution(
         int    $jobId,
         int    $exitCode  = 0,
         string $startedAt = '',

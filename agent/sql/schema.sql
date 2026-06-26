@@ -116,6 +116,16 @@ CREATE TABLE IF NOT EXISTS execution_log (
     retry_attempt            TINYINT UNSIGNED NOT NULL DEFAULT 0
                                                     COMMENT '0 = original execution, 1 = first retry, etc.',
     retry_root_execution_id  INT NULL            COMMENT 'Links all retries back to the first (attempt 0) execution; NULL for originals',
+    -- Covering index for CronListEndpoint Subquery 1: MAX(id) GROUP BY cronjob_id
+    INDEX idx_el_cronjob_cover     (cronjob_id, id),
+    -- Covering index for CronListEndpoint Subquery 2: MAX(id) WHERE finished_at IS NOT NULL GROUP BY cronjob_id
+    INDEX idx_el_cj_finished_cover (cronjob_id, finished_at, id),
+    -- Supports ORDER BY el.started_at DESC and date-range filters in HistoryEndpoint
+    INDEX idx_el_started_at        (started_at),
+    -- Supports status filters in HistoryEndpoint (finished_at IS NULL/NOT NULL, exit_code)
+    INDEX idx_el_finished_exit     (finished_at, exit_code),
+    -- Supports target filter in HistoryEndpoint
+    INDEX idx_el_target            (target),
     CONSTRAINT fk_el_cronjob FOREIGN KEY (cronjob_id)
         REFERENCES cronjobs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

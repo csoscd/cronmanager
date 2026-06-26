@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.4.1] – branch: `performance_optimisation`
+
+### Changed
+
+- **`CronListEndpoint`**: Zwei separate Derived-Table-Subqueries über `execution_log` (je ein Full
+  Table Scan) wurden zu einer einzigen kombinieren Subquery zusammengeführt
+  (`MAX(id)` + `MAX(CASE WHEN finished_at IS NOT NULL …)`). Halbiert die DB-Last für `GET /crons`.
+
+### Added
+
+- **Migration `015_execution_log_indexes.sql`**: Fünf neue Indizes auf `execution_log`:
+  - `idx_el_cronjob_cover (cronjob_id, id)` – Covering Index für Subquery 1 in `CronListEndpoint`
+    (Index-Only-Scan für `MAX(id) GROUP BY cronjob_id`)
+  - `idx_el_cj_finished_cover (cronjob_id, finished_at, id)` – Covering Index für die kombinierte
+    Subquery (`WHERE finished_at IS NOT NULL`, Index-Only-Scan)
+  - `idx_el_started_at (started_at)` – `ORDER BY el.started_at DESC` und Datumsbereichs-Filter in
+    `HistoryEndpoint`
+  - `idx_el_finished_exit (finished_at, exit_code)` – Status-Filter in `HistoryEndpoint`
+    (`finished_at IS NULL/NOT NULL`, `exit_code = 0 / != 0`)
+  - `idx_el_target (target)` – Target-Filter in `HistoryEndpoint`
+
+---
+
 ## [4.4.0] – branch: `feature/performance-monitor`
 
 ### Added

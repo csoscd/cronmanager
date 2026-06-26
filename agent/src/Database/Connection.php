@@ -118,15 +118,17 @@ final class Connection
      * included in the timing summary.
      *
      * @param \PDOStatement        $stmt   Prepared statement to execute.
-     * @param array<string, mixed> $params Named parameter bindings.
+     * @param array<string, mixed>|null $params Named parameter bindings, or null to use bindValue() calls.
      *
      * @throws \PDOException When the statement execution fails.
      *
      * @return bool True on success (matches the return type of PDOStatement::execute).
      */
-    public static function timedExecute(\PDOStatement $stmt, array $params = []): bool
+    public static function timedExecute(\PDOStatement $stmt, ?array $params = null): bool
     {
         $start  = microtime(true);
+        // Pass null (not []) so that previously bound bindValue() calls are
+        // honoured. execute([]) clears bound parameters; execute(null) does not.
         $result = $stmt->execute($params);
         $ms     = (microtime(true) - $start) * 1000.0;
 

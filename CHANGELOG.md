@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.5.0] – branch: `feature/silence-detection`
+
+### Added
+
+- **Silence Detection**: Aktive Jobs mit `notify_on_silence = 1` werden von `check-limits.php`
+  minütlich überwacht. Wenn ein Job seinen letzten geplanten Startzeitpunkt (berechnet via
+  `CronExpression::getPreviousRunDate()`) plus Toleranzzeit überschritten hat, ohne einen echten
+  Start (exit_code ≠ -4) zu verzeichnen, wird eine Benachrichtigung per Mail und/oder Telegram
+  ausgelöst. Erkennt stumme Komplettausfälle, die keine `execution_log`-Einträge erzeugen.
+- **Drei Maintenance-Guards** gegen False Positives:
+  - Guard 1: Agent-weite Maintenance → Silence-Detection übersprungen.
+  - Guard 2: Alle Targets des Jobs in Maintenance → kein Alert.
+  - Guard 3: Letzter `execution_log`-Eintrag war ein Maintenance-Sentinel (exit_code = -4) →
+    kein Alert (Maintenance gerade erst beendet).
+- **Dedup**: Alert wird höchstens einmal pro Stunde pro Job gesendet (`last_silence_alert_at`).
+  Das Feld wird in `ExecutionStartEndpoint` automatisch auf `NULL` zurückgesetzt, wenn der Job
+  wieder startet.
+- **Neue Job-Felder**: `notify_on_silence` (bool, opt-in, Default 0), `silence_grace_minutes`
+  (int|null, überschreibt globalen `silence.grace_minutes`-Wert aus `config.json`),
+  `last_silence_alert_at` (datetime|null, system-only, read-only über API).
+- **MailNotifier::sendSilenceAlert()** und **TelegramNotifier::sendSilenceAlert()**: neue Methoden
+  mit amber/gelber Farbgebung (Mail-Template) und 🔇-Emoji (Telegram).
+- **`send-notification.php`**: neuer Zweig `type = "silence"` für asynchronen Dispatch.
+- **`GET /health`** erweitert um `silent_jobs` (Anzahl aktiver Jobs mit überschrittenem
+  Silence-Schwellwert, `null` bei DB-Fehler) und `last_execution_at` (letzter `started_at`-Wert
+  aus `execution_log`, ermöglicht externe Uptime-Monitore ohne Per-Job-Konfiguration).
+- **REST API**: `notify_on_silence` und `silence_grace_minutes` in GET/POST/PUT für Jobs;
+  `last_silence_alert_at` ist read-only.
+- **Web-Formular**: Checkbox „Silence-Alarm aktivieren" und optional Toleranzzeit-Feld im
+  Benachrichtigungs-Tab; Grace-Feld wird per JS ein-/ausgeblendet.
+
+---
+
 ## [4.4.4] – branch: `fix/hmac-agent-username-default`
 
 ### Fixed

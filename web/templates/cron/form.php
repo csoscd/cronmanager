@@ -49,6 +49,7 @@ $formAction    = ($isEdit && $jobId !== '') ? '/crons/' . rawurlencode($jobId) .
 $isActiveVal   = $job !== null ? !empty($job['active']) : true;
 $isNotifyVal   = $job !== null ? !empty($job['notify_on_failure']) : true;
 $isRecoveryVal = $job !== null ? !empty($job['notify_on_recovery']) : true;
+$isSilenceVal  = $job !== null ? !empty($job['notify_on_silence']) : false;
 $isAutoKillVal        = $job !== null ? !empty($job['auto_kill_on_limit']) : false;
 $isSingletonVal       = $job !== null ? !empty($job['singleton']) : false;
 $isRunInMaintVal      = $job !== null ? !empty($job['run_in_maintenance']) : false;
@@ -66,6 +67,7 @@ $advancedOpen  = $isAutoKillVal
 // Auto-expand the notify tab when any notify setting deviates from the default.
 $notifyOpen    = !$isNotifyVal
     || !$isRecoveryVal
+    || $isSilenceVal
     || (int) $val('notify_after_failures', '1') > 1
     || (int) $val('notify_after_limit_exceeded', '1') > 1;
 
@@ -561,6 +563,47 @@ foreach ($tags as $tag) {
                     </p>
                 </div>
 
+                <!-- Silence detection -->
+                <div class="mb-4" id="silence-detection-row">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="notify_on_silence" value="1"
+                               id="notify_on_silence"
+                               <?= $isSilenceVal ? 'checked' : '' ?>
+                               class="w-4 h-4 text-amber-600 border-gray-300 rounded
+                                      focus:ring-amber-500 cursor-pointer">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            <?= htmlspecialchars($t('cron_notify_on_silence'), ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                    </label>
+                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500 ml-6">
+                        <?= htmlspecialchars($t('cron_notify_on_silence_hint'), ENT_QUOTES, 'UTF-8') ?>
+                    </p>
+                </div>
+
+                <!-- Silence grace period -->
+                <div class="mb-6" id="silence-grace-row"
+                     style="<?= !$isSilenceVal ? 'display:none' : '' ?>">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <?= htmlspecialchars($t('cron_silence_grace_minutes'), ENT_QUOTES, 'UTF-8') ?>
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="silence_grace_minutes" name="silence_grace_minutes"
+                               min="1" step="1"
+                               value="<?= htmlspecialchars($val('silence_grace_minutes', ''), ENT_QUOTES, 'UTF-8') ?>"
+                               placeholder="<?= htmlspecialchars($t('cron_silence_grace_default'), ENT_QUOTES, 'UTF-8') ?>"
+                               class="w-20 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                      bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                      focus:outline-none focus:ring-2 focus:ring-amber-500
+                                      focus:border-amber-500 transition">
+                        <span class="text-sm text-gray-500 dark:text-gray-400">
+                            <?= htmlspecialchars($t('cron_silence_grace_unit'), ENT_QUOTES, 'UTF-8') ?>
+                        </span>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        <?= htmlspecialchars($t('cron_silence_grace_hint'), ENT_QUOTES, 'UTF-8') ?>
+                    </p>
+                </div>
+
             </div><!-- /tab-panel-notify -->
 
             <!-- Action buttons -->
@@ -905,6 +948,18 @@ function updateTargetCheckboxes(user) {
             recoveryBox.checked  = false;
             recoveryBox.disabled = true;
         }
+    });
+})();
+
+// notify_on_silence → show/hide silence_grace_minutes row
+(function () {
+    const silenceBox  = document.getElementById('notify_on_silence');
+    const graceRow    = document.getElementById('silence-grace-row');
+
+    if (!silenceBox || !graceRow) { return; }
+
+    silenceBox.addEventListener('change', function () {
+        graceRow.style.display = this.checked ? '' : 'none';
     });
 })();
 </script>

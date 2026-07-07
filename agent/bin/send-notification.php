@@ -19,9 +19,17 @@ declare(strict_types=1);
  *                     immediately after reading to avoid leaving sensitive data
  *                     on disk.
  *
- * Expected JSON payload keys:
+ * Expected JSON payload keys (type = "failure"):
  *   job_id, description, linux_user, schedule, exit_code, output,
- *   started_at, finished_at
+ *   started_at, finished_at, type, target, notify_after_failures, still_running
+ *
+ * Expected JSON payload keys (type = "recovery"):
+ *   job_id, description, linux_user, schedule, started_at, finished_at,
+ *   type, target, consecutive_failures
+ *
+ * Expected JSON payload keys (type = "silence"):
+ *   job_id, description, schedule, last_started_at (nullable), expected_last_run,
+ *   silence_since_minutes, type, target
  *
  * Exit codes:
  *   0 – mail dispatched successfully (or disabled in config)
@@ -105,7 +113,33 @@ try {
     $mailNotifier     = new MailNotifier($logger, $config);
     $telegramNotifier = new TelegramNotifier($logger, $config);
 
-    if ($type === 'recovery') {
+    if ($type === 'silence') {
+        $lastStartedAt        = isset($data['last_started_at']) && $data['last_started_at'] !== null
+            ? (string) $data['last_started_at']
+            : null;
+        $expectedLastRun      = (string) ($data['expected_last_run']      ?? '');
+        $silenceSinceMinutes  = (int)    ($data['silence_since_minutes']  ?? 0);
+
+        $mailNotifier->sendSilenceAlert(
+            jobId:               $jobId,
+            description:         $description,
+            schedule:            $schedule,
+            lastStartedAt:       $lastStartedAt,
+            expectedLastRun:     $expectedLastRun,
+            silenceSinceMinutes: $silenceSinceMinutes,
+            target:              $target,
+        );
+
+        $telegramNotifier->sendSilenceAlert(
+            jobId:               $jobId,
+            description:         $description,
+            schedule:            $schedule,
+            lastStartedAt:       $lastStartedAt,
+            expectedLastRun:     $expectedLastRun,
+            silenceSinceMinutes: $silenceSinceMinutes,
+            target:              $target,
+        );
+    } elseif ($type === 'recovery') {
         $consecutiveFailures = (int) ($data['consecutive_failures'] ?? 0);
 
         $mailNotifier->sendRecoveryAlert(
@@ -129,7 +163,7 @@ try {
             finishedAt:          $finishedAt,
             target:              $target,
         );
-    } else {
+    } else {   // failure (default)
         $output              = (string) ($data['output']              ?? '');
         $notifyAfterFailures = max(1, (int) ($data['notify_after_failures'] ?? 1));
         $stillRunning        = (bool)   ($data['still_running']       ?? false);

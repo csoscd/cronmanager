@@ -1208,6 +1208,12 @@ class CronController extends BaseController
             ? (int) $rawNotifyAfterLimit
             : 1;
 
+        // silence_grace_minutes: positive integer or null (use global default)
+        $rawSilenceGrace = trim((string) ($post['silence_grace_minutes'] ?? ''));
+        $silenceGraceMinutes = ($rawSilenceGrace !== '' && ctype_digit($rawSilenceGrace) && (int) $rawSilenceGrace > 0)
+            ? (int) $rawSilenceGrace
+            : null;
+
         return [
             'linux_user'               => trim((string) ($post['linux_user']   ?? '')),
             'schedule'                 => trim((string) ($post['schedule']     ?? '')),
@@ -1217,6 +1223,8 @@ class CronController extends BaseController
             'active'                   => isset($post['active']),
             'notify_on_failure'        => isset($post['notify_on_failure']),
             'notify_on_recovery'       => isset($post['notify_on_recovery']),
+            'notify_on_silence'        => isset($post['notify_on_silence']),
+            'silence_grace_minutes'    => $silenceGraceMinutes,
             'execution_limit_seconds'  => $executionLimitSeconds,
             'auto_kill_on_limit'       => isset($post['auto_kill_on_limit']),
             'singleton'                => isset($post['singleton']),

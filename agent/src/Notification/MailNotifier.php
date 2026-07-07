@@ -309,6 +309,76 @@ final class MailNotifier
         }
     }
 
+    public function sendSilenceAlert(
+        int     $jobId,
+        string  $description,
+        string  $schedule,
+        ?string $lastStartedAt,
+        string  $expectedLastRun,
+        int     $silenceSinceMinutes,
+        string  $target = '',
+    ): bool {
+        $enabled = (bool) $this->config->get('mail.enabled', false);
+
+        if (!$enabled) {
+            $this->logger->debug('MailNotifier: mail disabled in config, skipping silence alert', [
+                'job_id' => $jobId,
+            ]);
+            return false;
+        }
+
+        $host        = (string) $this->config->get('mail.host',         'smtp.example.com');
+        $port        = (int)    $this->config->get('mail.port',         587);
+        $user        = (string) $this->config->get('mail.username',     '');
+        $pass        = (string) $this->config->get('mail.password',     '');
+        $fromAddr    = (string) $this->config->get('mail.from',      'cronmanager@example.com');
+        $fromName    = (string) $this->config->get('mail.from_name', 'Cronmanager');
+        $toAddr      = (string) $this->config->get('mail.to',        '');
+        $encryption  = (string) $this->config->get('mail.encryption',   'tls');
+        $baseUrl     = rtrim((string) $this->config->get('notifications.web_url', ''), '/');
+
+        try {
+            $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
+            $mail->isSMTP();
+            $mail->Host       = $host;
+            $mail->SMTPAuth   = ($user !== '');
+            $mail->Username   = $user;
+            $mail->Password   = $pass;
+            $mail->SMTPSecure = $encryption === 'ssl'
+                ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS
+                : \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port       = $port;
+            $mail->CharSet    = 'UTF-8';
+            $mail->Timeout    = (int) $this->config->get('mail.smtp_timeout', 15);
+
+            $mail->setFrom($fromAddr, $fromName);
+            $mail->addAddress($toAddr);
+            $mail->Subject = sprintf('[Cronmanager] Job #%d SILENT: %s', $jobId, $description);
+
+            $e = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+
+            $mail->Body    = $this->buildSilenceHtmlBody($jobId, $description, $schedule,
+                                 $lastStartedAt, $expectedLastRun, $silenceSinceMinutes, $target, $baseUrl, $e);
+            $mail->AltBody = $this->buildSilencePlainBody($jobId, $description, $schedule,
+                                 $lastStartedAt, $expectedLastRun, $silenceSinceMinutes, $target, $baseUrl);
+            $mail->isHTML(true);
+            $mail->send();
+
+            $this->logger->info('MailNotifier: silence alert sent', [
+                'job_id' => $jobId,
+                'to'     => $toAddr,
+            ]);
+
+            return true;
+        } catch (\Throwable $ex) {
+            $this->logger->error('MailNotifier: failed to send silence alert', [
+                'job_id'  => $jobId,
+                'message' => $ex->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
     public function sendTest(): array
     {
         $host        = (string) $this->config->get('mail.host',         'smtp.example.com');
@@ -685,6 +755,123 @@ HTML;
         }
 
         return implode("\n", $lines);
+    }
+
+    private function buildSilencePlainBody(
+        int     $jobId,
+        string  $description,
+        string  $schedule,
+        ?string $lastStartedAt,
+        string  $expectedLastRun,
+        int     $silenceSinceMinutes,
+        string  $target,
+        string  $baseUrl,
+    ): string {
+        $lastStartLine = $lastStartedAt !== null
+            ? sprintf('Last seen   : %s', $lastStartedAt)
+            : 'Last seen   : never (job has not run yet)';
+
+        $hours   = intdiv($silenceSinceMinutes, 60);
+        $minutes = $silenceSinceMinutes % 60;
+        $silent  = $hours > 0
+            ? sprintf('%dh %02dm', $hours, $minutes)
+            : sprintf('%dm', $minutes);
+
+        $lines = [
+            'CRONMANAGER – JOB SILENCE ALERT',
+            str_repeat('=', 60),
+            '',
+            sprintf('Job ID      : %d', $jobId),
+            sprintf('Description : %s', $description),
+            sprintf('Schedule    : %s', $schedule),
+        ];
+
+        if ($target !== '' && $target !== 'local') {
+            $lines[] = sprintf('Target      : %s', $target);
+        }
+
+        $lines[] = sprintf('Expected at : %s', $expectedLastRun);
+        $lines[] = $lastStartLine;
+        $lines[] = sprintf('Silent for  : %s', $silent);
+        $lines[] = '';
+        $lines[] = 'The job has not started as scheduled. Please investigate.';
+        $lines[] = '';
+
+        if ($baseUrl !== '') {
+            $lines[] = sprintf('View in Cronmanager: %s/crons/%d', $baseUrl, $jobId);
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function buildSilenceHtmlBody(
+        int     $jobId,
+        string  $description,
+        string  $schedule,
+        ?string $lastStartedAt,
+        string  $expectedLastRun,
+        int     $silenceSinceMinutes,
+        string  $target,
+        string  $baseUrl,
+        callable $e,
+    ): string {
+        $targetRow = ($target !== '' && $target !== 'local')
+            ? "<tr><th>Target</th><td>{$e($target)}</td></tr>"
+            : '';
+
+        $lastSeenCell = $lastStartedAt !== null
+            ? $e($lastStartedAt)
+            : '<em>never (job has not run yet)</em>';
+
+        $hours   = intdiv($silenceSinceMinutes, 60);
+        $minutes = $silenceSinceMinutes % 60;
+        $silent  = $hours > 0
+            ? sprintf('%dh&nbsp;%02dm', $hours, $minutes)
+            : sprintf('%dm', $minutes);
+
+        $linkHtml = $baseUrl !== ''
+            ? sprintf(
+                '<p style="margin-top:16px;"><a href="%s/crons/%d" style="display:inline-block;padding:8px 16px;background:#b45309;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;">&#x1F517; View in Cronmanager</a></p>',
+                $e($baseUrl),
+                $jobId
+            )
+            : '';
+
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cronmanager &ndash; Job Silence Alert</title>
+    <style>
+        body{font-family:Arial,sans-serif;font-size:14px;color:#333;background:#f4f4f4;margin:0;padding:20px}
+        .card{background:#fff;border-radius:6px;padding:24px;max-width:600px;margin:0 auto;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+        h1{font-size:20px;margin-top:0;color:#b45309}
+        table{border-collapse:collapse;width:100%;margin-top:12px}
+        th{text-align:left;width:38%;padding:6px 8px;background:#fffbeb;font-weight:600;color:#92400e;border-bottom:1px solid #fde68a}
+        td{padding:6px 8px;border-bottom:1px solid #e5e7eb}
+        .footer{font-size:11px;color:#999;margin-top:20px}
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>&#x1F910; Job Silence Alert</h1>
+    <p style="color:#92400e">The job has not started as scheduled. Please investigate.</p>
+    <table>
+        <tr><th>Job ID</th>       <td>{$e((string)$jobId)}</td></tr>
+        <tr><th>Description</th>  <td>{$e($description)}</td></tr>
+        <tr><th>Schedule</th>     <td>{$e($schedule)}</td></tr>
+        {$targetRow}
+        <tr><th>Expected at</th>  <td>{$e($expectedLastRun)}</td></tr>
+        <tr><th>Last seen</th>    <td>{$lastSeenCell}</td></tr>
+        <tr><th>Silent for</th>   <td>{$silent}</td></tr>
+    </table>
+    {$linkHtml}
+    <p class="footer">Cronmanager &ndash; automated job monitoring</p>
+</div>
+</body>
+</html>
+HTML;
     }
 
     private function buildRecoveryHtmlBody(

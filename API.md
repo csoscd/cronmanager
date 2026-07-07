@@ -316,6 +316,9 @@ List all cron jobs.
       "active": true,
       "notify_on_failure": true,
       "notify_on_recovery": false,
+      "notify_on_silence": false,
+      "silence_grace_minutes": null,
+      "last_silence_alert_at": null,
       "execution_limit_seconds": 300,
       "auto_kill_on_limit": false,
       "singleton": false,
@@ -372,6 +375,8 @@ Create a new cron job.  Scope: **`jobs:write`**
   "tags":                      ["backup"],
   "notify_on_failure":         true,
   "notify_on_recovery":        false,
+  "notify_on_silence":         false,
+  "silence_grace_minutes":     null,
   "execution_limit_seconds":   0,
   "auto_kill_on_limit":        false,
   "singleton":                 false,
@@ -951,6 +956,7 @@ to 60 seconds of delay before the daemon picks up the entry.
 
 | Version | Change |
 |---|---|
+| 4.5.0 | Added `notify_on_silence` (bool), `silence_grace_minutes` (int\|null), `last_silence_alert_at` (string\|null, read-only) to job objects; `GET /health` extended with `silent_jobs` (int\|null) and `last_execution_at` (string\|null) |
 | 4.3.4 | Added `GET /api/v1/audit` endpoint (`audit:read` scope, admin-only); added §15 Audit Log |
 | 4.2.0 | Added `GET /api/v1/agents` endpoint (`settings:read` scope; respects `agent_ids` restriction; omits sensitive fields) |
 | 4.1.0 | Initial external REST API with API key authentication and scope-based authorization |

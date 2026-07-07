@@ -168,7 +168,9 @@ hmac_sign() {
     local method="$1"
     local path="$2"
     local body="$3"
-    printf '%s' "${method}${path}${body}" \
+    # The PHP HmacValidator signs: METHOD + PATH + BODY + NUL + userId + NUL + username
+    # cron-wrapper runs without a web session, so userId=0 and username="" are the defaults.
+    printf '%s\0%s\0%s' "${method}${path}${body}" "0" "" \
         | openssl dgst -sha256 -hmac "${HMAC_SECRET}" 2>/dev/null \
         | awk '{print $2}'
 }

@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.4.3] – branch: `fix/cron-wrapper-hmac-signature`
+
+### Fixed
+
+- **`cron-wrapper.sh`**: HMAC-Signaturberechnung an die erweiterte PHP-Signatur-Formel angepasst.
+  Mit v4.3.0 (Audit-Log) wurde `HmacValidator::validate()` um die Felder `userId` und `username`
+  erweitert (`METHOD + PATH + BODY + NUL + userId + NUL + username`). Das Shell-Script verwendete
+  weiterhin das alte Format (`METHOD + PATH + BODY`), weshalb seit dem Deploy von v4.3.0 alle
+  HMAC-Validierungen mit HTTP 401 fehlschlugen und keine Jobs mehr ausgeführt wurden.
+  Das `printf`-Statement im `hmac_sign()`-Fragment ergänzt nun die NUL-getrennten
+  Standardwerte `0` (userId) und `""` (username), die der Agent für Requests ohne
+  `X-User-Id`/`X-User-Name`-Header verwendet.
+
+---
+
 ## [4.4.2] – branch: `fix/history-ignore-index`
 
 ### Fixed

@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.4.4] – branch: `fix/hmac-agent-username-default`
+
+### Fixed
+
+- **`agent/agent.php`**: Standard-Username-Fallback für fehlenden `X-User-Name`-Header von
+  `'system'` auf `''` (leerer String) korrigiert.
+  Mit v4.4.3 wurde das HMAC-Signaturformat um `NUL + userId + NUL + username` erweitert.
+  `agent.php` verwendete `'system'` als Fallback, wenn der Header fehlte — der `cron-wrapper`
+  hingegen signiert mit leerem Username, weil er keinen Benutzerkontext hat. Diese Diskrepanz
+  ließ alle cron-wrapper-Anfragen mit HTTP 401 fehlschlagen, sodass seit dem v4.4.3-Deploy
+  keine Jobs mehr ausgeführt wurden. Der Fallback in `agent.php` ist jetzt `''`, passend
+  zur Signatur des `cron-wrapper` und zur Dokumentation von `HmacValidator::validate()`
+  (`"empty when absent"`).
+
+---
+
 ## [4.4.3] – branch: `fix/cron-wrapper-hmac-signature`
 
 ### Fixed

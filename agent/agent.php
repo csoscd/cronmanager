@@ -113,9 +113,12 @@ try {
     // and prepends HTTP_ for non-standard headers)
     $signatureHeader = $_SERVER['HTTP_X_AGENT_SIGNATURE'] ?? '';
 
-    // User-context headers (included in the HMAC, so they can be trusted after validation)
+    // User-context headers (included in the HMAC, so they can be trusted after validation).
+    // Default to 0 / '' when the headers are absent (cron-wrapper requests carry no user context).
+    // 'system' must NOT be used as the default here because the cron-wrapper signs with an empty
+    // username; mismatching the default would cause every cron-wrapper request to fail with 401.
     $auditUserId   = max(0, (int) ($_SERVER['HTTP_X_USER_ID']   ?? 0));
-    $auditUsername = substr(trim((string) ($_SERVER['HTTP_X_USER_NAME'] ?? 'system')), 0, 128);
+    $auditUsername = substr(trim((string) ($_SERVER['HTTP_X_USER_NAME'] ?? '')), 0, 128);
 
     // -------------------------------------------------------------------------
     // Skip HMAC validation for the /health endpoint

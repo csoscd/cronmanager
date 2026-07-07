@@ -54,10 +54,12 @@ spl_autoload_register(function (string $class): void {
     }
 });
 
+use Cron\CronExpression;
 use Cronmanager\Agent\Bootstrap;
 use Cronmanager\Agent\Database\Connection;
 use Cronmanager\Agent\Notification\MailNotifier;
 use Cronmanager\Agent\Notification\TelegramNotifier;
+use Cronmanager\Agent\Repository\MaintenanceWindowRepository;
 
 // ---------------------------------------------------------------------------
 // Bootstrap
@@ -120,18 +122,17 @@ try {
     exit(1);
 }
 
-if (empty($exceeded)) {
-    $logger->debug('check-limits: no executions exceeding their limit');
-    exit(0);
-}
-
-$logger->info('check-limits: found executions exceeding limit', ['count' => count($exceeded)]);
-
 $mailNotifier     = new MailNotifier($logger, $config);
 $telegramNotifier = new TelegramNotifier($logger, $config);
-$notifyScript    = __DIR__ . '/send-notification.php';
-$execAvailable   = function_exists('exec')
+$notifyScript     = __DIR__ . '/send-notification.php';
+$execAvailable    = function_exists('exec')
     && !in_array('exec', array_map('trim', explode(',', (string) ini_get('disable_functions'))), true);
+
+if (empty($exceeded)) {
+    $logger->debug('check-limits: no executions exceeding their limit');
+} else {
+    $logger->info('check-limits: found executions exceeding limit', ['count' => count($exceeded)]);
+}
 
 foreach ($exceeded as $row) {
     $executionId    = (int) $row['execution_id'];
@@ -338,6 +339,233 @@ foreach ($exceeded as $row) {
                 'execution_id' => $executionId,
                 'error'        => $killError,
             ]);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Silence Detection
+// Checks jobs with notify_on_silence = 1 and alerts when no real start
+// (exit_code != -4) was recorded within the expected schedule + grace period.
+// ---------------------------------------------------------------------------
+
+$logger->debug('check-limits: starting silence detection');
+
+$maintenanceRepo    = new MaintenanceWindowRepository($pdo, $logger);
+$globalGraceMinutes = max(1, (int) $config->get('silence.grace_minutes', 10));
+
+// Guard 1: Agent-wide maintenance window active → skip entirely
+if ($maintenanceRepo->isAgentInMaintenance()) {
+    $logger->info('check-limits: agent in maintenance, skipping silence detection');
+} else {
+    try {
+        $silenceStmt = $pdo->query(
+            "SELECT
+                 c.id,
+                 c.description,
+                 c.schedule,
+                 c.linux_user,
+                 c.execution_mode,
+                 c.ssh_host,
+                 c.execution_limit_seconds,
+                 c.silence_grace_minutes,
+                 c.last_silence_alert_at,
+                 c.created_at,
+                 GROUP_CONCAT(DISTINCT jt.target ORDER BY jt.target SEPARATOR ',') AS targets,
+                 MAX(e.started_at)                                                    AS last_any_start,
+                 MAX(CASE WHEN e.exit_code != -4 THEN e.started_at END)              AS last_real_start
+             FROM cronjobs c
+             LEFT JOIN execution_log e  ON e.cronjob_id = c.id
+             LEFT JOIN job_targets jt   ON jt.job_id = c.id
+             WHERE c.active = 1
+               AND c.notify_on_silence = 1
+             GROUP BY c.id"
+        );
+        $silenceRows = $silenceStmt->fetchAll();
+    } catch (\Throwable $e) {
+        $logger->error('check-limits: failed to query silence-detection jobs', ['message' => $e->getMessage()]);
+        $silenceRows = [];
+    }
+
+    $tzName = date_default_timezone_get();
+    $tz     = new \DateTimeZone($tzName);
+
+    foreach ($silenceRows as $srow) {
+        $jobId        = (int)    $srow['id'];
+        $description  = (string) ($srow['description'] ?? '');
+        $schedule     = (string) $srow['schedule'];
+        $createdAt    = (string) $srow['created_at'];
+        $lastRealStart = $srow['last_real_start'] !== null ? (string) $srow['last_real_start'] : null;
+        $lastAnyStart  = $srow['last_any_start']  !== null ? (string) $srow['last_any_start']  : null;
+        $lastAlertAt   = $srow['last_silence_alert_at'] !== null ? (string) $srow['last_silence_alert_at'] : null;
+
+        // Derive targets list (same fallback logic as CronListEndpoint)
+        $targetsRaw = $srow['targets'] !== null ? (string) $srow['targets'] : '';
+        if ($targetsRaw !== '') {
+            $targets = explode(',', $targetsRaw);
+        } else {
+            $mode    = (string) ($srow['execution_mode'] ?? 'local');
+            $sshHost = isset($srow['ssh_host']) ? trim((string) $srow['ssh_host']) : '';
+            $targets = ($mode === 'remote' && $sshHost !== '') ? [$sshHost] : ['local'];
+        }
+
+        // Guard 2: All targets in maintenance → skip
+        $allInMaintenance = true;
+        foreach ($targets as $tgt) {
+            if (!$maintenanceRepo->isTargetInMaintenance($tgt)) {
+                $allInMaintenance = false;
+                break;
+            }
+        }
+        if ($allInMaintenance) {
+            $logger->debug('check-limits: silence skipped (all targets in maintenance)', ['job_id' => $jobId]);
+            continue;
+        }
+
+        // Guard 3: Most recent execution_log row was a maintenance sentinel → maintenance just ended
+        // Detected when last_any_start is newer than last_real_start (or real is null while any is not)
+        if ($lastAnyStart !== null && ($lastRealStart === null || $lastAnyStart > $lastRealStart)) {
+            $logger->debug('check-limits: silence skipped (maintenance sentinel was most recent event)', ['job_id' => $jobId]);
+            continue;
+        }
+
+        // Calculate grace period: use per-job override or global default; also account for execution limit
+        $graceMinutes = $srow['silence_grace_minutes'] !== null
+            ? max(1, (int) $srow['silence_grace_minutes'])
+            : $globalGraceMinutes;
+        if ($srow['execution_limit_seconds'] !== null) {
+            $limitMinutes = (int) ceil((int) $srow['execution_limit_seconds'] / 60);
+            $graceMinutes = max($graceMinutes, $limitMinutes);
+        }
+
+        // Calculate the expected previous run time via cron expression
+        try {
+            $cron            = new CronExpression($schedule);
+            $expectedDt      = $cron->getPreviousRunDate('now', 0, false, $tzName);
+            $expectedDtIm    = \DateTimeImmutable::createFromMutable($expectedDt)->setTimezone($tz);
+            $silenceThreshold = $expectedDtIm->modify(sprintf('+%d minutes', $graceMinutes));
+        } catch (\Throwable $e) {
+            $logger->warning('check-limits: could not parse schedule for silence detection', [
+                'job_id'   => $jobId,
+                'schedule' => $schedule,
+                'message'  => $e->getMessage(),
+            ]);
+            continue;
+        }
+
+        $now = new \DateTimeImmutable('now', $tz);
+
+        // Not yet past the silence threshold → job is not overdue
+        if ($now <= $silenceThreshold) {
+            continue;
+        }
+
+        // Job ran at or after the expected time → not silent
+        if ($lastRealStart !== null && $lastRealStart >= $expectedDtIm->format('Y-m-d H:i:s')) {
+            continue;
+        }
+
+        // Dedup: do not fire if an alert was sent in the last hour
+        if ($lastAlertAt !== null) {
+            try {
+                $lastAlertDt = new \DateTimeImmutable($lastAlertAt, $tz);
+                if ($lastAlertDt >= $now->modify('-1 hour')) {
+                    $logger->debug('check-limits: silence alert suppressed (sent within last hour)', ['job_id' => $jobId]);
+                    continue;
+                }
+            } catch (\Throwable) {
+                // Unparseable datetime → treat as no dedup, allow alert
+            }
+        }
+
+        // Calculate how long the job has been silent
+        $referenceTime  = $lastRealStart ?? $createdAt;
+        $silenceSeconds = max(0, time() - (int) strtotime($referenceTime));
+        $silenceSinceMinutes = (int) round($silenceSeconds / 60);
+        $expectedLastRunStr  = $expectedDtIm->format('Y-m-d H:i:s');
+        $notifyTarget        = count($targets) === 1 ? $targets[0] : implode(', ', $targets);
+
+        // Update dedup timestamp before dispatching to prevent double-fire on slow SMTP
+        try {
+            $pdo->prepare(
+                'UPDATE cronjobs SET last_silence_alert_at = NOW() WHERE id = :id'
+            )->execute([':id' => $jobId]);
+        } catch (\Throwable $e) {
+            $logger->error('check-limits: failed to update last_silence_alert_at', [
+                'job_id'  => $jobId,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        $logger->info('check-limits: dispatching silence alert', [
+            'job_id'               => $jobId,
+            'last_real_start'      => $lastRealStart,
+            'expected_last_run'    => $expectedLastRunStr,
+            'silence_since_minutes' => $silenceSinceMinutes,
+        ]);
+
+        // Dispatch via background process (same pattern as limit-exceeded notification)
+        $payload = json_encode([
+            'type'                  => 'silence',
+            'job_id'                => $jobId,
+            'description'           => $description,
+            'schedule'              => $schedule,
+            'last_started_at'       => $lastRealStart,
+            'expected_last_run'     => $expectedLastRunStr,
+            'silence_since_minutes' => $silenceSinceMinutes,
+            'target'                => $notifyTarget,
+        ], JSON_UNESCAPED_UNICODE);
+
+        $dispatched = false;
+
+        if ($payload !== false && file_exists($notifyScript) && $execAvailable) {
+            $tempFile = tempnam(sys_get_temp_dir(), 'cronmgr_silence_');
+            if ($tempFile !== false && file_put_contents($tempFile, $payload) !== false) {
+                $cmd = sprintf(
+                    'timeout 30 php %s %s > /dev/null 2>&1 &',
+                    escapeshellarg($notifyScript),
+                    escapeshellarg($tempFile),
+                );
+                exec($cmd);
+                $dispatched = true;
+            }
+        }
+
+        if (!$dispatched) {
+            // Synchronous fallback
+            try {
+                $mailNotifier->sendSilenceAlert(
+                    jobId:               $jobId,
+                    description:         $description,
+                    schedule:            $schedule,
+                    lastStartedAt:       $lastRealStart,
+                    expectedLastRun:     $expectedLastRunStr,
+                    silenceSinceMinutes: $silenceSinceMinutes,
+                    target:              $notifyTarget,
+                );
+            } catch (\Throwable $e) {
+                $logger->error('check-limits: synchronous silence mail failed', [
+                    'job_id'  => $jobId,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
+            try {
+                $telegramNotifier->sendSilenceAlert(
+                    jobId:               $jobId,
+                    description:         $description,
+                    schedule:            $schedule,
+                    lastStartedAt:       $lastRealStart,
+                    expectedLastRun:     $expectedLastRunStr,
+                    silenceSinceMinutes: $silenceSinceMinutes,
+                    target:              $notifyTarget,
+                );
+            } catch (\Throwable $e) {
+                $logger->error('check-limits: synchronous silence telegram failed', [
+                    'job_id'  => $jobId,
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
     }
 }

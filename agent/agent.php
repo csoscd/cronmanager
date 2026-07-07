@@ -171,16 +171,50 @@ try {
 
     $router = new Router();
 
-    // -- Health (fully functional, HMAC-exempt) --------------------------------
+    // -- Crons ----------------------------------------------------------------
+
+    // -- Health (HMAC-exempt, registered after PDO init to include DB metrics) -
 
     $router->addRoute('GET', '/health', function (array $params) use ($logger): void {
         $logger->info('Health check requested');
         $versionFile = __DIR__ . '/VERSION';
+
+        $silentJobs      = null;
+        $lastExecutionAt = null;
+
+        try {
+            $healthPdo = \Cronmanager\Agent\Database\Connection::getInstance()->getPdo();
+
+            $graceMinutes = 10;  // same default used by check-limits.php silence detection
+
+            $silentStmt = $healthPdo->query(
+                "SELECT COUNT(*) FROM cronjobs c
+                  WHERE c.active = 1
+                    AND c.notify_on_silence = 1
+                    AND (
+                        SELECT MAX(CASE WHEN e.exit_code != -4 THEN e.started_at END)
+                        FROM execution_log e
+                        WHERE e.cronjob_id = c.id
+                    ) < DATE_SUB(NOW(), INTERVAL COALESCE(c.silence_grace_minutes, {$graceMinutes}) MINUTE)"
+            );
+            $silentJobs = (int) $silentStmt->fetchColumn();
+
+            $lastExecStmt = $healthPdo->query(
+                'SELECT MAX(started_at) FROM execution_log'
+            );
+            $raw = $lastExecStmt->fetchColumn();
+            $lastExecutionAt = ($raw !== false && $raw !== null) ? (string) $raw : null;
+        } catch (\Throwable $e) {
+            $logger->warning('Health: DB query failed', ['message' => $e->getMessage()]);
+        }
+
         jsonResponse(200, [
             'status'            => 'ok',
             'version'           => is_readable($versionFile) ? trim((string) file_get_contents($versionFile)) : 'unknown',
             'container_version' => getenv('APP_VERSION') ?: 'unknown',
             'timestamp'         => date('c'),
+            'silent_jobs'       => $silentJobs,
+            'last_execution_at' => $lastExecutionAt,
         ]);
     });
 

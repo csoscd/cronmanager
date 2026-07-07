@@ -249,6 +249,9 @@ final class CronListEndpoint
                 j.restart_on_exitcodes,
                 j.notify_after_failures,
                 j.notify_after_limit_exceeded,
+                j.notify_on_silence,
+                j.silence_grace_minutes,
+                j.last_silence_alert_at,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -363,6 +366,13 @@ final class CronListEndpoint
                 : null,
             'notify_after_failures'       => (int) ($row['notify_after_failures']        ?? 1),
             'notify_after_limit_exceeded' => (int) ($row['notify_after_limit_exceeded']  ?? 1),
+            'notify_on_silence'           => (bool) ($row['notify_on_silence']            ?? false),
+            'silence_grace_minutes'       => isset($row['silence_grace_minutes']) && $row['silence_grace_minutes'] !== null
+                ? (int) $row['silence_grace_minutes']
+                : null,
+            'last_silence_alert_at'       => isset($row['last_silence_alert_at']) && $row['last_silence_alert_at'] !== null
+                ? (string) $row['last_silence_alert_at']
+                : null,
             'last_run'                 => isset($row['last_run'])       && $row['last_run']       !== null ? (string) $row['last_run']       : null,
             'last_exit_code'           => isset($row['last_exit_code']) && $row['last_exit_code'] !== null ? (int)    $row['last_exit_code'] : null,
         ];

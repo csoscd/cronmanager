@@ -345,6 +345,13 @@ final class ExecutionStartEndpoint
 
             $executionId = (int) $this->pdo->lastInsertId();
 
+            // Reset silence alert dedup flag so the next silence-detection cycle
+            // does not re-fire immediately after the job recovers.
+            $this->pdo->prepare(
+                'UPDATE cronjobs SET last_silence_alert_at = NULL
+                  WHERE id = :id AND last_silence_alert_at IS NOT NULL'
+            )->execute([':id' => $jobId]);
+
             $this->logger->info('ExecutionStartEndpoint: execution started', [
                 'execution_id' => $executionId,
                 'job_id'       => $jobId,

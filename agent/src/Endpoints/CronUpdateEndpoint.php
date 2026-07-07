@@ -189,6 +189,8 @@ final class CronUpdateEndpoint
                      restart_on_exitcodes = :restart_on_exitcodes,
                      notify_after_failures = :notify_after_failures,
                      notify_after_limit_exceeded = :notify_after_limit_exceeded,
+                     notify_on_silence = :notify_on_silence,
+                     silence_grace_minutes = :silence_grace_minutes,
                      execution_mode = :execution_mode,
                      ssh_host = :ssh_host
                  WHERE id = :id'
@@ -213,6 +215,10 @@ final class CronUpdateEndpoint
                     : null,
                 ':notify_after_failures'        => max(1, (int) ($merged['notify_after_failures']        ?? 1)),
                 ':notify_after_limit_exceeded'  => max(1, (int) ($merged['notify_after_limit_exceeded']  ?? 1)),
+                ':notify_on_silence'            => (int) ($merged['notify_on_silence']                    ?? false),
+                ':silence_grace_minutes'        => isset($merged['silence_grace_minutes']) && $merged['silence_grace_minutes'] !== null
+                    ? max(0, (int) $merged['silence_grace_minutes'])
+                    : null,
                 ':execution_mode'               => $executionMode,
                 ':ssh_host'                => $sshHost,
                 ':id'                      => $jobId,
@@ -372,6 +378,16 @@ final class CronUpdateEndpoint
             'notify_after_limit_exceeded' => array_key_exists('notify_after_limit_exceeded', $body)
                 ? max(1, (int) $body['notify_after_limit_exceeded'])
                 : max(1, (int) ($existing['notify_after_limit_exceeded'] ?? 1)),
+            'notify_on_silence'           => array_key_exists('notify_on_silence', $body)
+                ? (bool) $body['notify_on_silence']
+                : (bool) ($existing['notify_on_silence'] ?? false),
+            'silence_grace_minutes'       => array_key_exists('silence_grace_minutes', $body)
+                ? (is_int($body['silence_grace_minutes']) && $body['silence_grace_minutes'] >= 0
+                    ? $body['silence_grace_minutes']
+                    : null)
+                : (isset($existing['silence_grace_minutes']) && $existing['silence_grace_minutes'] !== null
+                    ? (int) $existing['silence_grace_minutes']
+                    : null),
             'targets'                     => $mergedTargets,
             'tags'                     => array_key_exists('tags', $body) ? $body['tags'] : $existingTags,
         ];
@@ -663,6 +679,9 @@ final class CronUpdateEndpoint
                 j.restart_on_exitcodes,
                 j.notify_after_failures,
                 j.notify_after_limit_exceeded,
+                j.notify_on_silence,
+                j.silence_grace_minutes,
+                j.last_silence_alert_at,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -729,6 +748,13 @@ final class CronUpdateEndpoint
                 : null,
             'notify_after_failures'       => max(1, (int) ($row['notify_after_failures']        ?? 1)),
             'notify_after_limit_exceeded' => max(1, (int) ($row['notify_after_limit_exceeded']  ?? 1)),
+            'notify_on_silence'           => (bool) ($row['notify_on_silence']                   ?? false),
+            'silence_grace_minutes'       => isset($row['silence_grace_minutes']) && $row['silence_grace_minutes'] !== null
+                ? (int) $row['silence_grace_minutes']
+                : null,
+            'last_silence_alert_at'       => isset($row['last_silence_alert_at']) && $row['last_silence_alert_at'] !== null
+                ? (string) $row['last_silence_alert_at']
+                : null,
             'targets'                     => $targets,
             'execution_mode'              => (string) ($row['execution_mode'] ?? 'local'),
             'ssh_host'                 => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,

@@ -157,6 +157,12 @@ final class CronCreateEndpoint
         $notifyAfterLimitExceeded = isset($body['notify_after_limit_exceeded']) && is_int($body['notify_after_limit_exceeded']) && $body['notify_after_limit_exceeded'] >= 1
             ? $body['notify_after_limit_exceeded']
             : 1;
+        $notifyOnSilence      = isset($body['notify_on_silence']) && is_bool($body['notify_on_silence'])
+            ? $body['notify_on_silence']
+            : false;
+        $silenceGraceMinutes  = isset($body['silence_grace_minutes']) && is_int($body['silence_grace_minutes']) && $body['silence_grace_minutes'] >= 0
+            ? $body['silence_grace_minutes']
+            : null;
         $targets              = $this->normaliseTargets($body['targets'] ?? ['local']);
         $tags                 = isset($body['tags']) && is_array($body['tags']) ? $body['tags'] : [];
 
@@ -183,12 +189,16 @@ final class CronCreateEndpoint
                     (linux_user, schedule, command, description, active, notify_on_failure,
                      execution_limit_seconds, auto_kill_on_limit, singleton, run_in_maintenance,
                      retention_days, retry_count, retry_delay_minutes, restart_on_exitcodes,
-                     notify_after_failures, notify_after_limit_exceeded, execution_mode, ssh_host)
+                     notify_after_failures, notify_after_limit_exceeded,
+                     notify_on_silence, silence_grace_minutes,
+                     execution_mode, ssh_host)
                  VALUES
                     (:linux_user, :schedule, :command, :description, :active, :notify_on_failure,
                      :execution_limit_seconds, :auto_kill_on_limit, :singleton, :run_in_maintenance,
                      :retention_days, :retry_count, :retry_delay_minutes, :restart_on_exitcodes,
-                     :notify_after_failures, :notify_after_limit_exceeded, :execution_mode, :ssh_host)'
+                     :notify_after_failures, :notify_after_limit_exceeded,
+                     :notify_on_silence, :silence_grace_minutes,
+                     :execution_mode, :ssh_host)'
             );
             $stmt->execute([
                 ':linux_user'             => $linuxUser,
@@ -207,6 +217,8 @@ final class CronCreateEndpoint
                 ':restart_on_exitcodes'   => $restartOnExitcodes,
                 ':notify_after_failures'        => $notifyAfterFailures,
                 ':notify_after_limit_exceeded'  => $notifyAfterLimitExceeded,
+                ':notify_on_silence'            => (int) $notifyOnSilence,
+                ':silence_grace_minutes'        => $silenceGraceMinutes,
                 ':execution_mode'               => $executionMode,
                 ':ssh_host'               => $sshHost,
             ]);
@@ -566,6 +578,9 @@ final class CronCreateEndpoint
                 j.retry_delay_minutes,
                 j.notify_after_failures,
                 j.notify_after_limit_exceeded,
+                j.notify_on_silence,
+                j.silence_grace_minutes,
+                j.last_silence_alert_at,
                 j.execution_mode,
                 j.ssh_host,
                 j.created_at,
@@ -614,6 +629,13 @@ final class CronCreateEndpoint
             'retry_delay_minutes'      => (int)    ($row['retry_delay_minutes']  ?? 1),
             'notify_after_failures'       => (int) ($row['notify_after_failures']        ?? 1),
             'notify_after_limit_exceeded' => (int) ($row['notify_after_limit_exceeded']  ?? 1),
+            'notify_on_silence'           => (bool) ($row['notify_on_silence']            ?? false),
+            'silence_grace_minutes'       => isset($row['silence_grace_minutes']) && $row['silence_grace_minutes'] !== null
+                ? (int) $row['silence_grace_minutes']
+                : null,
+            'last_silence_alert_at'       => isset($row['last_silence_alert_at']) && $row['last_silence_alert_at'] !== null
+                ? (string) $row['last_silence_alert_at']
+                : null,
             'targets'                     => $targets,
             // Legacy fields kept for backward compatibility
             'execution_mode'           => (string) ($row['execution_mode'] ?? 'local'),

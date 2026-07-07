@@ -309,6 +309,99 @@ final class TelegramNotifier
         }
     }
 
+    public function sendSilenceAlert(
+        int     $jobId,
+        string  $description,
+        string  $schedule,
+        ?string $lastStartedAt,
+        string  $expectedLastRun,
+        int     $silenceSinceMinutes,
+        string  $target = '',
+    ): bool {
+        $enabled = (bool) $this->config->get('telegram.enabled', false);
+
+        if (!$enabled) {
+            $this->logger->debug('TelegramNotifier: disabled in config, skipping silence alert', [
+                'job_id' => $jobId,
+            ]);
+            return false;
+        }
+
+        $botToken = (string) $this->config->get('telegram.bot_token', '');
+        $chatId   = (string) $this->config->get('telegram.chat_id',   '');
+        $timeout  = (int)    $this->config->get('telegram.timeout',   15);
+        $baseUrl  = rtrim((string) $this->config->get('notifications.web_url', ''), '/');
+
+        if ($botToken === '' || $chatId === '') {
+            $this->logger->warning('TelegramNotifier: bot_token or chat_id not configured, skipping silence alert', [
+                'job_id' => $jobId,
+            ]);
+            return false;
+        }
+
+        $targetLine = ($target !== '' && $target !== 'local')
+            ? "\n&#x1F3AF; <b>Target:</b> " . htmlspecialchars($target, ENT_QUOTES, 'UTF-8')
+            : '';
+
+        $hours   = intdiv($silenceSinceMinutes, 60);
+        $minutes = $silenceSinceMinutes % 60;
+        $silent  = $hours > 0
+            ? sprintf('%dh %02dm', $hours, $minutes)
+            : sprintf('%dm', $minutes);
+
+        $lastSeenLine = $lastStartedAt !== null
+            ? htmlspecialchars($lastStartedAt, ENT_QUOTES, 'UTF-8')
+            : 'never (job has not run yet)';
+
+        $linkLine = $baseUrl !== ''
+            ? sprintf("\n\n<a href=\"%s/crons/%d\">&#x1F517; View in Cronmanager</a>", htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8'), $jobId)
+            : '';
+
+        $text = sprintf(
+            "&#x1F910; <b>Job Silence Alert</b>\n\n"
+            . "&#x1F194; <b>Job #%d:</b> %s\n"
+            . "&#x23F0; <b>Schedule:</b> %s%s\n"
+            . "&#x23F3; <b>Expected at:</b> %s\n"
+            . "&#x1F440; <b>Last seen:</b> %s\n"
+            . "&#x1F6AB; <b>Silent for:</b> %s%s",
+            $jobId,
+            htmlspecialchars($description, ENT_QUOTES, 'UTF-8'),
+            htmlspecialchars($schedule, ENT_QUOTES, 'UTF-8'),
+            $targetLine,
+            htmlspecialchars($expectedLastRun, ENT_QUOTES, 'UTF-8'),
+            $lastSeenLine,
+            $silent,
+            $linkLine,
+        );
+
+        if (\mb_strlen($text) > self::MAX_MESSAGE_LENGTH) {
+            $text = \mb_substr($text, 0, self::MAX_MESSAGE_LENGTH - 3) . '...';
+        }
+
+        try {
+            $client = new Client(['timeout' => $timeout]);
+            $client->post(self::API_BASE . $botToken . '/sendMessage', [
+                'json' => [
+                    'chat_id'    => $chatId,
+                    'text'       => $text,
+                    'parse_mode' => 'HTML',
+                ],
+            ]);
+
+            $this->logger->info('TelegramNotifier: silence alert sent', [
+                'job_id' => $jobId,
+            ]);
+
+            return true;
+        } catch (GuzzleException $e) {
+            $this->logger->error('TelegramNotifier: failed to send silence alert', [
+                'job_id'  => $jobId,
+                'message' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Test API
     // -------------------------------------------------------------------------

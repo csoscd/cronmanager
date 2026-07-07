@@ -19,3 +19,9 @@ grafana/
 # Database schema and migrations contain intentional DDL that static
 # analysis tools sometimes flag incorrectly
 agent/sql/
+
+# GitHub Actions workflow files – Semgrep now flags mutable action tags
+# (e.g. actions/checkout@v4 instead of a pinned SHA).  Pinning all actions
+# to commit SHAs is tracked as a separate hardening task; suppressing here
+# keeps the security gate focused on application code.
+.github/

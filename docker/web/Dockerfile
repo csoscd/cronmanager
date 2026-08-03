@@ -60,15 +60,15 @@ COPY --from=composer-build --chown=nobody:nogroup /build/vendor /var/www/libs/ve
 COPY --chown=nobody:nogroup web/ /var/www/html/
 
 # Download static assets that are not checked into the repository.
-# Tailwind CSS (Play CDN build) and Chart.js UMD are fetched at image build
-# time so the container has no external CDN dependency at runtime.
+# Chart.js UMD is fetched at image build time so the container has no external
+# CDN dependency at runtime. Tailwind is no longer downloaded: since v4.7.0 a
+# pre-built, purged stylesheet (web/assets/css/tailwind.css, built via
+# web/tailwind.config.js) is committed to the repository and arrives with the
+# `COPY web/` step above – the former ~400 KB Play-CDN runtime compiler is gone.
 RUN mkdir -p /var/www/html/assets/js \
-    && curl -fsSL -o /var/www/html/assets/js/tailwind.min.js \
-         "https://cdn.tailwindcss.com/3.4.17" \
     && curl -fsSL -o /var/www/html/assets/js/chart.min.js \
          "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" \
     && chown nobody:nogroup \
-         /var/www/html/assets/js/tailwind.min.js \
          /var/www/html/assets/js/chart.min.js \
     && echo "Static assets downloaded."
 

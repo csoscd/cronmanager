@@ -106,31 +106,44 @@ try {
     SessionManager::start($config);
 
     // -------------------------------------------------------------------------
-    // Agent schema bootstrap – ensure agents table exists and seed from config
+    // Schema bootstrap – ensure agents / api_keys tables exist
+    //
+    // The CREATE TABLE IF NOT EXISTS statements are idempotent but still cost
+    // a DB roundtrip and metadata locks on every request. With APCu available
+    // they run at most once per hour per FPM pool; without APCu they fall back
+    // to running on every request (correct, just slower).
     // -------------------------------------------------------------------------
-    try {
-        AgentSchema::ensure(Connection::getInstance()->getPdo(), $config, $logger);
-    } catch (\Throwable $e) {
-        $logger->error('AgentSchema::ensure failed', ['message' => $e->getMessage()]);
+    $schemaCheckNeeded = !(function_exists('apcu_enabled') && apcu_enabled())
+        || apcu_add('cm_schema_ensured', 1, 3600);
+    if ($schemaCheckNeeded) {
+        try {
+            AgentSchema::ensure(Connection::getInstance()->getPdo(), $config, $logger);
+        } catch (\Throwable $e) {
+            $logger->error('AgentSchema::ensure failed', ['message' => $e->getMessage()]);
+        }
+
+        try {
+            ApiKeySchema::ensure(Connection::getInstance()->getPdo(), $logger);
+        } catch (\Throwable $e) {
+            $logger->error('ApiKeySchema::ensure failed', ['message' => $e->getMessage()]);
+        }
     }
 
     // -------------------------------------------------------------------------
-    // API key schema bootstrap – ensure api_keys table exists
-    // -------------------------------------------------------------------------
-    try {
-        ApiKeySchema::ensure(Connection::getInstance()->getPdo(), $logger);
-    } catch (\Throwable $e) {
-        $logger->error('ApiKeySchema::ensure failed', ['message' => $e->getMessage()]);
-    }
-
-    // -------------------------------------------------------------------------
-    // Agent identity push – once per PHP-FPM worker process lifetime
+    // Agent identity push – rate-limited via APCu
     // Pushes this web container's public URL and each agent's own DB ID so
     // that notification links include ?agent_id=X for direct agent selection.
+    //
+    // A plain `static` guard does NOT survive across PHP-FPM requests (each
+    // request re-executes this script from scratch), so without APCu the push
+    // would run its N synchronous HTTP PUTs on every single page load. The
+    // APCu key acts as a cross-request flag with a TTL, so the identity is
+    // re-pushed at most once per hour per FPM pool. Without APCu the periodic
+    // push is skipped entirely – agents still receive their identity on every
+    // agent create/update/select (AgentController).
     // -------------------------------------------------------------------------
-    static $agentIdentityPushed = false;
-    if (!$agentIdentityPushed) {
-        $agentIdentityPushed = true;
+    if (function_exists('apcu_enabled') && apcu_enabled()
+        && apcu_add('cm_agent_identity_pushed', 1, 3600)) {
         try {
             (new AgentIdentityPusher(
                 $logger,
@@ -138,7 +151,7 @@ try {
                 rtrim((string) $config->get('app.web_url', ''), '/'),
             ))->pushToAllAgents();
         } catch (\Throwable $e) {
-            $logger->warning('AgentIdentityPusher startup push failed', ['message' => $e->getMessage()]);
+            $logger->warning('AgentIdentityPusher periodic push failed', ['message' => $e->getMessage()]);
         }
     }
 

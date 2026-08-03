@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace Cronmanager\Web\Controller;
 
 use Cronmanager\Web\Http\Request;
+use Cronmanager\Web\Session\SessionManager;
 
 /**
  * Class DashboardController
@@ -53,6 +54,13 @@ class DashboardController extends BaseController
     public function index(array $params): void
     {
         $agent = $this->agentClient();
+
+        // JSON polls never write to the session after this point – release the
+        // session file lock before the agent I/O so a poll in flight cannot
+        // block a concurrently clicked page navigation in the same session.
+        if ($this->isJsonRequest()) {
+            SessionManager::writeClose();
+        }
 
         // ------------------------------------------------------------------
         // Fetch data from the host agent (three requests in parallel)

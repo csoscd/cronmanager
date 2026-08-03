@@ -666,19 +666,15 @@ print("[deploy] Web config agent.url patched.")' \
     log "Ownership set: ${WEB_LOG_TARGET}, ${WEB_CONF_TARGET} → nobody:nogroup"
 
     # -------------------------------------------------------------------------
-    # Download Tailwind CSS (skip if already present)
+    # Tailwind CSS: since v4.7.0 the pre-built, purged stylesheet
+    # (assets/css/tailwind.css) ships with the deployed web files – no CDN
+    # download needed. Remove a leftover Play-CDN runtime from older deploys
+    # so browsers stop loading the obsolete ~400 KB script.
     # -------------------------------------------------------------------------
 
-    TAILWIND_TARGET="${WEB_WWW_TARGET}/assets/js/tailwind.min.js"
-    if ! run_on_target "test -f '${TAILWIND_TARGET}'" 2>/dev/null; then
-        log "Downloading Tailwind CSS (Play CDN script)..."
-        run_on_target "mkdir -p '$(dirname "${TAILWIND_TARGET}")' && \
-            curl -sL https://cdn.tailwindcss.com/3.4.17 -o '${TAILWIND_TARGET}'" \
-            && log "Tailwind downloaded to ${TAILWIND_TARGET}." \
-            || log "WARNING: Tailwind download failed – download manually to ${TAILWIND_TARGET}"
-    else
-        log "Tailwind already present – skipping."
-    fi
+    run_on_target "rm -f '${WEB_WWW_TARGET}/assets/js/tailwind.min.js'" 2>/dev/null \
+        && log "Removed obsolete tailwind.min.js (replaced by pre-built assets/css/tailwind.css)." \
+        || true
 
     # -------------------------------------------------------------------------
     # Download Chart.js (required by the monitor page; skip if already present)

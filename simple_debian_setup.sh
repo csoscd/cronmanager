@@ -770,13 +770,12 @@ target_exec "find '${WEB_WWW}' -name '*.php' -exec sed -i 's|/opt/phplib|${PHPLI
 ok "Web files deployed."
 
 # Download frontend assets on the target
-step "Downloading Tailwind CSS v3.4.17..."
-target_exec "
-    test -f '${WEB_WWW}/assets/js/tailwind.min.js' && exit 0
-    mkdir -p '${WEB_WWW}/assets/js'
-    curl -fsSL 'https://cdn.tailwindcss.com/3.4.17' \
-        -o '${WEB_WWW}/assets/js/tailwind.min.js'
-" && ok "tailwind.min.js – OK." || warn "Tailwind download failed – install manually."
+# Tailwind: since v4.7.0 the pre-built, purged stylesheet (assets/css/tailwind.css)
+# ships with the copied web files – no CDN download needed. Remove a leftover
+# Play-CDN runtime from older installs.
+step "Removing obsolete tailwind.min.js (replaced by pre-built tailwind.css)..."
+target_exec "rm -f '${WEB_WWW}/assets/js/tailwind.min.js'" \
+    && ok "tailwind.min.js removed (or was not present)." || true
 
 step "Downloading Chart.js v4..."
 target_exec "

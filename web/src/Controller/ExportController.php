@@ -47,8 +47,13 @@ class ExportController extends BaseController
         $agent = $this->agentClient();
 
         try {
-            $allTags = $agent->get('/tags')['data']  ?? [];
-            $allJobs = $agent->get('/crons')['data'] ?? [];
+            // One parallel batch instead of two sequential roundtrips
+            $results = $agent->getMultiple([
+                'tags'  => ['path' => '/tags'],
+                'crons' => ['path' => '/crons'],
+            ]);
+            $allTags = $results['tags']['data']  ?? [];
+            $allJobs = $results['crons']['data'] ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('ExportController::index: agent request failed', [
                 'message' => $e->getMessage(),

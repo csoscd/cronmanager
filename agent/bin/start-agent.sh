@@ -42,5 +42,16 @@ echo "[cronmanager-agent] Running startup cleanup..."
 # ---------------------------------------------------------------------------
 # Start the PHP built-in server
 # exec replaces the shell process so systemd tracks the correct PID
+#
+# PHP_CLI_SERVER_WORKERS: without it the built-in server is single-threaded
+# and serialises all requests (UI page loads block behind cron-wrapper calls).
+# opcache.enable_cli: the CLI SAPI has OPcache disabled by default, causing
+# every request to re-compile the whole codebase (~20-60 ms overhead).
 # ---------------------------------------------------------------------------
-exec /usr/bin/php -S "${BIND}" "${AGENT_PHP}"
+export PHP_CLI_SERVER_WORKERS="${PHP_CLI_SERVER_WORKERS:-8}"
+
+exec /usr/bin/php \
+    -d opcache.enable=1 \
+    -d opcache.enable_cli=1 \
+    -d opcache.jit=off \
+    -S "${BIND}" "${AGENT_PHP}"

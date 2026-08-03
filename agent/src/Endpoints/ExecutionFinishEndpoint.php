@@ -213,6 +213,17 @@ final class ExecutionFinishEndpoint
                     'wrapper_exit_code' => $exitCode,
                 ]);
             } else {
+                // Maintain the denormalised last-finished reference (migration
+                // 018). The monotonic guard keeps the pointer on the newest
+                // finished row even when an older execution finishes late
+                // (out-of-order finish of overlapping runs).
+                $this->pdo->prepare(
+                    'UPDATE cronjobs
+                        SET last_finished_execution_id = :eid
+                      WHERE id = :id
+                        AND (last_finished_execution_id IS NULL OR last_finished_execution_id < :eid2)'
+                )->execute([':eid' => $executionId, ':eid2' => $executionId, ':id' => $jobId]);
+
                 $this->logger->info('ExecutionFinishEndpoint: execution finished', [
                     'execution_id' => $executionId,
                     'job_id'       => $jobId,

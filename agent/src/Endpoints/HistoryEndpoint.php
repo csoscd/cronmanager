@@ -264,8 +264,13 @@ final class HistoryEndpoint
     /**
      * Count all execution records matching the given WHERE clause.
      *
-     * Uses COUNT(DISTINCT el.id) so that the LEFT JOINs on cronjob_tags / tags
-     * do not inflate the count when a job has multiple tags.
+     * The tag filter is expressed as an IN-subquery on el.cronjob_id inside
+     * the WHERE clause, so the count never needs the cronjob_tags / tags
+     * joins the previous version carried along (they only inflated the
+     * intermediate result and forced COUNT(DISTINCT)). The cronjobs join is
+     * added only when the WHERE clause actually references a j.* column
+     * (user filter, free-text search) – an unfiltered count then stays a
+     * plain index scan on execution_log.
      *
      * @param string               $whereClause Dynamic WHERE clause (may be empty).
      * @param array<string, mixed> $params      Named parameter bindings.
@@ -276,12 +281,14 @@ final class HistoryEndpoint
      */
     private function fetchTotal(string $whereClause, array $params): int
     {
+        $joinJobs = str_contains($whereClause, 'j.')
+            ? 'JOIN cronjobs j ON j.id = el.cronjob_id'
+            : '';
+
         $sql = <<<SQL
-            SELECT COUNT(DISTINCT el.id)
-            FROM execution_log el IGNORE INDEX (idx_el_cronjob_cover, idx_el_cj_finished_cover)
-            JOIN cronjobs j ON j.id = el.cronjob_id
-            LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
-            LEFT JOIN tags t ON t.id = ct.tag_id
+            SELECT COUNT(*)
+            FROM execution_log el
+            {$joinJobs}
             {$whereClause}
             SQL;
 
@@ -308,6 +315,22 @@ final class HistoryEndpoint
      */
     private function fetchData(string $whereClause, array $params, int $limit, int $offset): array
     {
+        // Two-phase query: the inner subquery resolves ONLY the ids of the
+        // requested page. Its sort/temp set consists of narrow (id, sort key)
+        // tuples, so the filesort stays in memory. The previous single-phase
+        // version ran GROUP BY el.id over rows that included the TEXT column
+        // el.output – MariaDB cannot use the MEMORY engine for temp tables
+        // containing TEXT/BLOB, which forced an on-disk temp table over the
+        // whole filtered set on every page load (the documented 2-6 s peaks).
+        // The outer query then fetches full rows + tags for at most `limit`
+        // ids via primary-key lookups.
+        //
+        // The cronjobs join in the inner query is only needed when the WHERE
+        // clause references a j.* column (user filter, free-text search).
+        $joinJobs = str_contains($whereClause, 'j.')
+            ? 'JOIN cronjobs j ON j.id = el.cronjob_id'
+            : '';
+
         $sql = <<<SQL
             SELECT
                 el.id AS execution_id,
@@ -325,14 +348,20 @@ final class HistoryEndpoint
                 el.retry_attempt,
                 el.retry_root_execution_id,
                 TIMESTAMPDIFF(SECOND, el.started_at, el.finished_at) AS duration_seconds
-            FROM execution_log el IGNORE INDEX (idx_el_cronjob_cover, idx_el_cj_finished_cover)
+            FROM (
+                SELECT el.id
+                FROM execution_log el
+                {$joinJobs}
+                {$whereClause}
+                ORDER BY (el.finished_at IS NULL) DESC, el.started_at DESC
+                LIMIT :limit OFFSET :offset
+            ) page
+            JOIN execution_log el ON el.id = page.id
             JOIN cronjobs j ON j.id = el.cronjob_id
             LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
             LEFT JOIN tags t ON t.id = ct.tag_id
-            {$whereClause}
             GROUP BY el.id
             ORDER BY (el.finished_at IS NULL) DESC, el.started_at DESC
-            LIMIT :limit OFFSET :offset
             SQL;
 
         // PDO requires LIMIT/OFFSET bound as integers (not strings)

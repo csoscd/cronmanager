@@ -11,8 +11,14 @@
  * @license GNU General Public License version 3 or later
  */
 
-/* ── Google Fonts ─────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+/* ── Fonts ────────────────────────────────────────────────────────────────────
+   No external font import: the previous Google-Fonts @import was a render-
+   blocking chained request to an external host that the application's own CSP
+   (style-src 'self'; font-src 'self') blocked anyway – the fonts never loaded
+   and, in isolated networks, the request stalled page rendering until timeout.
+   The font stacks below keep "Outfit"/"JetBrains Mono" as the first entries so
+   locally installed copies are used when present; otherwise the system fonts
+   apply, exactly as they effectively always did. */
 
 /* ══════════════════════════════════════════════════════════════════════════
    1. MARKENFARBEN — modusunabhängig, niemals überschreiben

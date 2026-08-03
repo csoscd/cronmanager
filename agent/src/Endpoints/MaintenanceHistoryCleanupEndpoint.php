@@ -83,6 +83,26 @@ final class MaintenanceHistoryCleanupEndpoint
             );
             $stmt->execute([':days' => $days]);
             $deleted = $stmt->rowCount();
+
+            if ($deleted > 0) {
+                // Re-derive the denormalised last-execution references
+                // (migration 018) for all jobs: an idle job's newest rows may
+                // have been within the deleted range, leaving its references
+                // dangling. Full recompute is acceptable here – this endpoint
+                // runs on explicit cleanup only, not in the page-load path.
+                $this->pdo->exec(
+                    'UPDATE cronjobs c
+                     LEFT JOIN (
+                         SELECT cronjob_id,
+                                MAX(id) AS max_id,
+                                MAX(CASE WHEN finished_at IS NOT NULL THEN id ELSE NULL END) AS max_finished_id
+                           FROM execution_log
+                          GROUP BY cronjob_id
+                     ) el ON el.cronjob_id = c.id
+                        SET c.last_execution_id          = el.max_id,
+                            c.last_finished_execution_id = el.max_finished_id'
+                );
+            }
         } catch (PDOException $e) {
             $this->logger->error('MaintenanceHistoryCleanupEndpoint: database error', [
                 'message' => $e->getMessage(),

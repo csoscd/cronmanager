@@ -145,6 +145,15 @@ foreach ($orphans as $row) {
             ':id'          => $id,
         ]);
 
+        // Maintain the denormalised last-finished reference (migration 018)
+        $pdo->prepare(
+            'UPDATE cronjobs c
+               JOIN execution_log e ON e.id = :eid
+                SET c.last_finished_execution_id = e.id
+              WHERE c.id = e.cronjob_id
+                AND (c.last_finished_execution_id IS NULL OR c.last_finished_execution_id < e.id)'
+        )->execute([':eid' => $id]);
+
         $logger->info('startup-cleanup: marked execution as interrupted', [
             'execution_id' => $id,
             'pid'          => $pid,

@@ -1,0 +1,12 @@
+/**
+ * Cronmanager Web UI – Tailwind CSS build input
+ *
+ * Source file for the pre-built stylesheet web/assets/css/tailwind.css.
+ * See web/tailwind.config.js for the rebuild command.
+ *
+ * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+ * @license GNU General Public License version 3 or later
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

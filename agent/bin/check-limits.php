@@ -328,6 +328,15 @@ foreach ($exceeded as $row) {
                     ':finished_at' => date('Y-m-d H:i:s'),
                     ':id'          => $executionId,
                 ]);
+
+                // Maintain the denormalised last-finished reference (migration 018)
+                $pdo->prepare(
+                    'UPDATE cronjobs c
+                       JOIN execution_log e ON e.id = :eid
+                        SET c.last_finished_execution_id = e.id
+                      WHERE c.id = e.cronjob_id
+                        AND (c.last_finished_execution_id IS NULL OR c.last_finished_execution_id < e.id)'
+                )->execute([':eid' => $executionId]);
             } catch (\Throwable $e) {
                 $logger->error('check-limits: failed to mark auto-killed execution as finished', [
                     'execution_id' => $executionId,

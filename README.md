@@ -504,7 +504,7 @@ curl -fsSL https://raw.githubusercontent.com/csoscd/cronmanager/main/simple_debi
 | **Configuration interview** | Collects all settings interactively — paths, database credentials, agent and web settings — before touching anything on disk. |
 | **HMAC secret** | Generates a cryptographically random 64-character secret with `openssl rand -hex 32`. Both the agent and web application receive the same value automatically. |
 | **Host agent deployment** | Deploys agent files, patches paths, writes `config/config.json`, installs the systemd service, starts it, and runs a health check. |
-| **Web application deployment** | Deploys web files, downloads Tailwind CSS and Chart.js, writes `conf/config.json`. |
+| **Web application deployment** | Deploys web files (including the pre-built Tailwind stylesheet), downloads Chart.js, writes `conf/config.json`. |
 | **Docker Compose** | Generates a customised `docker-compose.yml` from your settings, displays it, and optionally runs `docker compose up -d`. |
 | **Database schema** | Waits for MariaDB to become healthy, then applies `schema.sql` and all migrations via `docker exec`. |
 | **Optional: OIDC** | Asks for provider URL, client credentials, redirect URI, and SSL/CA settings. |

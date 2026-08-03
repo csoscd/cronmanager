@@ -95,20 +95,21 @@ class CronController extends BaseController
         $currentPage = max(1, (int) ($_GET['page'] ?? 1));
 
         // ------------------------------------------------------------------
-        // Build agent query params
+        // Fetch all page data from the agent in one parallel batch
         // ------------------------------------------------------------------
 
-        $query = [];
-        if ($filterTag    !== '') { $query['tag']    = $filterTag; }
-        if ($filterUser   !== '') { $query['user']   = $filterUser; }
-        if ($filterTarget !== '') { $query['target'] = $filterTarget; }
-
         try {
-            // Always fetch all jobs for building the filter dropdowns (users/sshHosts),
-            // then fetch filtered jobs for the table when any filter is active.
-            $allJobs  = $agent->get('/crons')['data'] ?? [];
-            $jobs     = ($query !== []) ? ($agent->get('/crons', $query)['data'] ?? []) : $allJobs;
-            $allTags  = $agent->get('/tags')['data'] ?? [];
+            // One getMultiple() batch instead of up to four sequential
+            // roundtrips. The full job list already contains linux_user, tags
+            // and targets per job, so the tag/user/target filters are applied
+            // locally below instead of re-fetching /crons with query params.
+            $results = $agent->getMultiple([
+                'crons'   => ['path' => '/crons'],
+                'tags'    => ['path' => '/tags'],
+                'windows' => ['path' => '/maintenance/windows'],
+            ]);
+            $allJobs = $results['crons']['data'] ?? [];
+            $allTags = $results['tags']['data']  ?? [];
             // Only show tags that are actually in use in the filter dropdown
             $tags = array_values(array_filter($allTags, static fn(array $t): bool => ($t['job_count'] ?? 0) > 0));
         } catch (\RuntimeException $e) {
@@ -119,23 +120,41 @@ class CronController extends BaseController
             return;
         }
 
+        // Apply tag / user / target filters locally (same semantics as the
+        // agent-side ?tag=&user=&target= query parameters).
+        $jobs = $allJobs;
+        if ($filterTag !== '') {
+            $jobs = array_values(array_filter(
+                $jobs,
+                static fn(array $job): bool => in_array($filterTag, (array) ($job['tags'] ?? []), strict: true)
+            ));
+        }
+        if ($filterUser !== '') {
+            $jobs = array_values(array_filter(
+                $jobs,
+                static fn(array $job): bool => (string) ($job['linux_user'] ?? '') === $filterUser
+            ));
+        }
+        if ($filterTarget !== '') {
+            $jobs = array_values(array_filter(
+                $jobs,
+                static fn(array $job): bool => in_array($filterTarget, (array) ($job['targets'] ?? []), strict: true)
+            ));
+        }
+
         // Build a set of target names that have at least one active maintenance
         // window.  Used in the list template to warn about jobs that will always
         // be skipped (active, run_in_maintenance=false, target in maintenance).
+        // The windows result comes from the getMultiple() batch above; failures
+        // there would have thrown already, so this is best-effort parsing only.
         $targetsInMaintenance = [];
-        try {
-            $allWindows = $agent->getMaintenanceWindows();
-            foreach ($allWindows as $window) {
-                if (!empty($window['active'])) {
-                    $t = (string) ($window['target'] ?? '');
-                    if ($t !== '') {
-                        $targetsInMaintenance[$t] = true;
-                    }
+        foreach ((array) ($results['windows'] ?? []) as $window) {
+            if (is_array($window) && !empty($window['active'])) {
+                $t = (string) ($window['target'] ?? '');
+                if ($t !== '') {
+                    $targetsInMaintenance[$t] = true;
                 }
             }
-        } catch (\RuntimeException) {
-            // Non-fatal: maintenance window data is advisory only
-            $targetsInMaintenance = [];
         }
 
         // Apply free-text search filter (description + command, case-insensitive substring)
@@ -390,8 +409,13 @@ class CronController extends BaseController
         $agent = $this->agentClient();
 
         try {
-            $job     = $agent->get('/crons/' . rawurlencode($id));
-            $history = $agent->get('/history', ['job_id' => $id, 'limit' => 20])['data'] ?? [];
+            // One parallel batch instead of two sequential roundtrips
+            $results = $agent->getMultiple([
+                'job'     => ['path' => '/crons/' . rawurlencode($id)],
+                'history' => ['path' => '/history', 'query' => ['job_id' => $id, 'limit' => 20]],
+            ]);
+            $job     = $results['job'];
+            $history = $results['history']['data'] ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('CronController::show: agent request failed', [
                 'id'      => $id,
@@ -427,8 +451,13 @@ class CronController extends BaseController
         $agent = $this->agentClient();
 
         try {
-            $job  = $agent->get('/crons/' . rawurlencode($id));
-            $tags = $agent->get('/tags')['data'] ?? [];
+            // One parallel batch instead of two sequential roundtrips
+            $results = $agent->getMultiple([
+                'job'  => ['path' => '/crons/' . rawurlencode($id)],
+                'tags' => ['path' => '/tags'],
+            ]);
+            $job  = $results['job'];
+            $tags = $results['tags']['data'] ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('CronController::edit: agent request failed', [
                 'id'      => $id,
@@ -781,6 +810,13 @@ class CronController extends BaseController
         $targetFilter = trim((string) ($_GET['target'] ?? ''));
 
         $agent = $this->agentClient();
+
+        // JSON polls never write to the session after this point – release the
+        // session file lock before the agent I/O so a poll in flight cannot
+        // block a concurrently clicked page navigation in the same session.
+        if ($this->isJsonRequest()) {
+            SessionManager::writeClose();
+        }
 
         $queryParams = ['period' => $period];
         if ($targetFilter !== '') {

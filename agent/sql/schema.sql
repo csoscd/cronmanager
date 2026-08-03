@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS cronjobs (
     active            TINYINT(1)   DEFAULT 1          COMMENT '1 = enabled, 0 = disabled',
     notify_on_failure        TINYINT(1)   DEFAULT 1          COMMENT '1 = send alert mail on non-zero exit',
     notify_on_recovery       TINYINT(1)   NOT NULL DEFAULT 0  COMMENT '1 = send recovery notification when job succeeds after a notified failure streak',
+    notify_on_silence        TINYINT(1)   NOT NULL DEFAULT 0  COMMENT '1 = alert when the job has not started within its expected schedule window',
+    silence_grace_minutes    INT UNSIGNED NULL     DEFAULT NULL COMMENT 'Per-job override for global silence.grace_minutes; NULL = use global default',
+    last_silence_alert_at    DATETIME     NULL     DEFAULT NULL COMMENT 'Timestamp of last silence alert; reset on job start; dedup max once per hour',
+    last_execution_id        INT          NULL     DEFAULT NULL COMMENT 'id of the most recent execution_log row for this job; maintained by ExecutionStartEndpoint',
+    last_finished_execution_id INT        NULL     DEFAULT NULL COMMENT 'id of the most recent finished execution_log row; maintained by ExecutionFinishEndpoint',
     execution_limit_seconds  INT UNSIGNED NULL              COMMENT 'Maximum allowed runtime in seconds; NULL = no limit',
     auto_kill_on_limit       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = auto-kill when execution_limit_seconds is exceeded',
     singleton                TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1 = skip new execution if a previous instance is still running',
@@ -47,6 +52,8 @@ CREATE TABLE IF NOT EXISTS cronjobs (
                                                             COMMENT 'Max number of automatic retry attempts on failure; 0 = no retry',
     retry_delay_minutes      SMALLINT UNSIGNED NOT NULL DEFAULT 1
                                                             COMMENT 'Minutes to wait between retry attempts (minimum 1)',
+    restart_on_exitcodes     VARCHAR(255) NULL DEFAULT NULL
+                                                            COMMENT 'Exit-code expression that triggers auto-retry, e.g. "1-5,10,255". NULL = any non-zero.',
     notify_after_failures    TINYINT UNSIGNED  NOT NULL DEFAULT 1
                                                             COMMENT 'Send failure notification only after this many consecutive real failures; 1 = every failure (default)',
     notify_after_limit_exceeded TINYINT UNSIGNED NOT NULL DEFAULT 1
@@ -54,7 +61,11 @@ CREATE TABLE IF NOT EXISTS cronjobs (
     execution_mode    ENUM('local','remote') NOT NULL DEFAULT 'local'
                                                COMMENT 'local = run on this host, remote = execute via SSH',
     ssh_host          VARCHAR(255)            NULL     COMMENT 'SSH config host alias (from ~/.ssh/config); required when execution_mode=remote',
-    created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP
+    created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    -- Supports /crons?user=… and /history?user=… filters (migration 017)
+    INDEX idx_cj_linux_user     (linux_user),
+    -- Supports silence detection and /health silent_jobs counter (migration 017)
+    INDEX idx_cj_active_silence (active, notify_on_silence)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
@@ -92,6 +103,8 @@ CREATE TABLE IF NOT EXISTS job_targets (
     job_id INT          NOT NULL             COMMENT 'References the owning cron job',
     target VARCHAR(255) NOT NULL             COMMENT '"local" or SSH host alias from ~/.ssh/config',
     UNIQUE  KEY uq_job_target (job_id, target),
+    -- Supports /crons?target=… lookups by target alone (migration 017)
+    INDEX idx_jt_target (target),
     CONSTRAINT fk_jt_job FOREIGN KEY (job_id)
         REFERENCES cronjobs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -126,6 +139,8 @@ CREATE TABLE IF NOT EXISTS execution_log (
     INDEX idx_el_finished_exit     (finished_at, exit_code),
     -- Supports target filter in HistoryEndpoint
     INDEX idx_el_target            (target),
+    -- Supports MonitorEndpoint queries: cronjob_id + started_at range, ORDER BY started_at (migration 017)
+    INDEX idx_el_cj_started        (cronjob_id, started_at),
     CONSTRAINT fk_el_cronjob FOREIGN KEY (cronjob_id)
         REFERENCES cronjobs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -213,6 +228,21 @@ CREATE TABLE IF NOT EXISTS audit_log (
     INDEX idx_audit_created_at (created_at),
     INDEX idx_audit_user_id    (user_id),
     INDEX idx_audit_action     (action(32))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- agent_settings – persistent notification / integration settings per agent
+--
+-- Stores one complete section configuration as a JSON blob per row.
+-- Managed sections: mail, telegram, influxdb, notifications, performance_monitor, web.
+-- An absent row means the section falls back to config.json values.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS agent_settings (
+    section    VARCHAR(50)  NOT NULL,
+    config     JSON         NOT NULL,
+    updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                            ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (section)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------

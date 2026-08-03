@@ -6,6 +6,80 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.7.0] – branch: `feature/performance-optimisation`
+
+### Fixed
+
+- **Kritisch – Web-Identity-Push lief bei jedem Request**: Der `static`-Guard in
+  `web/index.php` überlebt PHP-FPM-Requests nicht; dadurch führte jeder Seitenaufruf
+  (inkl. Login-Seite und AJAX-Polls) `pushToAllAgents()` aus – ein synchroner HTTPS-PUT
+  pro Agent, vor Auth-Check und Routing (bis zu 10 s pro nicht erreichbarem Agent).
+  Jetzt APCu-Guard mit 1-h-TTL; ohne APCu entfällt der periodische Push (Push bei
+  Agent-Anlegen/Bearbeiten/Auswählen bleibt erhalten). Regression aus v4.6.0.
+- **AJAX-Auto-Refresh war funktionslos**: `cm-fetch.js` wurde am Body-Ende geladen,
+  die Inline-Skripte der Seiten riefen `cmPoll`/`cmFetch` aber schon während des
+  Parsens auf → `ReferenceError`. Das Skript lädt jetzt im `<head>`.
+- **schema.sql war unvollständig**: Die Objekte aus Migrationen 011
+  (`restart_on_exitcodes`), 012 (`agent_settings`) und 016 (Silence-Spalten) fehlten.
+  Neuinstallationen wenden `schema.sql` an und markieren Migrationen nur als
+  „applied" – Installationen ab v4.5.0 hatten diese Objekte daher nicht.
+  Migration 017 repariert bestehende Installationen defensiv (`IF NOT EXISTS`),
+  `schema.sql` ist wieder vollständig.
+
+### Changed – Performance
+
+- **Agent-Concurrency**: `PHP_CLI_SERVER_WORKERS` (Default 8, per Env konfigurierbar)
+  in `docker/agent/entrypoint.sh` und `agent/bin/start-agent.sh`. Vorher verarbeitete
+  der PHP-built-in-Server alle Requests strikt seriell – ein cron-wrapper-Call
+  blockierte jeden Seitenaufruf, `getMultiple()`-Parallelisierung verpuffte.
+  Zusätzlich OPcache aktiviert (`opcache.enable_cli=1`): der Agent kompilierte
+  zuvor bei jedem Request ~40 Endpoint-Klassen neu.
+- **Tailwind als gebautes CSS**: Gepurgtes Stylesheet `web/assets/css/tailwind.css`
+  (~37 KB, via `web/tailwind.config.js` gebaut, im Repo committed) ersetzt den
+  ~400 KB Play-CDN-Runtime-Compiler, der bei jedem Seitenwechsel das DOM scannte
+  und alle Styles zur Laufzeit generierte. CDN-Downloads aus Dockerfile, deploy.sh
+  und simple_debian_setup.sh entfernt; Asset-Links mit Cache-Busting (`?v=<Version>`).
+- **Toter Google-Fonts-Import entfernt**: `brand.css` lud Fonts von
+  fonts.googleapis.com – render-blockierend, von der eigenen CSP ohnehin blockiert,
+  in abgeschotteten Netzen bis zum Timeout hängend. Ersatzlos gestrichen
+  (Font-Stacks unverändert).
+- **`/crons` ohne Voll-Aggregat**: Neue denormalisierte Spalten
+  `cronjobs.last_execution_id` / `last_finished_execution_id` (Migration 018 mit
+  Backfill) ersetzen die derived-table Aggregation über die komplette
+  `execution_log`, deren Kosten mit der History-Größe wuchsen. Pflege in
+  ExecutionStart-/ExecutionFinish-Endpoint (monotoner Guard gegen Out-of-Order-
+  Finishes), check-limits-Auto-Kill und startup-cleanup; Lösch-/Prune-Endpoints
+  leiten die Referenzen neu ab.
+- **`/history` Zwei-Phasen-Query**: Die innere Subquery paginiert nur noch IDs;
+  vorher erzwang `GROUP BY el.id` mit der TEXT-Spalte `output` eine On-Disk-
+  Temp-Table über die gesamte gefilterte Menge (die dokumentierten 2–6-s-Peaks).
+  Count-Query ohne funktionslose Tag-Joins, `IGNORE INDEX`-Hints aus v4.4.2 obsolet.
+- **Neue Indexe** (Migration 017): `cronjobs(linux_user)`,
+  `cronjobs(active, notify_on_silence)`, `job_targets(target)`,
+  `execution_log(cronjob_id, started_at)` – User-/Target-Filter, Monitor-Queries
+  und Silence-Detection liefen zuvor als Full Scans.
+- **Weniger Agent-Roundtrips**: `getMultiple()` (parallele Guzzle-Promises) statt
+  sequenzieller Einzel-Calls in Cron-Liste (4→1 Batch; `/crons` wurde bei aktivem
+  Filter doppelt geholt – Filter laufen jetzt lokal), Timeline (3→1), Swimlane,
+  Export, Job-Detail und Edit-Formular.
+- **Kleinmaßnahmen**: Schema-DDL (`CREATE TABLE IF NOT EXISTS` + Seed) nur noch
+  einmal pro Stunde statt pro Request (APCu-Guard); `session_write_close()` vor
+  Agent-I/O in den JSON-Polling-Pfaden (Dashboard, Monitor) – ein laufender Poll
+  blockiert keinen parallelen Seitenwechsel mehr; `SELECT 1`-Ping der Agent-DB nur
+  noch nach >5 s Idle statt vor jeder Nutzung; `connect_timeout: 3 s` im
+  HostAgentClient (tote Agents schlagen schnell fehl statt nach 10 s);
+  `crontab -l`-Konsistenz-Check mit 60-s-Datei-Cache, invalidiert bei jedem
+  Crontab-Write.
+
+### Added
+
+- Neue Tests: `LastExecutionRefsTest` (Referenzspalten-Pflege inkl. Monotonie-Guard
+  und Lösch-Neuableitung), `HistoryEndpointTest` (Sortierung, Pagination, Filter,
+  Tag-Deduplizierung, TEXT-Erhalt der Zwei-Phasen-Query).
+- `PHP_CLI_SERVER_WORKERS` in `docker-compose-full.yml` und `.env.example`.
+
+---
+
 ## [4.6.1] – branch: `feature/agent-web-identity`
 
 ### Added

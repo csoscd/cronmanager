@@ -73,11 +73,36 @@ final class MaintenanceDeleteExecutionEndpoint
         ]);
 
         try {
+            // Capture the owning job before deleting so the denormalised
+            // last-execution references (migration 018) can be re-derived.
+            $jobStmt = $this->pdo->prepare('SELECT cronjob_id FROM execution_log WHERE id = :id');
+            $jobStmt->execute([':id' => $id]);
+            $jobId = (int) ($jobStmt->fetchColumn() ?: 0);
+
             $stmt = $this->pdo->prepare(
                 'DELETE FROM execution_log WHERE id = :id'
             );
             $stmt->execute([':id' => $id]);
             $affected = $stmt->rowCount();
+
+            if ($affected > 0 && $jobId > 0) {
+                // Re-derive both reference columns for the affected job only –
+                // a single-job aggregate covered by idx_el_cj_finished_cover.
+                $this->pdo->prepare(
+                    'UPDATE cronjobs c
+                     LEFT JOIN (
+                         SELECT cronjob_id,
+                                MAX(id) AS max_id,
+                                MAX(CASE WHEN finished_at IS NOT NULL THEN id ELSE NULL END) AS max_finished_id
+                           FROM execution_log
+                          WHERE cronjob_id = :jid
+                          GROUP BY cronjob_id
+                     ) el ON el.cronjob_id = c.id
+                        SET c.last_execution_id          = el.max_id,
+                            c.last_finished_execution_id = el.max_finished_id
+                      WHERE c.id = :jid2'
+                )->execute([':jid' => $jobId, ':jid2' => $jobId]);
+            }
         } catch (PDOException $e) {
             $this->logger->error('MaintenanceDeleteExecutionEndpoint: database error', [
                 'execution_id' => $id,

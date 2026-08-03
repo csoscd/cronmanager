@@ -439,10 +439,16 @@ class HostAgentClient
             }
 
             $this->guzzle = new Client([
-                'base_uri'    => rtrim($this->agentUrl, '/'),
-                'timeout'     => $this->timeout,
-                'verify'      => $verify,
-                'http_errors' => false,  // We handle error codes ourselves
+                'base_uri'        => rtrim($this->agentUrl, '/'),
+                'timeout'         => $this->timeout,
+                // Without an explicit connect_timeout cURL falls back to its
+                // 300 s default, so an unreachable agent blocks for the full
+                // request timeout (10 s). Capping the TCP/TLS connect phase
+                // makes dead agents fail fast while slow responses still get
+                // the full timeout budget.
+                'connect_timeout' => min(3, max(1, $this->timeout)),
+                'verify'          => $verify,
+                'http_errors'     => false,  // We handle error codes ourselves
             ]);
         }
 

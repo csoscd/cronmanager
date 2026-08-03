@@ -156,6 +156,26 @@ class SessionManager
     }
 
     /**
+     * Persist the session and release its exclusive file lock early.
+     *
+     * PHP's default file-based session handler holds an exclusive lock from
+     * session_start() until the end of the request, serialising all requests
+     * of the same session. Long-running requests (AJAX polls waiting on agent
+     * I/O) therefore block a concurrently clicked page navigation. Calling
+     * this before slow I/O releases the lock; $_SESSION stays readable but
+     * later writes are no longer persisted, so only call it when the request
+     * will not modify the session afterwards.
+     *
+     * @return void
+     */
+    public static function writeClose(): void
+    {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+    }
+
+    /**
      * Destroy the current session and clear the session cookie.
      *
      * @return void

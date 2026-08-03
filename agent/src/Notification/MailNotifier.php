@@ -265,7 +265,8 @@ final class MailNotifier
         $fromName    = (string) $this->config->get('mail.from_name', 'Cronmanager');
         $toAddr      = (string) $this->config->get('mail.to',        '');
         $encryption  = (string) $this->config->get('mail.encryption',   'tls');
-        $baseUrl     = rtrim((string) $this->config->get('notifications.web_url', ''), '/');
+        $baseUrl     = rtrim((string) $this->config->get('web.web_url', ''), '/');
+        $webAgentId  = (int) $this->config->get('web.web_agent_id', 0);
 
         try {
             $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
@@ -288,9 +289,9 @@ final class MailNotifier
             $e = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 
             $mail->Body    = $this->buildRecoveryHtmlBody($jobId, $description, $linuxUser, $schedule,
-                                 $consecutiveFailures, $startedAt, $finishedAt, $target, $baseUrl, $e);
+                                 $consecutiveFailures, $startedAt, $finishedAt, $target, $baseUrl, $webAgentId, $e);
             $mail->AltBody = $this->buildRecoveryPlainBody($jobId, $description, $linuxUser, $schedule,
-                                 $consecutiveFailures, $startedAt, $finishedAt, $target, $baseUrl);
+                                 $consecutiveFailures, $startedAt, $finishedAt, $target, $baseUrl, $webAgentId);
             $mail->isHTML(true);
             $mail->send();
 
@@ -335,7 +336,8 @@ final class MailNotifier
         $fromName    = (string) $this->config->get('mail.from_name', 'Cronmanager');
         $toAddr      = (string) $this->config->get('mail.to',        '');
         $encryption  = (string) $this->config->get('mail.encryption',   'tls');
-        $baseUrl     = rtrim((string) $this->config->get('notifications.web_url', ''), '/');
+        $baseUrl     = rtrim((string) $this->config->get('web.web_url', ''), '/');
+        $webAgentId  = (int) $this->config->get('web.web_agent_id', 0);
 
         try {
             $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
@@ -358,9 +360,9 @@ final class MailNotifier
             $e = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 
             $mail->Body    = $this->buildSilenceHtmlBody($jobId, $description, $schedule,
-                                 $lastStartedAt, $expectedLastRun, $silenceSinceMinutes, $target, $baseUrl, $e);
+                                 $lastStartedAt, $expectedLastRun, $silenceSinceMinutes, $target, $baseUrl, $webAgentId, $e);
             $mail->AltBody = $this->buildSilencePlainBody($jobId, $description, $schedule,
-                                 $lastStartedAt, $expectedLastRun, $silenceSinceMinutes, $target, $baseUrl);
+                                 $lastStartedAt, $expectedLastRun, $silenceSinceMinutes, $target, $baseUrl, $webAgentId);
             $mail->isHTML(true);
             $mail->send();
 
@@ -506,6 +508,28 @@ HTML;
     }
 
     // -------------------------------------------------------------------------
+    // Private helpers – URL builder
+    // -------------------------------------------------------------------------
+
+    /**
+     * Build a notification link, appending ?agent_id=X when web_agent_id is set.
+     *
+     * @param string $baseUrl    Base URL of the web UI (already rtrimmed of '/').
+     * @param string $path       Path including any query string (e.g. '/crons/42').
+     * @param int    $agentId    Web agent ID; 0 means single-agent, no parameter appended.
+     *
+     * @return string Complete URL.
+     */
+    private function buildNotificationUrl(string $baseUrl, string $path, int $agentId): string
+    {
+        $url = $baseUrl . $path;
+        if ($agentId > 0) {
+            $url .= (str_contains($url, '?') ? '&' : '?') . 'agent_id=' . $agentId;
+        }
+        return $url;
+    }
+
+    // -------------------------------------------------------------------------
     // Private helpers – message body builders
     // -------------------------------------------------------------------------
 
@@ -581,11 +605,12 @@ HTML;
             $lines[] = '';
         }
 
-        $webUrl = (string) $this->config->get('notifications.web_url', '');
+        $webUrl     = rtrim((string) $this->config->get('web.web_url', ''), '/');
+        $webAgentId = (int) $this->config->get('web.web_agent_id', 0);
         if ($webUrl !== '') {
             $link = $stillRunning
-                ? rtrim($webUrl, '/') . '/crons/' . $jobId
-                : rtrim($webUrl, '/') . '/timeline?job_id=' . $jobId . '&target=' . urlencode($target) . '&status=failed&_direct=1';
+                ? $this->buildNotificationUrl($webUrl, '/crons/' . $jobId, $webAgentId)
+                : $this->buildNotificationUrl($webUrl, '/timeline?job_id=' . $jobId . '&target=' . urlencode($target) . '&status=failed&_direct=1', $webAgentId);
             $lines[] = 'View details: ' . $link;
             $lines[] = '';
         }
@@ -662,12 +687,13 @@ HTML;
             ],
         };
 
-        $webUrl  = (string) $this->config->get('notifications.web_url', '');
-        $linkHtml = '';
+        $webUrl     = rtrim((string) $this->config->get('web.web_url', ''), '/');
+        $webAgentId = (int) $this->config->get('web.web_agent_id', 0);
+        $linkHtml   = '';
         if ($webUrl !== '') {
             $link     = $stillRunning
-                ? rtrim($webUrl, '/') . '/crons/' . $jobId
-                : rtrim($webUrl, '/') . '/timeline?job_id=' . $jobId . '&target=' . urlencode($target) . '&status=failed&_direct=1';
+                ? $this->buildNotificationUrl($webUrl, '/crons/' . $jobId, $webAgentId)
+                : $this->buildNotificationUrl($webUrl, '/timeline?job_id=' . $jobId . '&target=' . urlencode($target) . '&status=failed&_direct=1', $webAgentId);
             $linkHtml = sprintf(
                 '<p style="margin-top:16px;"><a href="%s" style="display:inline-block;padding:8px 16px;background:#2563eb;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;">&#x1F517; View in Cronmanager</a></p>',
                 $e($link),
@@ -731,6 +757,7 @@ HTML;
         string   $finishedAt,
         string   $target,
         string   $baseUrl,
+        int      $webAgentId = 0,
     ): string {
         $lines = [
             'CRONMANAGER – JOB RECOVERED',
@@ -751,7 +778,7 @@ HTML;
         $lines[] = '';
 
         if ($baseUrl !== '') {
-            $lines[] = sprintf('View in Cronmanager: %s/crons/%d', $baseUrl, $jobId);
+            $lines[] = sprintf('View in Cronmanager: %s', $this->buildNotificationUrl($baseUrl, '/crons/' . $jobId, $webAgentId));
         }
 
         return implode("\n", $lines);
@@ -766,6 +793,7 @@ HTML;
         int     $silenceSinceMinutes,
         string  $target,
         string  $baseUrl,
+        int     $webAgentId = 0,
     ): string {
         $lastStartLine = $lastStartedAt !== null
             ? sprintf('Last seen   : %s', $lastStartedAt)
@@ -798,7 +826,7 @@ HTML;
         $lines[] = '';
 
         if ($baseUrl !== '') {
-            $lines[] = sprintf('View in Cronmanager: %s/crons/%d', $baseUrl, $jobId);
+            $lines[] = sprintf('View in Cronmanager: %s', $this->buildNotificationUrl($baseUrl, '/crons/' . $jobId, $webAgentId));
         }
 
         return implode("\n", $lines);
@@ -811,8 +839,9 @@ HTML;
         ?string $lastStartedAt,
         string  $expectedLastRun,
         int     $silenceSinceMinutes,
-        string  $target,
-        string  $baseUrl,
+        string   $target,
+        string   $baseUrl,
+        int      $webAgentId = 0,
         callable $e,
     ): string {
         $targetRow = ($target !== '' && $target !== 'local')
@@ -831,9 +860,8 @@ HTML;
 
         $linkHtml = $baseUrl !== ''
             ? sprintf(
-                '<p style="margin-top:16px;"><a href="%s/crons/%d" style="display:inline-block;padding:8px 16px;background:#b45309;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;">&#x1F517; View in Cronmanager</a></p>',
-                $e($baseUrl),
-                $jobId
+                '<p style="margin-top:16px;"><a href="%s" style="display:inline-block;padding:8px 16px;background:#b45309;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;">&#x1F517; View in Cronmanager</a></p>',
+                $e($this->buildNotificationUrl($baseUrl, '/crons/' . $jobId, $webAgentId))
             )
             : '';
 
@@ -884,6 +912,7 @@ HTML;
         string   $finishedAt,
         string   $target,
         string   $baseUrl,
+        int      $webAgentId = 0,
         callable $e,
     ): string {
         $targetRow = ($target !== '' && $target !== 'local')
@@ -892,9 +921,8 @@ HTML;
 
         $linkHtml = $baseUrl !== ''
             ? sprintf(
-                '<p style="margin-top:16px;"><a href="%s/crons/%d" style="display:inline-block;padding:8px 16px;background:#16a34a;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;">&#x1F517; View in Cronmanager</a></p>',
-                $e($baseUrl),
-                $jobId
+                '<p style="margin-top:16px;"><a href="%s" style="display:inline-block;padding:8px 16px;background:#16a34a;color:#fff;text-decoration:none;border-radius:4px;font-size:13px;">&#x1F517; View in Cronmanager</a></p>',
+                $e($this->buildNotificationUrl($baseUrl, '/crons/' . $jobId, $webAgentId))
             )
             : '';
 

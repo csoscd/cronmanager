@@ -648,7 +648,10 @@ Delete a maintenance window.  Scope: **`maintenance:write`**
 Required scope for read: **`settings:read`**
 Required scope for write: **`settings:write`**
 
-Settings are grouped into sections: `mail`, `telegram`, `influxdb`, `notifications`.
+Settings are grouped into sections: `mail`, `telegram`, `influxdb`, `notifications`, `performance_monitor`, `web`.
+
+The `web` section is **read-only via the API** — it is populated automatically when the web container
+pushes its identity to the agent (startup, agent create/update/select).
 
 ---
 
@@ -681,7 +684,8 @@ Read all agent settings.
     "org": "",
     "bucket": ""
   },
-  "notifications": {
+  "web": {
+    "web_agent_id": 3,
     "web_url": "https://cronmanager.example.com"
   }
 }
@@ -691,7 +695,7 @@ Read all agent settings.
 
 ### GET /api/v1/settings/{section}
 
-Read a single settings section (`mail`, `telegram`, `influxdb`, `notifications`).
+Read a single settings section (`mail`, `telegram`, `influxdb`, `notifications`, `web`).
 
 **Response 200:** Section object.
 
@@ -700,6 +704,9 @@ Read a single settings section (`mail`, `telegram`, `influxdb`, `notifications`)
 ### PUT /api/v1/settings/{section}
 
 Update a settings section.  Scope: **`settings:write`**
+
+Writable sections: `mail`, `telegram`, `influxdb`, `notifications`, `performance_monitor`.
+The `web` section is silently skipped — use the agent identity push instead.
 
 **Request body:** Partial or full section object (only provided keys are updated).
 
@@ -791,18 +798,23 @@ List all agents visible to this API key.
       "id": 1,
       "name": "Default",
       "description": "Lokaler Agent",
-      "enabled": true
+      "enabled": true,
+      "web_url": "https://cronmanager.example.com"
     },
     {
       "id": 2,
       "name": "Remote-Server",
       "description": "Agent auf server2.example.com",
-      "enabled": true
+      "enabled": true,
+      "web_url": "https://cronmanager.example.com"
     }
   ],
   "count": 2
 }
 ```
+
+`web_url` is the public base URL of the web container (from `app.web_url` in the web config).
+It is the same value for all agents — `null` when not configured.
 
 **Response 401 / 403:** See §6 Error Responses.
 
@@ -956,6 +968,7 @@ to 60 seconds of delay before the daemon picks up the entry.
 
 | Version | Change |
 |---|---|
+| 4.6.0 | Added `web` section to `GET /api/v1/settings` (read-only, push-managed; contains `web_agent_id` and `web_url`); added `web_url` field to `GET /api/v1/agents` response; `PUT /api/v1/settings` silently ignores the `web` section |
 | 4.5.0 | Added `notify_on_silence` (bool), `silence_grace_minutes` (int\|null), `last_silence_alert_at` (string\|null, read-only) to job objects; `GET /health` extended with `silent_jobs` (int\|null) and `last_execution_at` (string\|null) |
 | 4.3.4 | Added `GET /api/v1/audit` endpoint (`audit:read` scope, admin-only); added §15 Audit Log |
 | 4.2.0 | Added `GET /api/v1/agents` endpoint (`settings:read` scope; respects `agent_ids` restriction; omits sensitive fields) |

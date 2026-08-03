@@ -243,6 +243,18 @@ abstract class BaseController
         $pdo  = Connection::getInstance()->getPdo();
         $repo = new AgentRepository($pdo);
 
+        // Check URL parameter first: notification links carry ?agent_id=X so
+        // clicking them switches to the correct agent even after session expiry.
+        $urlAgentId = isset($_GET['agent_id']) ? (int) $_GET['agent_id'] : 0;
+        if ($urlAgentId > 0) {
+            $agent = $repo->findById($urlAgentId);
+            if ($agent !== null && (bool) $agent['enabled']) {
+                SessionManager::set('selected_agent_id', $urlAgentId);
+                $this->selectedAgentCache = $agent;
+                return $agent;
+            }
+        }
+
         // Try the session-persisted agent ID first
         $agentId = (int) SessionManager::get('selected_agent_id', 0);
 

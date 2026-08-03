@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.6.0] – branch: `feature/agent-web-identity`
+
+### Added
+
+- **Agent-aware Notification Links**: E-Mail- und Telegram-Benachrichtigungen enthalten jetzt
+  `?agent_id=X` im Link, wenn die Web-Identity konfiguriert ist. Klicks landen direkt beim richtigen
+  Agent – auch nach Session-Ablauf (Login-Redirect bewahrt den Parameter).
+- **Web-Identity-Push**: Der Web-Container teilt jedem Agent beim Start sowie beim Anlegen,
+  Bearbeiten und Auswählen eines Agents seine öffentliche URL und die Agent-ID mit
+  (`PUT /settings/web-identity`, HMAC-gesichert). Agents speichern beides in `agent_settings`
+  (Section `web`).
+- **`AgentIdentityPusher`** (Web): neuer Service `web/src/Service/AgentIdentityPusher.php`
+  – kapselt Push-Logik, schluckt Verbindungsfehler und loggt nur eine Warnung.
+- **`WEB_URL` im Web-Container**: die Env-Variable wandert vom Agent- in den Web-Container
+  (`WEB_URL` → `app.web_url` in `config.json`). Agents beziehen die URL künftig ausschließlich
+  per Push, nicht mehr aus ihrem eigenen `config.json`.
+- **`BaseController::selectedAgent()`** prüft jetzt zuerst `$_GET['agent_id']`: Notification-Links
+  aktivieren direkt den richtigen Agent und schreiben ihn in die Session.
+- **REST API – `GET /api/v1/agents`**: neues Feld `web_url` (string|null) in jedem Agent-Objekt.
+- **REST API – `GET /api/v1/settings/web`**: gibt die gespeicherte Web-Identity zurück
+  (`{"web_agent_id": N, "web_url": "..."}`, Scope `settings:read`).
+  `PUT /api/v1/settings/web` gibt 405 zurück – die Section wird ausschließlich per Push verwaltet.
+- **Neue Tests**: `WebIdentityEndpointTest` (Integration), `NotificationUrlBuilderTest` (Unit,
+  prüft `buildNotificationUrl()` in MailNotifier und TelegramNotifier via Reflection),
+  drei neue Fälle in `AgentsApiControllerTest` für das `web_url`-Feld.
+
+### Changed
+
+- `MailNotifier` und `TelegramNotifier` lesen `web_url` und `web_agent_id` jetzt aus der
+  DB-gesicherten Section `web` (statt `notifications.web_url`).
+- `send-notification.php` nutzt `DbConfig` (statt rohem Noodlehaus-Config) damit die
+  DB-gesicherten Werte in Hintergrundprozessen verfügbar sind.
+
+---
+
 ## [4.5.0] – branch: `feature/silence-detection`
 
 ### Added

@@ -344,6 +344,11 @@ try {
 
     // -- Persistent agent settings (notification / integration config in DB) --
 
+    // PUT /settings/web-identity must be registered before the generic /settings
+    // routes so the router does not mis-match the static path segment.
+    $webIdentity = new \Cronmanager\Agent\Endpoints\Settings\WebIdentityEndpoint($dbConfig, $logger);
+    $router->addRoute('PUT', '/settings/web-identity', [$webIdentity, 'handle']);
+
     $settingsEndpoint = new \Cronmanager\Agent\Endpoints\SettingsEndpoint($dbConfig, $logger, $auditLogger);
     $router->addRoute('GET', '/settings', [$settingsEndpoint, 'handle']);
     $router->addRoute('PUT', '/settings', [$settingsEndpoint, 'handle']);

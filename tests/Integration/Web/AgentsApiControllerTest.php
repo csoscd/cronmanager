@@ -322,4 +322,60 @@ final class AgentsApiControllerTest extends IntegrationTestCase
         $this->assertSame(200, $r['status']);
         $this->assertNull($r['body']['data'][0]['description']);
     }
+
+    // =========================================================================
+    // web_url field
+    // =========================================================================
+
+    #[Test]
+    public function responseItemContainsWebUrlField(): void
+    {
+        $this->seedAgent();
+        $result = $this->seedKey();
+
+        $r = $this->callIndex($result['plainText']);
+
+        $this->assertSame(200, $r['status']);
+        $this->assertArrayHasKey('web_url', $r['body']['data'][0]);
+    }
+
+    #[Test]
+    public function webUrlIsNullWhenConfigEmpty(): void
+    {
+        $this->seedAgent();
+        $result = $this->seedKey();
+
+        // Config is always '{}' in callIndex() → app.web_url is unset → null
+        $r = $this->callIndex($result['plainText']);
+
+        $this->assertSame(200, $r['status']);
+        $this->assertNull($r['body']['data'][0]['web_url']);
+    }
+
+    #[Test]
+    public function webUrlFromConfigIsReturnedForAllAgents(): void
+    {
+        $this->seedAgent(['name' => 'Alpha']);
+        $this->seedAgent(['name' => 'Beta']);
+        $result = $this->seedKey();
+
+        // Inject a config with app.web_url set
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $result['plainText'];
+        http_response_code(200);
+
+        $configJson = json_encode(['app' => ['web_url' => 'https://cronmanager.example.com']]);
+        $config     = new Config((string) $configJson, new JsonParser(), true);
+        $controller = new AgentsApiController($config, new Logger('test'), $this->pdo);
+
+        ob_start();
+        $controller->index([]);
+        $output = ob_get_clean();
+
+        $body = json_decode((string) $output, true);
+
+        $this->assertSame(200, (int) http_response_code());
+        foreach ($body['data'] as $item) {
+            $this->assertSame('https://cronmanager.example.com', $item['web_url']);
+        }
+    }
 }

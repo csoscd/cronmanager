@@ -244,10 +244,11 @@ final class TelegramNotifier
             return false;
         }
 
-        $botToken = (string) $this->config->get('telegram.bot_token', '');
-        $chatId   = (string) $this->config->get('telegram.chat_id',   '');
-        $timeout  = (int)    $this->config->get('telegram.timeout',   15);
-        $baseUrl  = rtrim((string) $this->config->get('notifications.web_url', ''), '/');
+        $botToken   = (string) $this->config->get('telegram.bot_token', '');
+        $chatId     = (string) $this->config->get('telegram.chat_id',   '');
+        $timeout    = (int)    $this->config->get('telegram.timeout',   15);
+        $baseUrl    = rtrim((string) $this->config->get('web.web_url', ''), '/');
+        $webAgentId = (int) $this->config->get('web.web_agent_id', 0);
 
         if ($botToken === '' || $chatId === '') {
             $this->logger->warning('TelegramNotifier: bot_token or chat_id not configured, skipping recovery alert', [
@@ -261,7 +262,7 @@ final class TelegramNotifier
             : '';
 
         $linkLine = $baseUrl !== ''
-            ? sprintf("\n\n<a href=\"%s/crons/%d\">&#x1F517; View in Cronmanager</a>", htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8'), $jobId)
+            ? sprintf("\n\n<a href=\"%s\">&#x1F517; View in Cronmanager</a>", htmlspecialchars($this->buildNotificationUrl($baseUrl, '/crons/' . $jobId, $webAgentId), ENT_QUOTES, 'UTF-8'))
             : '';
 
         $text = sprintf(
@@ -327,10 +328,11 @@ final class TelegramNotifier
             return false;
         }
 
-        $botToken = (string) $this->config->get('telegram.bot_token', '');
-        $chatId   = (string) $this->config->get('telegram.chat_id',   '');
-        $timeout  = (int)    $this->config->get('telegram.timeout',   15);
-        $baseUrl  = rtrim((string) $this->config->get('notifications.web_url', ''), '/');
+        $botToken   = (string) $this->config->get('telegram.bot_token', '');
+        $chatId     = (string) $this->config->get('telegram.chat_id',   '');
+        $timeout    = (int)    $this->config->get('telegram.timeout',   15);
+        $baseUrl    = rtrim((string) $this->config->get('web.web_url', ''), '/');
+        $webAgentId = (int) $this->config->get('web.web_agent_id', 0);
 
         if ($botToken === '' || $chatId === '') {
             $this->logger->warning('TelegramNotifier: bot_token or chat_id not configured, skipping silence alert', [
@@ -354,7 +356,7 @@ final class TelegramNotifier
             : 'never (job has not run yet)';
 
         $linkLine = $baseUrl !== ''
-            ? sprintf("\n\n<a href=\"%s/crons/%d\">&#x1F517; View in Cronmanager</a>", htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8'), $jobId)
+            ? sprintf("\n\n<a href=\"%s\">&#x1F517; View in Cronmanager</a>", htmlspecialchars($this->buildNotificationUrl($baseUrl, '/crons/' . $jobId, $webAgentId), ENT_QUOTES, 'UTF-8'))
             : '';
 
         $text = sprintf(
@@ -463,6 +465,27 @@ final class TelegramNotifier
     // -------------------------------------------------------------------------
 
     /**
+     * Build a notification URL with an optional agent_id query parameter.
+     *
+     * When $agentId is 0 (single-agent setup or identity not yet pushed), the
+     * URL is returned unchanged so backward-compatibility is preserved.
+     *
+     * @param string $baseUrl  The web container's public base URL (no trailing slash).
+     * @param string $path     The path and any existing query string.
+     * @param int    $agentId  The agent's web-side ID; 0 means "no parameter".
+     *
+     * @return string Complete URL, with ?agent_id=X appended when applicable.
+     */
+    private function buildNotificationUrl(string $baseUrl, string $path, int $agentId): string
+    {
+        $url = $baseUrl . $path;
+        if ($agentId > 0) {
+            $url .= (str_contains($url, '?') ? '&' : '?') . 'agent_id=' . $agentId;
+        }
+        return $url;
+    }
+
+    /**
      * Build the HTML-formatted Telegram message.
      *
      * Telegram's HTML parse mode supports: <b>, <i>, <u>, <s>, <a>, <code>,
@@ -518,12 +541,13 @@ final class TelegramNotifier
         $finishedLabel = ($exitCode === -3 && $stillRunning) ? 'Notified At' : 'Finished';
 
         // Optional link to the UI
-        $webUrl    = (string) $this->config->get('notifications.web_url', '');
-        $linkBlock = '';
+        $webUrl     = rtrim((string) $this->config->get('web.web_url', ''), '/');
+        $webAgentId = (int) $this->config->get('web.web_agent_id', 0);
+        $linkBlock  = '';
         if ($webUrl !== '') {
             $link      = $stillRunning
-                ? rtrim($webUrl, '/') . '/crons/' . $jobId
-                : rtrim($webUrl, '/') . '/timeline?job_id=' . $jobId . '&target=' . urlencode($target) . '&status=failed&_direct=1';
+                ? $this->buildNotificationUrl($webUrl, '/crons/' . $jobId, $webAgentId)
+                : $this->buildNotificationUrl($webUrl, '/timeline?job_id=' . $jobId . '&target=' . urlencode($target) . '&status=failed&_direct=1', $webAgentId);
             $linkBlock = sprintf("\n\n<a href=\"%s\">\u{1F517} View in Cronmanager</a>", $e($link));
         }
 

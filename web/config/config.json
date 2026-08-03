@@ -27,6 +27,9 @@
         "default_language": "en",
         "available": ["en", "de"]
     },
+    "app": {
+        "web_url": ""
+    },
     "auth": {
         "oidc_enabled": false,
         "oidc_provider_url": "https://auth.example.com/application/o/cronmanager/",

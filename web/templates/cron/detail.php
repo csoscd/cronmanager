@@ -16,6 +16,11 @@ declare(strict_types=1);
  * @license GNU General Public License version 3 or later
  */
 
+/** @var int $agentId */
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&' : '';
+
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
@@ -47,7 +52,7 @@ $runInMaintenance  = !empty($job['run_in_maintenance']);
      Breadcrumb / back link
      ====================================================================== -->
 <div class="mb-4">
-    <a href="/crons" class="inline-flex items-center text-sm text-blue-600 hover:underline">
+    <a href="/crons<?= $agSuffix ?>" class="inline-flex items-center text-sm text-blue-600 hover:underline">
         &larr; <?= htmlspecialchars($t('crons_title'), ENT_QUOTES, 'UTF-8') ?>
     </a>
 </div>
@@ -123,7 +128,7 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
         <!-- Actions: Monitor (all users) + Edit/Delete (admin) -->
         <div class="flex items-center gap-2 flex-shrink-0">
             <?php if ($jobId !== ''): ?>
-                <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/monitor"
+                <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/monitor<?= $agSuffix ?>"
                    class="inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700
                           text-sm font-medium px-4 py-2 rounded-lg border border-indigo-200 transition
                           focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2">
@@ -138,13 +143,13 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
 
         <!-- Admin: Edit + Copy + Delete + Run Now -->
         <?php if ($isAdmin && $jobId !== ''): ?>
-                <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/edit"
+                <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/edit<?= $agSuffix ?>"
                    class="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white
                           text-sm font-medium px-4 py-2 rounded-lg transition focus:outline-none
                           focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                     <?= htmlspecialchars($t('cron_edit'), ENT_QUOTES, 'UTF-8') ?>
                 </a>
-                <a href="/crons/new?copy_from=<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>"
+                <a href="/crons/new?<?= $agParam ?>copy_from=<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>"
                    class="inline-flex items-center gap-1 bg-green-50 hover:bg-green-100 text-green-700
                           text-sm font-medium px-4 py-2 rounded-lg border border-green-200 transition
                           focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">

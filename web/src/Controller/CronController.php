@@ -372,7 +372,7 @@ class CronController extends BaseController
         ]);
 
         $returnUrl = trim((string) ($_POST['_return'] ?? ''));
-        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons';
+        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : $this->agentPath('/crons');
 
         (new Response())->redirect($safe);
     }
@@ -543,7 +543,7 @@ class CronController extends BaseController
         // Redirect back to the list page (preserving any active filters) if a
         // validated return URL was passed through the form, otherwise show detail.
         $returnUrl = trim((string) ($_POST['_return'] ?? ''));
-        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons/' . rawurlencode($id);
+        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : $this->agentPath('/crons/' . rawurlencode($id));
 
         (new Response())->redirect($safe);
     }
@@ -668,7 +668,7 @@ class CronController extends BaseController
         }
 
         if ($user === '' || empty($selected)) {
-            (new Response())->redirect('/crons/import');
+            (new Response())->redirect($this->agentPath('/crons/import'));
             return;
         }
 
@@ -750,7 +750,7 @@ class CronController extends BaseController
         if ($target !== 'local') {
             $redirect .= '&target=' . rawurlencode($target);
         }
-        (new Response())->redirect($redirect);
+        (new Response())->redirect($this->agentPath($redirect));
     }
 
     /**
@@ -867,7 +867,7 @@ class CronController extends BaseController
 
         if ($ids === []) {
             SessionManager::set('_flash_error', $t->t('bulk_error_agent'));
-            (new Response())->redirect('/crons');
+            (new Response())->redirect($this->agentPath('/crons'));
             return;
         }
 
@@ -897,7 +897,7 @@ class CronController extends BaseController
                 case 'tag_remove':
                     if ($tag === '') {
                         SessionManager::set('_flash_error', $t->t('bulk_error_no_tag'));
-                        (new Response())->redirect('/crons');
+                        (new Response())->redirect($this->agentPath('/crons'));
                         return;
                     }
                     $tagAction = $action === 'tag_add' ? 'add' : 'remove';
@@ -925,7 +925,7 @@ class CronController extends BaseController
             SessionManager::set('_flash_error', $t->t('bulk_error_agent'));
         }
 
-        (new Response())->redirect('/crons');
+        (new Response())->redirect($this->agentPath('/crons'));
     }
 
     public function destroy(array $params): void
@@ -948,7 +948,7 @@ class CronController extends BaseController
         // Redirect back to the list page preserving any active filters.
         // Validate the return URL to prevent open-redirect: must start with /crons.
         $returnUrl = trim((string) ($_POST['_return'] ?? ''));
-        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons';
+        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : $this->agentPath('/crons');
 
         (new Response())->redirect($safe);
     }
@@ -991,7 +991,7 @@ class CronController extends BaseController
         // Redirect back to the referring page (list or detail), validated to
         // prevent open-redirect.
         $returnUrl = trim((string) ($_POST['_return'] ?? ''));
-        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons';
+        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : $this->agentPath('/crons');
 
         (new Response())->redirect($safe);
     }

@@ -43,6 +43,18 @@ abstract class BaseApiController
     protected const MAX_LIMIT     = 500;
 
     // -------------------------------------------------------------------------
+    // Resolved agent context
+    // -------------------------------------------------------------------------
+
+    /**
+     * The DB id of the agent resolved by the most recent agentClient() call.
+     * Injected into every agent-specific response so API consumers can
+     * unambiguously identify which agent a job/execution/window belongs to
+     * (job IDs are only unique per agent, not globally).
+     */
+    protected int $resolvedAgentId = 0;
+
+    // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
 
@@ -180,6 +192,8 @@ abstract class BaseApiController
             $this->jsonError(403, 'Agent not permitted', 'This API key is not allowed to access the requested agent.');
             return null;
         }
+
+        $this->resolvedAgentId = (int) $agentRow['id'];
 
         return new HostAgentClient(
             logger:      $this->logger,

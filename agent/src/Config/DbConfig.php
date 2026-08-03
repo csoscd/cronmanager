@@ -15,7 +15,7 @@ declare(strict_types=1);
  *   1. Key prefix matches a DB-managed section AND a row exists in DB → DB value.
  *   2. Otherwise → delegate to the wrapped Noodlehaus\Config (config.json).
  *
- * DB-managed sections: mail, telegram, influxdb, notifications.
+ * DB-managed sections: mail, telegram, influxdb, performance_monitor, web.
  * Infrastructure keys (agent.*, database.*, logging.*, cron.*) are always
  * read from config.json because they are needed before the DB is available.
  *
@@ -42,7 +42,7 @@ final class DbConfig implements ConfigInterface
     // -------------------------------------------------------------------------
 
     /** Sections whose values are stored in and read from the database. */
-    private const DB_SECTIONS = ['mail', 'telegram', 'influxdb', 'notifications', 'performance_monitor'];
+    private const DB_SECTIONS = ['mail', 'telegram', 'influxdb', 'notifications', 'performance_monitor', 'web'];
 
     /**
      * Sensitive fields that are encrypted at rest when AGENT_SETTINGS_KEY is set.

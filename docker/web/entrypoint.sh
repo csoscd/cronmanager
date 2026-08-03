@@ -34,6 +34,8 @@
 #   OIDC_REDIRECT_URI   ""
 #   OIDC_SSL_VERIFY     true
 #   OIDC_SSL_CA_BUNDLE  ""
+#   WEB_URL             ""  (public base URL of this web UI, e.g. https://cronmanager.example.com;
+#                            pushed to every agent so notification links include ?agent_id=X)
 #
 # @author  Christian Schulz <technik@meinetechnikwelt.rocks>
 # @license GNU General Public License version 3 or later
@@ -116,6 +118,9 @@ php -r "
     'i18n' => [
         'default_language' => getenv('I18N_LANGUAGE') ?: 'en',
         'available'        => ['en', 'de'],
+    ],
+    'app' => [
+        'web_url' => rtrim(getenv('WEB_URL') ?: '', '/'),
     ],
     'auth' => [
         'oidc_enabled'       => filter_var(getenv('OIDC_ENABLED') ?: 'false', FILTER_VALIDATE_BOOLEAN),

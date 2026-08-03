@@ -89,8 +89,6 @@ services:
       # TELEGRAM_BOT_TOKEN: "123456789:AABBccDDeeFFggHH..."
       # TELEGRAM_CHAT_ID:   "-1001234567890"
       # TELEGRAM_TIMEOUT:   "15"
-      # Optional: notification link (base URL of the web UI)
-      # WEB_URL: "${WEB_URL:-}"
       # Optional: InfluxDB 2.x metrics
       INFLUXDB_ENABLED: "${INFLUXDB_ENABLED:-false}"
       INFLUXDB_URL:     "${INFLUXDB_URL:-http://influxdb:8086}"
@@ -156,6 +154,8 @@ services:
       SESSION_NAME:     "cronmanager_sess"
       # Internationalisation
       I18N_LANGUAGE: "${I18N_LANGUAGE:-en}"
+      # Optional: public web URL (pushed to agents for agent-aware notification links)
+      # WEB_URL: "${WEB_URL:-}"
       # Optional: OIDC / SSO
       # OIDC_ENABLED:        "true"
       # OIDC_PROVIDER_URL:   "https://auth.example.com/application/o/cronmanager/"

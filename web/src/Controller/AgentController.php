@@ -28,6 +28,7 @@ use Cronmanager\Web\Agent\HostAgentClient;
 use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Response;
 use Cronmanager\Web\Repository\AgentRepository;
+use Cronmanager\Web\Service\AgentIdentityPusher;
 use Cronmanager\Web\Session\SessionManager;
 
 /**
@@ -83,9 +84,17 @@ final class AgentController extends BaseController
         }
 
         try {
-            $pdo  = Connection::getInstance()->getPdo();
-            $repo = new AgentRepository($pdo);
-            $repo->create($data);
+            $pdo    = Connection::getInstance()->getPdo();
+            $repo   = new AgentRepository($pdo);
+            $newId  = $repo->create($data);
+            $newAgent = $repo->findById($newId);
+            if ($newAgent !== null) {
+                (new AgentIdentityPusher(
+                    $this->logger,
+                    $pdo,
+                    rtrim((string) $this->config->get('app.web_url', ''), '/'),
+                ))->pushToAgent($newAgent);
+            }
         } catch (\Throwable $e) {
             $this->logger->error('AgentController::store: failed', ['message' => $e->getMessage()]);
             SessionManager::set('_flash_agent_error', 'error_500');
@@ -167,6 +176,14 @@ final class AgentController extends BaseController
             $pdo  = Connection::getInstance()->getPdo();
             $repo = new AgentRepository($pdo);
             $repo->update($id, $data);
+            $updatedAgent = $repo->findById($id);
+            if ($updatedAgent !== null) {
+                (new AgentIdentityPusher(
+                    $this->logger,
+                    $pdo,
+                    rtrim((string) $this->config->get('app.web_url', ''), '/'),
+                ))->pushToAgent($updatedAgent);
+            }
         } catch (\Throwable $e) {
             $this->logger->error('AgentController::update: failed', [
                 'id'      => $id,
@@ -303,11 +320,16 @@ final class AgentController extends BaseController
 
         if ($agentId > 0) {
             try {
-                $pdo   = Connection::getInstance()->getPdo();
-                $agent = (new AgentRepository($pdo))->findById($agentId);
+                $pdo    = Connection::getInstance()->getPdo();
+                $agent  = (new AgentRepository($pdo))->findById($agentId);
 
                 if ($agent !== null && (bool) $agent['enabled']) {
                     SessionManager::set('selected_agent_id', $agentId);
+                    (new AgentIdentityPusher(
+                        $this->logger,
+                        $pdo,
+                        rtrim((string) $this->config->get('app.web_url', ''), '/'),
+                    ))->pushToAgent($agent);
                 }
             } catch (\Throwable $e) {
                 $this->logger->warning('AgentController::select: lookup failed', [

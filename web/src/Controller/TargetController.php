@@ -167,7 +167,7 @@ class TargetController extends BaseController
             'target' => $target,
         ]);
 
-        (new Response())->redirect('/maintenance');
+        (new Response())->redirect($this->agentPath('/maintenance'));
     }
 
     /**

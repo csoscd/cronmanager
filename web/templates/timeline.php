@@ -51,6 +51,10 @@ $hasActiveFilter = $activeSearch !== '' || $activeJobId !== '' || $activeTag !==
 // date-range cookie cannot silently narrow the result set across pages.
 $isDirect = isset($isDirect) && (bool) $isDirect;
 
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&' : '';
+
 // Pagination helpers
 $prevOffset  = max(0, $offset - $limit);
 $nextOffset  = $offset + $limit;
@@ -64,18 +68,19 @@ $showTo      = min($offset + $limit, $total);
  *
  * @param int $newOffset Offset to use in the generated URL.
  */
-$pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect): string {
+$pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect, $agentId): string {
     $params = array_filter([
-        'search' => $filters['search'] ?? '',
-        'job_id' => $filters['job_id'] ?? '',
-        'tag'    => $filters['tag']    ?? '',
-        'user'   => $filters['user']   ?? '',
-        'target' => $filters['target'] ?? '',
-        'status' => $filters['status'] ?? '',
-        'from'   => $filters['from']   ?? '',
-        'to'     => $filters['to']     ?? '',
-        'limit'  => (string) $limit,
-        'offset' => (string) $newOffset,
+        'agent_id' => $agentId > 0 ? (string) $agentId : '',
+        'search'   => $filters['search'] ?? '',
+        'job_id'   => $filters['job_id'] ?? '',
+        'tag'      => $filters['tag']    ?? '',
+        'user'     => $filters['user']   ?? '',
+        'target'   => $filters['target'] ?? '',
+        'status'   => $filters['status'] ?? '',
+        'from'     => $filters['from']   ?? '',
+        'to'       => $filters['to']     ?? '',
+        'limit'    => (string) $limit,
+        'offset'   => (string) $newOffset,
     ], static fn(string $v): bool => $v !== '');
 
     if ($isDirect) {
@@ -269,7 +274,7 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect): s
         <!-- Reset filters link -->
         <?php if ($hasActiveFilter): ?>
         <div>
-            <a href="/timeline?_reset=1"
+            <a href="/timeline?<?= $agParam ?>_reset=1"
                class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white underline py-2 block">
                 &times; <?= htmlspecialchars($t('filter_reset'), ENT_QUOTES, 'UTF-8') ?>
             </a>
@@ -383,7 +388,7 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect): s
                             </td>
                             <td class="px-4 py-3 text-sm">
                                 <?php if ($jobId !== ''): ?>
-                                    <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>"
+                                    <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
                                        class="text-blue-600 hover:underline font-medium">
                                         <?= htmlspecialchars($jobDesc, ENT_QUOTES, 'UTF-8') ?>
                                     </a>

@@ -50,8 +50,13 @@ $showTo   = $pageSize > 0 ? min($currentPage * $pageSize, $totalJobs) : $totalJo
  *
  * @param int $targetPage The page number for the link.
  */
-$pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filterTarget, $filterSearch, $filterResult, $filterActive, $pageSize): string {
+$agentId = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&' : '';
+
+$pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filterTarget, $filterSearch, $filterResult, $filterActive, $pageSize, $agentId): string {
     $params = array_filter([
+        'agent_id' => $agentId > 0 ? (string) $agentId : '',
         'tag'    => $filterTag,
         'user'   => $filterUser,
         'target' => $filterTarget,
@@ -104,7 +109,7 @@ $allTagNames = array_map(
     </h1>
     <?php if ($isAdmin): ?>
         <div class="flex items-center gap-2">
-            <a href="/crons/import"
+            <a href="/crons/import<?= $agSuffix ?>"
                class="inline-flex items-center gap-1.5 bg-gray-600 hover:bg-gray-700 text-white
                       text-sm font-medium px-4 py-2.5 rounded-lg transition focus:outline-none
                       focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
@@ -113,7 +118,7 @@ $allTagNames = array_map(
                 </svg>
                 <?= htmlspecialchars($t('import_title'), ENT_QUOTES, 'UTF-8') ?>
             </a>
-            <a href="/crons/new?_return=<?= htmlspecialchars(rawurlencode($pageUrl($currentPage)), ENT_QUOTES, 'UTF-8') ?>"
+            <a href="/crons/new?<?= $agParam ?>_return=<?= htmlspecialchars(rawurlencode($pageUrl($currentPage)), ENT_QUOTES, 'UTF-8') ?>"
                class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white
                       text-sm font-medium px-4 py-2.5 rounded-lg transition focus:outline-none
                       focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
@@ -289,7 +294,7 @@ $allTagNames = array_map(
 
         <?php if ($filterTag !== '' || $filterUser !== '' || $filterTarget !== '' || $filterSearch !== '' || $filterResult !== '' || $filterActive !== ''): ?>
             <div>
-                <a href="/crons?_reset=1"
+                <a href="/crons?<?= $agParam ?>_reset=1"
                    class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white underline py-2 block">
                     &times; <?= htmlspecialchars($t('filter_reset'), ENT_QUOTES, 'UTF-8') ?>
                 </a>
@@ -519,7 +524,7 @@ $allTagNames = array_map(
                             <!-- Description / link to detail -->
                             <td class="px-4 py-3 text-sm">
                                 <?php if ($jobId !== ''): ?>
-                                    <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>"
+                                    <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
                                        class="text-blue-600 hover:underline font-medium">
                                         <?= htmlspecialchars($desc !== '' ? $desc : "Job #{$jobId}", ENT_QUOTES, 'UTF-8') ?>
                                     </a>
@@ -618,7 +623,7 @@ $allTagNames = array_map(
                             <!-- Open button (all users) -->
                             <td class="px-4 py-3 whitespace-nowrap">
                                 <?php if ($jobId !== ''): ?>
-                                    <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>"
+                                    <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
                                        class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold transition"
                                        style="background:rgba(59,130,246,.1);color:var(--cm-primary);border:1px solid rgba(59,130,246,.2)">
                                         <?= htmlspecialchars($t('cron_open'), ENT_QUOTES, 'UTF-8') ?>

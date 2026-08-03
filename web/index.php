@@ -53,6 +53,7 @@ use Cronmanager\Web\Controller\AuditController;
 use Cronmanager\Web\Controller\UserController;
 use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Request;
+use Cronmanager\Web\Service\AgentIdentityPusher;
 use Cronmanager\Web\Http\Response;
 use Cronmanager\Web\Http\Router;
 use Cronmanager\Web\Session\SessionManager;
@@ -120,6 +121,25 @@ try {
         ApiKeySchema::ensure(Connection::getInstance()->getPdo(), $logger);
     } catch (\Throwable $e) {
         $logger->error('ApiKeySchema::ensure failed', ['message' => $e->getMessage()]);
+    }
+
+    // -------------------------------------------------------------------------
+    // Agent identity push – once per PHP-FPM worker process lifetime
+    // Pushes this web container's public URL and each agent's own DB ID so
+    // that notification links include ?agent_id=X for direct agent selection.
+    // -------------------------------------------------------------------------
+    static $agentIdentityPushed = false;
+    if (!$agentIdentityPushed) {
+        $agentIdentityPushed = true;
+        try {
+            (new AgentIdentityPusher(
+                $logger,
+                Connection::getInstance()->getPdo(),
+                rtrim((string) $config->get('app.web_url', ''), '/'),
+            ))->pushToAllAgents();
+        } catch (\Throwable $e) {
+            $logger->warning('AgentIdentityPusher startup push failed', ['message' => $e->getMessage()]);
+        }
     }
 
     // -------------------------------------------------------------------------

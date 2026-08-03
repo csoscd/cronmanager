@@ -167,12 +167,21 @@ Paginated response envelope:
 
 ```json
 {
+  "agent_id": 1,
   "data": [ ... ],
   "count": 42,
   "limit": 100,
   "offset": 0
 }
 ```
+
+### `agent_id` field (since v4.6.1)
+
+Every response from an agent-specific endpoint includes `"agent_id"` as the **first field**.
+This resolves the ambiguity that job IDs are only unique per agent — in multi-agent setups,
+the same numeric ID may refer to different jobs on different agents.
+
+Endpoints that are not agent-specific (`GET /api/v1/agents`) do not carry `agent_id`.
 
 ---
 
@@ -306,6 +315,7 @@ List all cron jobs.
 
 ```json
 {
+  "agent_id": 1,
   "data": [
     {
       "id": 1,
@@ -348,7 +358,7 @@ List all cron jobs.
 
 Get a single cron job by ID.
 
-**Response 200:** Single job object (same structure as in the list, without envelope).
+**Response 200:** Single job object (same structure as in the list, without envelope, but with `agent_id` as the first field).
 
 **Response 404:**
 
@@ -414,7 +424,7 @@ Delete a cron job and remove it from the crontab.  Scope: **`jobs:write`**
 **Response 200:**
 
 ```json
-{ "success": true }
+{ "agent_id": 1, "success": true }
 ```
 
 ---
@@ -426,7 +436,7 @@ Trigger an immediate one-time execution of the job.  Scope: **`jobs:execute`**
 **Response 200:**
 
 ```json
-{ "success": true, "message": "Job queued for immediate execution." }
+{ "agent_id": 1, "success": true, "message": "Job queued for immediate execution." }
 ```
 
 ---
@@ -438,7 +448,7 @@ Kill a running execution by its execution log ID.  Scope: **`jobs:execute`**
 **Response 200:**
 
 ```json
-{ "success": true }
+{ "agent_id": 1, "success": true }
 ```
 
 ---
@@ -500,6 +510,7 @@ List all tags.
 
 ```json
 {
+  "agent_id": 1,
   "data": [
     { "id": 1, "name": "backup" },
     { "id": 2, "name": "monitoring" }
@@ -576,6 +587,7 @@ List all maintenance windows.
 
 ```json
 {
+  "agent_id": 1,
   "data": [
     {
       "id": 1,
@@ -597,7 +609,7 @@ List all maintenance windows.
 
 Get a single maintenance window.
 
-**Response 200:** Single window object.
+**Response 200:** Single window object (with `agent_id` as the first field).
 
 ---
 
@@ -638,7 +650,7 @@ Delete a maintenance window.  Scope: **`maintenance:write`**
 **Response 200:**
 
 ```json
-{ "success": true }
+{ "agent_id": 1, "success": true }
 ```
 
 ---
@@ -648,7 +660,10 @@ Delete a maintenance window.  Scope: **`maintenance:write`**
 Required scope for read: **`settings:read`**
 Required scope for write: **`settings:write`**
 
-Settings are grouped into sections: `mail`, `telegram`, `influxdb`, `notifications`.
+Settings are grouped into sections: `mail`, `telegram`, `influxdb`, `notifications`, `performance_monitor`, `web`.
+
+The `web` section is **read-only via the API** — it is populated automatically when the web container
+pushes its identity to the agent (startup, agent create/update/select).
 
 ---
 
@@ -681,7 +696,8 @@ Read all agent settings.
     "org": "",
     "bucket": ""
   },
-  "notifications": {
+  "web": {
+    "web_agent_id": 3,
     "web_url": "https://cronmanager.example.com"
   }
 }
@@ -691,7 +707,7 @@ Read all agent settings.
 
 ### GET /api/v1/settings/{section}
 
-Read a single settings section (`mail`, `telegram`, `influxdb`, `notifications`).
+Read a single settings section (`mail`, `telegram`, `influxdb`, `notifications`, `web`).
 
 **Response 200:** Section object.
 
@@ -700,6 +716,9 @@ Read a single settings section (`mail`, `telegram`, `influxdb`, `notifications`)
 ### PUT /api/v1/settings/{section}
 
 Update a settings section.  Scope: **`settings:write`**
+
+Writable sections: `mail`, `telegram`, `influxdb`, `notifications`, `performance_monitor`.
+The `web` section is silently skipped — use the agent identity push instead.
 
 **Request body:** Partial or full section object (only provided keys are updated).
 
@@ -714,7 +733,7 @@ Resync crontab from database.  Scope: **`settings:write`**
 **Response 200:**
 
 ```json
-{ "success": true, "message": "Crontab resynced." }
+{ "agent_id": 1, "success": true, "message": "Crontab resynced." }
 ```
 
 ---
@@ -742,6 +761,7 @@ Execution history across all jobs.
 
 ```json
 {
+  "agent_id": 1,
   "data": [
     {
       "execution_id": 101,
@@ -791,18 +811,23 @@ List all agents visible to this API key.
       "id": 1,
       "name": "Default",
       "description": "Lokaler Agent",
-      "enabled": true
+      "enabled": true,
+      "web_url": "https://cronmanager.example.com"
     },
     {
       "id": 2,
       "name": "Remote-Server",
       "description": "Agent auf server2.example.com",
-      "enabled": true
+      "enabled": true,
+      "web_url": "https://cronmanager.example.com"
     }
   ],
   "count": 2
 }
 ```
+
+`web_url` is the public base URL of the web container (from `app.web_url` in the web config).
+It is the same value for all agents — `null` when not configured.
 
 **Response 401 / 403:** See §6 Error Responses.
 
@@ -837,6 +862,7 @@ Return a paginated list of audit log entries with optional filters.
 
 ```json
 {
+  "agent_id": 1,
   "data": [
     {
       "id": 42,
@@ -956,6 +982,8 @@ to 60 seconds of delay before the daemon picks up the entry.
 
 | Version | Change |
 |---|---|
+| 4.6.1 | Every agent-specific endpoint now includes `"agent_id"` as the first field in its response (jobs, maintenance, export/json, audit, settings, timeline, tags). Resolves ambiguity in multi-agent setups where the same numeric job ID may refer to different jobs on different agents. UI links (notifications, breadcrumbs, filter resets, pagination) now carry `?agent_id=X` throughout. |
+| 4.6.0 | Added `web` section to `GET /api/v1/settings` (read-only, push-managed; contains `web_agent_id` and `web_url`); added `web_url` field to `GET /api/v1/agents` response; `PUT /api/v1/settings` silently ignores the `web` section |
 | 4.5.0 | Added `notify_on_silence` (bool), `silence_grace_minutes` (int\|null), `last_silence_alert_at` (string\|null, read-only) to job objects; `GET /health` extended with `silent_jobs` (int\|null) and `last_execution_at` (string\|null) |
 | 4.3.4 | Added `GET /api/v1/audit` endpoint (`audit:read` scope, admin-only); added §15 Audit Log |
 | 4.2.0 | Added `GET /api/v1/agents` endpoint (`settings:read` scope; respects `agent_ids` restriction; omits sensitive fields) |

@@ -112,6 +112,10 @@ abstract class BaseController
         } catch (\Throwable) {
             $data['selectedAgent'] = null;
         }
+        // Convenience shortcut: $agentId is used by templates to append
+        // ?agent_id=X to links so that shared URLs and notification links
+        // always open in the correct agent context (job IDs are per-agent).
+        $data['agentId'] = (int) ($data['selectedAgent']['id'] ?? 0);
         try {
             $pdo = Connection::getInstance()->getPdo();
             $data['enabledAgents'] = (new AgentRepository($pdo))->findEnabled();
@@ -243,6 +247,18 @@ abstract class BaseController
         $pdo  = Connection::getInstance()->getPdo();
         $repo = new AgentRepository($pdo);
 
+        // Check URL parameter first: notification links carry ?agent_id=X so
+        // clicking them switches to the correct agent even after session expiry.
+        $urlAgentId = isset($_GET['agent_id']) ? (int) $_GET['agent_id'] : 0;
+        if ($urlAgentId > 0) {
+            $agent = $repo->findById($urlAgentId);
+            if ($agent !== null && (bool) $agent['enabled']) {
+                SessionManager::set('selected_agent_id', $urlAgentId);
+                $this->selectedAgentCache = $agent;
+                return $agent;
+            }
+        }
+
         // Try the session-persisted agent ID first
         $agentId = (int) SessionManager::get('selected_agent_id', 0);
 
@@ -359,6 +375,33 @@ abstract class BaseController
             sslVerify:   (bool)   ($agent['ssl_verify']   ?? true),
             sslCaBundle: (string) ($agent['ssl_ca_bundle'] ?? ''),
         );
+    }
+
+    /**
+     * Build an agent-aware path for redirects.
+     *
+     * Appends ?agent_id=X (or &agent_id=X) to $path so that after a redirect
+     * the browser URL carries the agent context explicitly — necessary when
+     * job IDs are only unique per agent (not globally).
+     *
+     * @param string $path Relative URL path (may already contain query string).
+     *
+     * @return string Path with agent_id appended, or original path when no agent selected.
+     */
+    protected function agentPath(string $path): string
+    {
+        try {
+            $agentId = (int) ($this->selectedAgent()['id'] ?? 0);
+        } catch (\Throwable) {
+            $agentId = 0;
+        }
+
+        if ($agentId <= 0) {
+            return $path;
+        }
+
+        $sep = str_contains($path, '?') ? '&' : '?';
+        return $path . $sep . 'agent_id=' . $agentId;
     }
 
     /**

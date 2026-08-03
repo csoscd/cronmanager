@@ -66,11 +66,14 @@ class AgentsApiController extends BaseApiController
             );
         }
 
-        $data = array_map(static fn(array $a): array => [
+        $webUrl = rtrim((string) $this->config->get('app.web_url', ''), '/') ?: null;
+
+        $data = array_map(fn(array $a): array => [
             'id'          => (int)    $a['id'],
             'name'        => (string) $a['name'],
             'description' => $a['description'] !== null ? (string) $a['description'] : null,
             'enabled'     => (bool)   $a['enabled'],
+            'web_url'     => $webUrl,
         ], $agents);
 
         $this->jsonOk([

@@ -62,6 +62,8 @@ spl_autoload_register(function (string $class): void {
 });
 
 use Cronmanager\Agent\Bootstrap;
+use Cronmanager\Agent\Config\DbConfig;
+use Cronmanager\Agent\Database\Connection;
 use Cronmanager\Agent\Notification\MailNotifier;
 use Cronmanager\Agent\Notification\TelegramNotifier;
 
@@ -100,6 +102,9 @@ try {
     $logger    = $bootstrap->getLogger();
     $config    = $bootstrap->getConfig();
 
+    $pdo      = Connection::getInstance()->getPdo();
+    $dbConfig = new DbConfig($config, $pdo);
+
     $jobId               = (int)    ($data['job_id']               ?? 0);
     $description         = (string) ($data['description']         ?? '');
     $linuxUser           = (string) ($data['linux_user']          ?? '');
@@ -110,8 +115,8 @@ try {
     $finishedAt= (string) ($data['finished_at'] ?? '');
     $target    = (string) ($data['target']      ?? '');
 
-    $mailNotifier     = new MailNotifier($logger, $config);
-    $telegramNotifier = new TelegramNotifier($logger, $config);
+    $mailNotifier     = new MailNotifier($logger, $dbConfig);
+    $telegramNotifier = new TelegramNotifier($logger, $dbConfig);
 
     if ($type === 'silence') {
         $lastStartedAt        = isset($data['last_started_at']) && $data['last_started_at'] !== null

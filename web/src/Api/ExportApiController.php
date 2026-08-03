@@ -73,7 +73,7 @@ final class ExportApiController extends BaseApiController
         }
 
         if ($format === 'json') {
-            $this->jsonOk($response);
+            $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $response));
             return;
         }
 

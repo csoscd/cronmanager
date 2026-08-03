@@ -42,7 +42,6 @@
 #   TELEGRAM_TIMEOUT    15
 #   CRON_WRAPPER_SCRIPT /opt/cronmanager/agent/bin/cron-wrapper.sh
 #   AGENT_TLS_ENABLED   true
-#   WEB_URL             ""  (base URL of the web UI, e.g. https://cronmanager.example.com – appended to alert links)
 #   TLS_CERT_FILE       /opt/cronmanager/agent/tls/cert.pem
 #   TLS_KEY_FILE        /opt/cronmanager/agent/tls/key.pem
 #   INFLUXDB_ENABLED    false
@@ -131,9 +130,6 @@ php -r "
     ],
     'cron' => [
         'wrapper_script' => getenv('CRON_WRAPPER_SCRIPT') ?: '/opt/cronmanager/agent/bin/cron-wrapper.sh',
-    ],
-    'notifications' => [
-        'web_url' => getenv('WEB_URL') ?: '',
     ],
     'influxdb' => [
         'enabled' => filter_var(getenv('INFLUXDB_ENABLED') ?: 'false', FILTER_VALIDATE_BOOLEAN),

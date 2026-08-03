@@ -17,6 +17,10 @@ declare(strict_types=1);
  * @license GNU General Public License version 3 or later
  */
 
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&' : '';
+
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
@@ -183,10 +187,11 @@ $byUser        = (array) ($stats['byUser']      ?? []);
                                 // Deep-link to Timeline pre-filtered for this specific job/target/status.
                                 // _direct=1 prevents saved date-range cookies from hiding the entry.
                                 $timelineParams = array_filter([
-                                    'job_id'  => $jobId,
-                                    'target'  => $entryTarget,
-                                    'status'  => 'failed',
-                                    '_direct' => '1',
+                                    'agent_id' => $agentId > 0 ? (string) $agentId : '',
+                                    'job_id'   => $jobId,
+                                    'target'   => $entryTarget,
+                                    'status'   => 'failed',
+                                    '_direct'  => '1',
                                 ], static fn(string $v): bool => $v !== '');
                                 $timelineUrl = '/timeline?' . http_build_query($timelineParams);
                             ?>
@@ -265,7 +270,7 @@ $byUser        = (array) ($stats['byUser']      ?? []);
                         ?>
                             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                                 <td class="px-6 py-3 text-sm font-medium text-gray-800 dark:text-gray-200">
-                                    <a href="/crons?user=<?= htmlspecialchars(rawurlencode((string) $username), ENT_QUOTES, 'UTF-8') ?>"
+                                    <a href="/crons?<?= $agParam ?>user=<?= htmlspecialchars(rawurlencode((string) $username), ENT_QUOTES, 'UTF-8') ?>"
                                        class="text-blue-600 hover:underline">
                                         <?= htmlspecialchars((string) $username, ENT_QUOTES, 'UTF-8') ?>
                                     </a>

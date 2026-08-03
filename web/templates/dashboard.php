@@ -187,10 +187,11 @@ $byUser        = (array) ($stats['byUser']      ?? []);
                                 // Deep-link to Timeline pre-filtered for this specific job/target/status.
                                 // _direct=1 prevents saved date-range cookies from hiding the entry.
                                 $timelineParams = array_filter([
-                                    'job_id'  => $jobId,
-                                    'target'  => $entryTarget,
-                                    'status'  => 'failed',
-                                    '_direct' => '1',
+                                    'agent_id' => $agentId > 0 ? (string) $agentId : '',
+                                    'job_id'   => $jobId,
+                                    'target'   => $entryTarget,
+                                    'status'   => 'failed',
+                                    '_direct'  => '1',
                                 ], static fn(string $v): bool => $v !== '');
                                 $timelineUrl = '/timeline?' . http_build_query($timelineParams);
                             ?>

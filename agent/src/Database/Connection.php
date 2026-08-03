@@ -65,8 +65,14 @@ final class Connection
     /** @var Config Noodlehaus configuration */
     private Config $config;
 
+    /** @var float Unix timestamp (microtime) of the last successful PDO use */
+    private float $lastUsedAt = 0.0;
+
     /** Path to the production config file */
     private const CONFIG_PATH = '/opt/cronmanager/agent/config/config.json';
+
+    /** Seconds of idle time after which getPdo() re-validates the connection */
+    private const PING_IDLE_SECONDS = 5.0;
 
     // -------------------------------------------------------------------------
     // Constructor (private – use getInstance())
@@ -144,17 +150,31 @@ final class Connection
      * the database server restarting while the agent process is running.
      * On failure it attempts one reconnect before throwing.
      *
+     * The ping only runs when the connection has been idle for more than
+     * PING_IDLE_SECONDS. In the HTTP request path the connection is created
+     * milliseconds before its first use, so a ping there is a pure extra
+     * roundtrip with no diagnostic value. Long-running CLI scripts
+     * (check-limits.php, startup-cleanup.php) keep the singleton alive across
+     * sleeps and DB restarts – for them the idle threshold preserves the
+     * original reconnect behaviour.
+     *
      * @return PDO
      * @throws PDOException When the connection cannot be re-established.
      */
     public function getPdo(): PDO
     {
-        try {
-            $this->pdo->query('SELECT 1');
-        } catch (\PDOException) {
-            $this->logger->warning('Database connection lost – attempting reconnect');
-            $this->createPdo();
+        $now = microtime(true);
+
+        if (($now - $this->lastUsedAt) > self::PING_IDLE_SECONDS) {
+            try {
+                $this->pdo->query('SELECT 1');
+            } catch (\PDOException) {
+                $this->logger->warning('Database connection lost – attempting reconnect');
+                $this->createPdo();
+            }
         }
+
+        $this->lastUsedAt = $now;
 
         return $this->pdo;
     }
@@ -270,7 +290,8 @@ final class Connection
     private function createPdo(string $host = '', int $port = 0, string $dbName = ''): void
     {
         try {
-            $this->pdo = new PDO($this->dsn, $this->dbUser, $this->dbPassword, $this->pdoOptions);
+            $this->pdo        = new PDO($this->dsn, $this->dbUser, $this->dbPassword, $this->pdoOptions);
+            $this->lastUsedAt = microtime(true);
 
             $this->logger->info('Database connection established', [
                 'host'   => $host,

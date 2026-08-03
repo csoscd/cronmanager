@@ -102,10 +102,24 @@ $icon = static function (string $name): string {
 
     <!-- Theme IIFE: must run before any CSS paints to prevent flash -->
     <script>(function(){var s=localStorage.getItem('cm-theme'),p=window.matchMedia('(prefers-color-scheme:dark)').matches,t=s||(p?'dark':'light');document.documentElement.classList.add('theme-'+t);})();</script>
-    <script src="/assets/js/tailwind.min.js"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="/assets/css/brand.css">
+    <?php
+    // Cache-busting: assets change only with releases, so the web version is a
+    // stable fingerprint. Lets browsers cache aggressively yet pick up new
+    // assets immediately after a deployment.
+    $assetVer = rawurlencode((string) ($webVersion ?? ''));
+    ?>
+    <!-- Pre-built, purged Tailwind stylesheet (web/tailwind.config.js) –
+         replaces the former ~400 KB Play-CDN runtime compiler that re-scanned
+         the DOM and regenerated all CSS on every page load -->
+    <link rel="stylesheet" href="/assets/css/tailwind.css?v=<?= $assetVer ?>">
+    <link rel="stylesheet" href="/assets/css/brand.css?v=<?= $assetVer ?>">
+    <!-- cm-fetch.js defines cmFetch/cmPoll, which the pages' inline IIFEs call
+         during body parsing – it must therefore load synchronously BEFORE the
+         content (previously it sat at the end of the body, so every inline
+         cmPoll()/cmFetch() call threw a ReferenceError and the AJAX
+         auto-refresh silently never ran). At 4.7 KB from the same origin the
+         blocking cost is negligible. -->
+    <script src="/assets/js/cm-fetch.js?v=<?= $assetVer ?>"></script>
 </head>
 <body class="bg-gray-100">
 
@@ -404,7 +418,6 @@ function cmCloseSidebar() {
 
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') cmCloseSidebar(); });
 </script>
-<script src="/assets/js/cm-fetch.js"></script>
 
 </body>
 </html>

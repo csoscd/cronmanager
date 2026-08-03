@@ -228,6 +228,14 @@ final class ExecutionStartEndpoint
 
                 $skippedId = (int) $this->pdo->lastInsertId();
 
+                // Maintain the denormalised last-execution references (migration 018).
+                // The sentinel row is inserted already finished, so both columns move.
+                $this->pdo->prepare(
+                    'UPDATE cronjobs
+                        SET last_execution_id = :eid, last_finished_execution_id = :fid
+                      WHERE id = :id'
+                )->execute([':eid' => $skippedId, ':fid' => $skippedId, ':id' => $jobId]);
+
                 $this->logger->info('ExecutionStartEndpoint: job skipped – agent in maintenance window', [
                     'job_id'       => $jobId,
                     'execution_id' => $skippedId,
@@ -272,6 +280,14 @@ final class ExecutionStartEndpoint
                 ]);
 
                 $skippedId = (int) $this->pdo->lastInsertId();
+
+                // Maintain the denormalised last-execution references (migration 018).
+                // The sentinel row is inserted already finished, so both columns move.
+                $this->pdo->prepare(
+                    'UPDATE cronjobs
+                        SET last_execution_id = :eid, last_finished_execution_id = :fid
+                      WHERE id = :id'
+                )->execute([':eid' => $skippedId, ':fid' => $skippedId, ':id' => $jobId]);
 
                 $this->logger->info('ExecutionStartEndpoint: job skipped – target in maintenance window', [
                     'job_id'       => $jobId,
@@ -345,12 +361,15 @@ final class ExecutionStartEndpoint
 
             $executionId = (int) $this->pdo->lastInsertId();
 
-            // Reset silence alert dedup flag so the next silence-detection cycle
-            // does not re-fire immediately after the job recovers.
+            // Reset the silence-alert dedup flag (so the next silence-detection
+            // cycle does not re-fire after recovery) and maintain the
+            // denormalised last-execution reference (migration 018) in one
+            // statement.
             $this->pdo->prepare(
-                'UPDATE cronjobs SET last_silence_alert_at = NULL
-                  WHERE id = :id AND last_silence_alert_at IS NOT NULL'
-            )->execute([':id' => $jobId]);
+                'UPDATE cronjobs
+                    SET last_silence_alert_at = NULL, last_execution_id = :eid
+                  WHERE id = :id'
+            )->execute([':eid' => $executionId, ':id' => $jobId]);
 
             $this->logger->info('ExecutionStartEndpoint: execution started', [
                 'execution_id' => $executionId,

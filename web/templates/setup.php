@@ -40,9 +40,7 @@ if ($errorKey !== null && $errorKey !== '') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($t('setup_title'), ENT_QUOTES, 'UTF-8') ?> – <?= htmlspecialchars($t('app_name'), ENT_QUOTES, 'UTF-8') ?></title>
     <script>(function(){var s=localStorage.getItem('cm-theme'),p=window.matchMedia('(prefers-color-scheme:dark)').matches,t=s||(p?'dark':'light');document.documentElement.classList.add('theme-'+t);})();</script>
-    <script src="/assets/js/tailwind.min.js"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="/assets/css/tailwind.css">
     <link rel="stylesheet" href="/assets/css/brand.css">
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center px-4">

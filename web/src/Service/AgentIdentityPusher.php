@@ -13,7 +13,8 @@ declare(strict_types=1);
  * call, so there is no need to check for prior values.
  *
  * Call sites:
- *   - web/public/index.php   – once per PHP-FPM worker process at startup
+ *   - web/index.php             – periodic re-push, rate-limited via APCu
+ *                                 (at most once per hour; skipped without APCu)
  *   - AgentController::store()  – immediately after creating a new agent
  *   - AgentController::update() – immediately after updating an agent
  *   - AgentController::select() – immediately before the session redirect

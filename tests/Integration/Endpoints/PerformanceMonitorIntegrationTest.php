@@ -45,7 +45,15 @@ final class PerformanceMonitorIntegrationTest extends AgentEndpointTestCase
 
         // Seed two executions; the second is newer (higher ID / later started_at)
         $this->seedFinishedExecution($jobId, ['exit_code' => 0, 'started_at' => '2026-01-01 10:00:00', 'finished_at' => '2026-01-01 10:00:05']);
-        $this->seedFinishedExecution($jobId, ['exit_code' => 1, 'started_at' => '2026-06-01 12:00:00', 'finished_at' => '2026-06-01 12:00:05']);
+        $latest = $this->seedFinishedExecution($jobId, ['exit_code' => 1, 'started_at' => '2026-06-01 12:00:00', 'finished_at' => '2026-06-01 12:00:05']);
+
+        // Since v4.7.0 the list reads the denormalised reference columns
+        // (migration 018) instead of aggregating execution_log. Seeding rows
+        // directly bypasses the endpoints that maintain them, so set the
+        // references here exactly as the write path would.
+        $this->pdo->prepare(
+            'UPDATE cronjobs SET last_execution_id = :e, last_finished_execution_id = :f WHERE id = :id'
+        )->execute([':e' => $latest, ':f' => $latest, ':id' => $jobId]);
 
         $endpoint = new CronListEndpoint($this->pdo, $this->createNullLogger(), $this->makeCrontabManager());
         $endpoint->handle([]);

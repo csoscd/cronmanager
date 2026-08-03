@@ -129,6 +129,25 @@ final class MaintenanceLogsPruneEndpoint
         );
         $deletedLogs = (int) $logStmt->rowCount();
 
+        if ($deletedLogs > 0) {
+            // Re-derive the denormalised last-execution references (migration
+            // 018): an idle job's newest rows may have exceeded retention,
+            // leaving its references dangling. Runs only after actual pruning,
+            // never in the page-load path.
+            $this->pdo->exec(
+                'UPDATE cronjobs c
+                 LEFT JOIN (
+                     SELECT cronjob_id,
+                            MAX(id) AS max_id,
+                            MAX(CASE WHEN finished_at IS NOT NULL THEN id ELSE NULL END) AS max_finished_id
+                       FROM execution_log
+                      GROUP BY cronjob_id
+                 ) el ON el.cronjob_id = c.id
+                    SET c.last_execution_id          = el.max_id,
+                        c.last_finished_execution_id = el.max_finished_id'
+            );
+        }
+
         // Delete stale job_retry_state rows whose scheduled once-entry never fired.
         // Threshold: retry_delay_minutes + 60 minutes after scheduling.
         $retryStmt = $this->pdo->query(

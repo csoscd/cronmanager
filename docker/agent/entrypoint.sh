@@ -554,5 +554,14 @@ if [[ ! -f "$AGENT_PHP" ]]; then
     exit 1
 fi
 
-log_info "Starting Cronmanager agent on ${BIND_ADDRESS}:${PORT}"
-exec php -S "${BIND_ADDRESS}:${PORT}" "${AGENT_PHP}"
+# Concurrency: without PHP_CLI_SERVER_WORKERS the built-in server handles all
+# requests strictly serially – a single slow request (or a cron-wrapper call)
+# blocks every UI page load. Configurable via env, sane default of 8 workers.
+export PHP_CLI_SERVER_WORKERS="${PHP_CLI_SERVER_WORKERS:-8}"
+
+log_info "Starting Cronmanager agent on ${BIND_ADDRESS}:${PORT} (${PHP_CLI_SERVER_WORKERS} workers)"
+exec php \
+    -d opcache.enable=1 \
+    -d opcache.enable_cli=1 \
+    -d opcache.jit=off \
+    -S "${BIND_ADDRESS}:${PORT}" "${AGENT_PHP}"

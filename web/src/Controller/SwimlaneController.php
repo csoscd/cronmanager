@@ -112,8 +112,13 @@ class SwimlaneController extends BaseController
         $agent = $this->agentClient();
 
         try {
-            $jobsResponse = $agent->get('/crons');
-            $tagsResponse = $agent->get('/tags');
+            // One parallel batch instead of two sequential roundtrips
+            $results      = $agent->getMultiple([
+                'crons' => ['path' => '/crons'],
+                'tags'  => ['path' => '/tags'],
+            ]);
+            $jobsResponse = $results['crons'];
+            $tagsResponse = $results['tags'];
         } catch (\RuntimeException $e) {
             $this->logger->error('SwimlaneController::index: agent request failed', [
                 'message' => $e->getMessage(),

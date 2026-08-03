@@ -52,6 +52,9 @@ final class CrontabManager
     /** @var string Prefix for once-only marker comment lines (Run Now feature) */
     private const ONCE_MARKER_PREFIX = '# cronmanager-once:';
 
+    /** @var int Lifetime of the getManagedEntriesCached() temp-file cache */
+    private const CACHE_TTL_SECONDS = 60;
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -674,6 +677,58 @@ final class CrontabManager
     }
 
     /**
+     * Cached variant of getManagedEntries() for read-heavy callers.
+     *
+     * `crontab -u {user} -l` forks a shell plus a crontab process per call –
+     * on the job list page that meant one fork pair per Linux user on every
+     * page load, purely for the informational `crontab_ok` badge. The result
+     * is cached in a temp file for CACHE_TTL_SECONDS; every successful
+     * crontab write (writeCrontab) invalidates the affected user's cache, so
+     * UI-triggered changes are reflected immediately and only external edits
+     * (manual `crontab -e`) can lag by up to the TTL.
+     *
+     * @param string $user Linux user name.
+     *
+     * @return array<int, array<string, bool>> Map of jobId → [target → true].
+     *
+     * @throws InvalidArgumentException When $user contains disallowed characters.
+     */
+    public function getManagedEntriesCached(string $user): array
+    {
+        $this->validateUser($user);
+
+        $cacheFile = $this->managedCacheFile($user);
+        if (is_file($cacheFile) && (time() - (int) filemtime($cacheFile)) < self::CACHE_TTL_SECONDS) {
+            $raw = @file_get_contents($cacheFile);
+            if ($raw !== false) {
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) {
+                    /** @var array<int, array<string, bool>> $decoded */
+                    return $decoded;
+                }
+            }
+        }
+
+        $entries = $this->getManagedEntries($user);
+
+        @file_put_contents($cacheFile, json_encode($entries), LOCK_EX);
+
+        return $entries;
+    }
+
+    /**
+     * Build the cache file path for a user's managed-entry map.
+     *
+     * @param string $user Linux user name (already validated by the caller).
+     *
+     * @return string Absolute cache file path.
+     */
+    private function managedCacheFile(string $user): string
+    {
+        return sys_get_temp_dir() . '/cronmanager-crontab-' . md5($user) . '.json';
+    }
+
+    /**
      * Check whether a cronmanager-managed entry for the given job ID exists in
      * the given user's crontab.
      *
@@ -1031,6 +1086,10 @@ final class CrontabManager
                 )
             );
         }
+
+        // Invalidate the managed-entry cache so the next crontab_ok check
+        // reflects this write immediately (getManagedEntriesCached).
+        @unlink($this->managedCacheFile($user));
 
         $this->logger->debug('CrontabManager: crontab written successfully', [
             'user' => $user,

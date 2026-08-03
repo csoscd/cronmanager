@@ -101,12 +101,18 @@ class TimelineController extends BaseController
         if ($filterTo     !== '') { $query['to']     = $filterTo; }
 
         // ------------------------------------------------------------------
-        // Fetch data from the host agent
+        // Fetch data from the host agent (one parallel batch instead of
+        // three sequential roundtrips)
         // ------------------------------------------------------------------
         try {
-            $historyResponse = $agent->get('/history', $query);
-            $allTags         = $agent->get('/tags')['data']  ?? [];
-            $allJobs         = $agent->get('/crons')['data'] ?? [];
+            $results = $agent->getMultiple([
+                'history' => ['path' => '/history', 'query' => $query],
+                'tags'    => ['path' => '/tags'],
+                'crons'   => ['path' => '/crons'],
+            ]);
+            $historyResponse = $results['history'];
+            $allTags         = $results['tags']['data']  ?? [];
+            $allJobs         = $results['crons']['data'] ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('TimelineController::index: agent request failed', [
                 'message' => $e->getMessage(),

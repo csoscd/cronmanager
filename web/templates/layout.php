@@ -53,6 +53,12 @@ if ($user !== null) {
     };
 }
 
+// Agent-aware URL suffix (?agent_id=X) for sidebar navigation links.
+// Job IDs are only unique per agent, so links must carry the agent context
+// to avoid showing the wrong job when a URL is shared or session expires.
+$agentId  = isset($agentId)        && is_int($agentId)        ? $agentId        : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+
 // Returns the sidebar nav-item CSS classes for a given path
 $navClass = static function (string $path) use ($currentPath): string {
     $isActive = ($currentPath === $path)
@@ -120,7 +126,7 @@ $icon = static function (string $name): string {
 
         <!-- Logo / app name -->
         <div class="cm-sidebar-logo">
-            <a href="/dashboard" class="cm-sidebar-logo-link">
+            <a href="/dashboard<?= $agSuffix ?>" class="cm-sidebar-logo-link">
                 <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
                     <rect width="28" height="28" rx="8" fill="url(#cm-logo-grad)"/>
                     <defs>
@@ -178,7 +184,7 @@ $icon = static function (string $name): string {
                 <div class="cm-sidebar-group-label">
                     <?= htmlspecialchars($t('nav_section_overview'), ENT_QUOTES, 'UTF-8') ?>
                 </div>
-                <a href="/dashboard" class="<?= $navClass('/dashboard') ?>">
+                <a href="/dashboard<?= $agSuffix ?>" class="<?= $navClass('/dashboard') ?>">
                     <?= $icon('dashboard') ?>
                     <?= htmlspecialchars($t('nav_dashboard'), ENT_QUOTES, 'UTF-8') ?>
                 </a>
@@ -191,16 +197,16 @@ $icon = static function (string $name): string {
                 <div class="cm-sidebar-group-label">
                     <?= htmlspecialchars($t('nav_section_jobs'), ENT_QUOTES, 'UTF-8') ?>
                 </div>
-                <a href="/crons" class="<?= $navClass('/crons') ?>">
+                <a href="/crons<?= $agSuffix ?>" class="<?= $navClass('/crons') ?>">
                     <?= $icon('list') ?>
                     <?= htmlspecialchars($t('nav_crons'), ENT_QUOTES, 'UTF-8') ?>
                 </a>
                 <?php if (SessionManager::hasRole('admin')): ?>
-                    <a href="/crons/new" class="<?= $navClass('/crons/new') ?>">
+                    <a href="/crons/new<?= $agSuffix ?>" class="<?= $navClass('/crons/new') ?>">
                         <?= $icon('plus') ?>
                         <?= htmlspecialchars($t('nav_new_job'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
-                    <a href="/crons/import" class="<?= $navClass('/crons/import') ?>">
+                    <a href="/crons/import<?= $agSuffix ?>" class="<?= $navClass('/crons/import') ?>">
                         <?= $icon('import') ?>
                         <?= htmlspecialchars($t('nav_import'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
@@ -214,11 +220,11 @@ $icon = static function (string $name): string {
                 <div class="cm-sidebar-group-label">
                     <?= htmlspecialchars($t('nav_section_monitoring'), ENT_QUOTES, 'UTF-8') ?>
                 </div>
-                <a href="/timeline" class="<?= $navClass('/timeline') ?>">
+                <a href="/timeline<?= $agSuffix ?>" class="<?= $navClass('/timeline') ?>">
                     <?= $icon('calendar') ?>
                     <?= htmlspecialchars($t('nav_timeline'), ENT_QUOTES, 'UTF-8') ?>
                 </a>
-                <a href="/swimlane" class="<?= $navClass('/swimlane') ?>">
+                <a href="/swimlane<?= $agSuffix ?>" class="<?= $navClass('/swimlane') ?>">
                     <?= $icon('swimlane') ?>
                     <?= htmlspecialchars($t('nav_swimlane'), ENT_QUOTES, 'UTF-8') ?>
                 </a>
@@ -233,7 +239,7 @@ $icon = static function (string $name): string {
                     <div class="cm-sidebar-group-label">
                         <?= htmlspecialchars($t('nav_section_configuration'), ENT_QUOTES, 'UTF-8') ?>
                     </div>
-                    <a href="/maintenance" class="<?= $navClass('/maintenance') ?>">
+                    <a href="/maintenance<?= $agSuffix ?>" class="<?= $navClass('/maintenance') ?>">
                         <?= $icon('clock') ?>
                         <?= htmlspecialchars($t('nav_maintenance'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
@@ -254,7 +260,7 @@ $icon = static function (string $name): string {
                         <?= $icon('users') ?>
                         <?= htmlspecialchars($t('nav_users'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
-                    <a href="/audit" class="<?= $navClass('/audit') ?>">
+                    <a href="/audit<?= $agSuffix ?>" class="<?= $navClass('/audit') ?>">
                         <?= $icon('shield') ?>
                         <?= htmlspecialchars($t('nav_audit_log'), ENT_QUOTES, 'UTF-8') ?>
                     </a>
@@ -269,7 +275,7 @@ $icon = static function (string $name): string {
                 <div class="cm-sidebar-group-label">
                     <?= htmlspecialchars($t('nav_section_tools'), ENT_QUOTES, 'UTF-8') ?>
                 </div>
-                <a href="/export" class="<?= $navClass('/export') ?>">
+                <a href="/export<?= $agSuffix ?>" class="<?= $navClass('/export') ?>">
                     <?= $icon('export') ?>
                     <?= htmlspecialchars($t('nav_export'), ENT_QUOTES, 'UTF-8') ?>
                 </a>

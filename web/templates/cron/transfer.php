@@ -17,6 +17,9 @@ declare(strict_types=1);
  * @license GNU General Public License version 3 or later
  */
 
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
@@ -46,7 +49,7 @@ $firstDest   = $destAgents[0] ?? null;
             <span class="font-medium"><?= htmlspecialchars((string) ($sourceAgent['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?></span>
         </p>
     </div>
-    <a href="/crons"
+    <a href="/crons<?= $agSuffix ?>"
        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium
               border border-gray-300 dark:border-gray-600
               text-gray-700 dark:text-gray-300
@@ -205,7 +208,7 @@ $firstDest   = $destAgents[0] ?? null;
 
     <!-- Action buttons -->
     <div class="flex items-center justify-end gap-3">
-        <a href="/crons"
+        <a href="/crons<?= $agSuffix ?>"
            class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600
                   text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
             <?= htmlspecialchars($t('cancel'), ENT_QUOTES, 'UTF-8') ?>

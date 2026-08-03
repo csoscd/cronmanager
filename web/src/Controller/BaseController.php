@@ -112,6 +112,10 @@ abstract class BaseController
         } catch (\Throwable) {
             $data['selectedAgent'] = null;
         }
+        // Convenience shortcut: $agentId is used by templates to append
+        // ?agent_id=X to links so that shared URLs and notification links
+        // always open in the correct agent context (job IDs are per-agent).
+        $data['agentId'] = (int) ($data['selectedAgent']['id'] ?? 0);
         try {
             $pdo = Connection::getInstance()->getPdo();
             $data['enabledAgents'] = (new AgentRepository($pdo))->findEnabled();
@@ -371,6 +375,33 @@ abstract class BaseController
             sslVerify:   (bool)   ($agent['ssl_verify']   ?? true),
             sslCaBundle: (string) ($agent['ssl_ca_bundle'] ?? ''),
         );
+    }
+
+    /**
+     * Build an agent-aware path for redirects.
+     *
+     * Appends ?agent_id=X (or &agent_id=X) to $path so that after a redirect
+     * the browser URL carries the agent context explicitly — necessary when
+     * job IDs are only unique per agent (not globally).
+     *
+     * @param string $path Relative URL path (may already contain query string).
+     *
+     * @return string Path with agent_id appended, or original path when no agent selected.
+     */
+    protected function agentPath(string $path): string
+    {
+        try {
+            $agentId = (int) ($this->selectedAgent()['id'] ?? 0);
+        } catch (\Throwable) {
+            $agentId = 0;
+        }
+
+        if ($agentId <= 0) {
+            return $path;
+        }
+
+        $sep = str_contains($path, '?') ? '&' : '?';
+        return $path . $sep . 'agent_id=' . $agentId;
     }
 
     /**

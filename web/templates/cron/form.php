@@ -18,6 +18,9 @@ declare(strict_types=1);
  * @license GNU General Public License version 3 or later
  */
 
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
@@ -614,7 +617,7 @@ foreach ($tags as $tag) {
                                focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                     <?= htmlspecialchars($isEdit ? $t('save') : $t('cron_add'), ENT_QUOTES, 'UTF-8') ?>
                 </button>
-                <a href="/crons"
+                <a href="/crons<?= $agSuffix ?>"
                    class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 underline">
                     <?= htmlspecialchars($t('cancel'), ENT_QUOTES, 'UTF-8') ?>
                 </a>

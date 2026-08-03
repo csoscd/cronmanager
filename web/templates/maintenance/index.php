@@ -23,6 +23,9 @@ declare(strict_types=1);
  * @license GNU General Public License version 3 or later
  */
 
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 ?>
@@ -262,7 +265,7 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
                                     #<?= $execId ?>
                                 </td>
                                 <td class="px-3 py-2">
-                                    <a href="/crons/<?= $jobId ?>"
+                                    <a href="/crons/<?= $jobId ?><?= $agSuffix ?>"
                                        class="font-medium hover:underline" style="color:var(--cm-primary)">
                                         <?= htmlspecialchars((string) ($exec['description'] ?? '—'), ENT_QUOTES, 'UTF-8') ?>
                                     </a>

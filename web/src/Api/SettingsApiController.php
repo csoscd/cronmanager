@@ -65,7 +65,7 @@ final class SettingsApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk($response);
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $response));
     }
 
     /**
@@ -108,7 +108,8 @@ final class SettingsApiController extends BaseApiController
         }
 
         $sectionData = $response[$section] ?? [];
-        $this->jsonOk(is_array($sectionData) ? $sectionData : []);
+        $payload     = is_array($sectionData) ? $sectionData : [];
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $payload));
     }
 
     /**
@@ -156,7 +157,8 @@ final class SettingsApiController extends BaseApiController
         }
 
         $sectionData = $response[$section] ?? $body;
-        $this->jsonOk(is_array($sectionData) ? $sectionData : $body);
+        $payload     = is_array($sectionData) ? $sectionData : $body;
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $payload));
     }
 
     /**
@@ -187,6 +189,6 @@ final class SettingsApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk(['success' => true, 'message' => 'Crontab resynced.']);
+        $this->jsonOk(['agent_id' => $this->resolvedAgentId, 'success' => true, 'message' => 'Crontab resynced.']);
     }
 }

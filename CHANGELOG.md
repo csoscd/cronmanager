@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.6.1] – branch: `feature/agent-web-identity`
+
+### Added
+
+- **`agent_id` in allen API-Antworten**: Jeder agent-spezifische Endpunkt enthält `"agent_id"` als
+  erstes Feld in seiner Antwort (Jobs, Maintenance Windows, Export/JSON, Audit, Settings, Timeline,
+  Tags). Im Multi-Agent-Betrieb sind Job-IDs nur pro Agent eindeutig; das neue Feld verhindert
+  Ambiguitäten beim programmatischen Auswerten von Responses.
+
+### Fixed
+
+- **UI-Links tragen `?agent_id=X`**: Alle internen Links (Sidebar-Navigation, Breadcrumbs,
+  Paginierung, Filter-Reset, Job-Detail, Monitor, Edit, Kopieren, Import, Export, Audit, Timeline,
+  Maintenance-Windows, Dashboard-Filter) enthalten jetzt `?agent_id=X`, wenn ein Agent aktiv ist.
+  Zuvor fehlte der Parameter, sodass geteilte Links oder E-Mail-/Telegram-Benachrichtigungen
+  nach dem Login beim falschen Agent landeten.
+- **Weiterleitungen nach POST-Aktionen**: Alle Controller-Redirects nach Formulareingaben
+  (`store`, `update`, `destroy`, `bulkAction`, `executeNow`, `importStore`) nutzen
+  `agentPath()` und erhalten `?agent_id=X`.
+
+---
+
 ## [4.6.0] – branch: `feature/agent-web-identity`
 
 ### Added

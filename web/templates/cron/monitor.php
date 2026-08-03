@@ -26,6 +26,9 @@ declare(strict_types=1);
  * @license GNU General Public License version 3 or later
  */
 
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
@@ -79,7 +82,7 @@ if ($successRate !== null) {
      Breadcrumb
      ====================================================================== -->
 <div class="mb-4">
-    <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>"
+    <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
        class="inline-flex items-center text-sm text-blue-600 hover:underline">
         &larr; <?= htmlspecialchars($desc, ENT_QUOTES, 'UTF-8') ?>
     </a>

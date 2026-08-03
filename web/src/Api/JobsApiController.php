@@ -79,7 +79,7 @@ final class JobsApiController extends BaseApiController
 
         $page = array_slice((array) $all, $offset, $limit);
 
-        $this->jsonOk($this->paginated($page, $total, $limit, $offset));
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $this->paginated($page, $total, $limit, $offset)));
     }
 
     /**
@@ -115,7 +115,7 @@ final class JobsApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk($response);
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $response));
     }
 
     /**
@@ -149,7 +149,7 @@ final class JobsApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk($response, 201);
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $response), 201);
     }
 
     /**
@@ -190,7 +190,7 @@ final class JobsApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk($response);
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $response));
     }
 
     /**
@@ -226,7 +226,7 @@ final class JobsApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk(['success' => true]);
+        $this->jsonOk(['agent_id' => $this->resolvedAgentId, 'success' => true]);
     }
 
     /**
@@ -262,7 +262,7 @@ final class JobsApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk(['success' => true, 'message' => 'Job queued for immediate execution.']);
+        $this->jsonOk(['agent_id' => $this->resolvedAgentId, 'success' => true, 'message' => 'Job queued for immediate execution.']);
     }
 
     /**
@@ -298,7 +298,7 @@ final class JobsApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk(['success' => true]);
+        $this->jsonOk(['agent_id' => $this->resolvedAgentId, 'success' => true]);
     }
 
     /**
@@ -346,7 +346,7 @@ final class JobsApiController extends BaseApiController
         $data  = $response['data']  ?? $response;
         $count = $response['count'] ?? count((array) $data);
 
-        $this->jsonOk($this->paginated((array) $data, (int) $count, $limit, $offset));
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $this->paginated((array) $data, (int) $count, $limit, $offset)));
     }
 
     /**
@@ -378,7 +378,7 @@ final class JobsApiController extends BaseApiController
         $data  = $response['data']  ?? $response;
         $count = is_array($data) ? count($data) : 0;
 
-        $this->jsonOk(['data' => $data, 'count' => $count]);
+        $this->jsonOk(['agent_id' => $this->resolvedAgentId, 'data' => $data, 'count' => $count]);
     }
 
     /**
@@ -427,6 +427,6 @@ final class JobsApiController extends BaseApiController
         $data  = $response['data']  ?? $response;
         $count = $response['count'] ?? count((array) $data);
 
-        $this->jsonOk($this->paginated((array) $data, (int) $count, $limit, $offset));
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $this->paginated((array) $data, (int) $count, $limit, $offset)));
     }
 }

@@ -21,6 +21,9 @@ declare(strict_types=1);
  * @license GNU General Public License version 3 or later
  */
 
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
@@ -46,7 +49,7 @@ if ($flashSuccess !== null) {
     <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">
         <?= htmlspecialchars($t('import_title'), ENT_QUOTES, 'UTF-8') ?>
     </h1>
-    <a href="/crons"
+    <a href="/crons<?= $agSuffix ?>"
        class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline">
         &larr; <?= htmlspecialchars($t('import_back'), ENT_QUOTES, 'UTF-8') ?>
     </a>

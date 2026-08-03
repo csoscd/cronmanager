@@ -26,6 +26,9 @@ $h = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
 $byTarget = isset($byTarget) && is_array($byTarget) ? $byTarget : [];
 $isAdmin  = isset($isAdmin) && (bool) $isAdmin;
 
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+
 /** @var string $csrf_token */
 
 $agentTarget = '_agent_';
@@ -106,7 +109,7 @@ $agentTarget = '_agent_';
                                 <span class="ssh-test-result-<?= $h($targetName) ?> text-xs hidden"></span>
                             </div>
                         <?php endif; ?>
-                        <a href="/maintenance/<?= rawurlencode($targetName) ?>/windows/new"
+                        <a href="/maintenance/<?= rawurlencode($targetName) ?>/windows/new<?= $agSuffix ?>"
                            class="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 transition-colors">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -182,7 +185,7 @@ $agentTarget = '_agent_';
                                     <?php if ($isAdmin): ?>
                                         <td class="px-4 py-3 text-right whitespace-nowrap">
                                             <div class="inline-flex items-center gap-2">
-                                                <a href="/maintenance/windows/<?= (int) ($window['id'] ?? 0) ?>/edit"
+                                                <a href="/maintenance/windows/<?= (int) ($window['id'] ?? 0) ?>/edit<?= $agSuffix ?>"
                                                    class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
                                                     <?= $h($t('targets_window_edit')) ?>
                                                 </a>

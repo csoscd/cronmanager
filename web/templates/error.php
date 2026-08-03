@@ -21,6 +21,9 @@ $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
 $errorCode    = isset($errorCode)    ? (int)    $errorCode    : 500;
 $errorMessage = isset($errorMessage) ? (string) $errorMessage : $t('error_500');
+
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
 ?>
 
 <div class="flex flex-col items-center justify-center py-24 px-4 text-center">
@@ -37,7 +40,7 @@ $errorMessage = isset($errorMessage) ? (string) $errorMessage : $t('error_500');
         </p>
 
         <!-- Back link -->
-        <a href="/dashboard"
+        <a href="/dashboard<?= $agSuffix ?>"
            class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium
                   px-6 py-2.5 rounded-lg text-sm transition focus:outline-none
                   focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">

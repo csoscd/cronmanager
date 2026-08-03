@@ -67,7 +67,7 @@ final class MaintenanceApiController extends BaseApiController
         $data  = $response['data'] ?? $response;
         $count = is_array($data) ? count($data) : 0;
 
-        $this->jsonOk(['data' => $data, 'count' => $count]);
+        $this->jsonOk(['agent_id' => $this->resolvedAgentId, 'data' => $data, 'count' => $count]);
     }
 
     /**
@@ -103,7 +103,7 @@ final class MaintenanceApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk($response);
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $response));
     }
 
     /**
@@ -137,7 +137,7 @@ final class MaintenanceApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk($response, 201);
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $response), 201);
     }
 
     /**
@@ -178,7 +178,7 @@ final class MaintenanceApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk($response);
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $response));
     }
 
     /**
@@ -214,6 +214,6 @@ final class MaintenanceApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk(['success' => true]);
+        $this->jsonOk(['agent_id' => $this->resolvedAgentId, 'success' => true]);
     }
 }

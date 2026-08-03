@@ -39,9 +39,13 @@ $dateTo       = isset($dateTo)       ? (string) $dateTo    : '';
 $showFrom = $total === 0 ? 0 : ($page - 1) * $pageSize + 1;
 $showTo   = min($page * $pageSize, $total);
 
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+
 /** Build a pagination URL preserving current filters. */
-$pageUrl = static function (int $targetPage) use ($username, $actionPrefix, $dateFrom, $dateTo, $pageSize): string {
+$pageUrl = static function (int $targetPage) use ($username, $actionPrefix, $dateFrom, $dateTo, $pageSize, $agentId): string {
     return '/audit?' . http_build_query(array_filter([
+        'agent_id'      => $agentId > 0 ? (string) $agentId : '',
         'page'          => (string) $targetPage,
         'username'      => $username,
         'action_prefix' => $actionPrefix,
@@ -121,7 +125,7 @@ $actionBadge = static function (string $action): string {
             <?= $h($t('audit_apply_filter')) ?>
         </button>
         <?php if ($username !== '' || $actionPrefix !== '' || $dateFrom !== '' || $dateTo !== ''): ?>
-            <a href="/audit"
+            <a href="/audit<?= $agSuffix ?>"
                class="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600
                       text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg transition">
                 <?= $h($t('audit_reset_filter')) ?>

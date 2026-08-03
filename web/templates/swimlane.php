@@ -31,6 +31,9 @@ use Cronmanager\Web\I18n\Translator;
 $t  = static fn(string $k, array $r = []): string =>
     htmlspecialchars($translator->t($k, $r), ENT_QUOTES, 'UTF-8');
 
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+
 // Ensure variables are defined even when template is included standalone
 $swimlaneJobsJson = isset($swimlaneJobsJson) ? (string) $swimlaneJobsJson : '[]';
 $tags             = isset($tags)             ? (array)  $tags             : [];

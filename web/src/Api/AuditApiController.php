@@ -77,6 +77,6 @@ final class AuditApiController extends BaseApiController
             return;
         }
 
-        $this->jsonOk($response);
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $response));
     }
 }

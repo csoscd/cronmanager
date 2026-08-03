@@ -35,12 +35,15 @@ $active      = !isset($window['active']) || (bool) $window['active'];
 $isAgentTarget  = ($target === '_agent_');
 $displayTarget  = $isAgentTarget ? $t('maintenance_agent_target_name') : $target;
 
+$agentId  = isset($agentId) ? (int) $agentId : 0;
+$agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
+
 /** @var string $csrf_token */
 ?>
 
 <!-- Breadcrumb -->
 <nav class="mb-4 text-sm text-gray-500 dark:text-gray-400">
-    <a href="/maintenance" class="hover:text-gray-700 dark:hover:text-gray-200">
+    <a href="/maintenance<?= $agSuffix ?>" class="hover:text-gray-700 dark:hover:text-gray-200">
         <?= $h($t('nav_maintenance')) ?>
     </a>
     <span class="mx-2">›</span>
@@ -148,7 +151,7 @@ $displayTarget  = $isAgentTarget ? $t('maintenance_agent_target_name') : $target
                     class="inline-flex items-center px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors">
                 <?= $h($t('targets_window_form_save')) ?>
             </button>
-            <a href="/maintenance"
+            <a href="/maintenance<?= $agSuffix ?>"
                class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
                 <?= $h($t('targets_window_form_cancel')) ?>
             </a>

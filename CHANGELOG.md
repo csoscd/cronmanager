@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.8.0] – branch: `feature/api-targets-endpoint`
+
+### Added
+
+- **REST API – `GET /api/v1/targets`**: Neuer Endpunkt, der alle eindeutigen
+  Ausführungsziele (Targets) zurückgibt, die über alle konfigurierten Jobs verteilt sind.
+  Liest aus der `job_targets`-Tabelle, gruppiert nach Target-Name und liefert je Target
+  einen `job_count`. Optionaler Query-Parameter `?active=1` (bzw. `?active=0`) schränkt
+  das Ergebnis auf Targets aktiver bzw. inaktiver Jobs ein. Erfordert den API-Key-Scope
+  `jobs:read`. Response: `{"agent_id": N, "data": [{"target": "local", "job_count": 5},
+  ...], "count": N}`.
+  - Agent: `GET /targets` → `TargetsEndpoint`
+  - Web: `GET /api/v1/targets` → `JobsApiController::targets()`
+
+---
+
 ## [4.7.0] – branch: `feature/performance-optimisation`
 
 ### Fixed

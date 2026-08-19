@@ -17,6 +17,7 @@ declare(strict_types=1);
  *   POST   /api/v1/executions/{id}/kill  jobs:execute
  *   GET    /api/v1/jobs/{id}/history     jobs:read
  *   GET    /api/v1/tags                  jobs:read
+ *   GET    /api/v1/targets               jobs:read
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
  * @license GNU General Public License version 3 or later
@@ -371,6 +372,42 @@ final class JobsApiController extends BaseApiController
         }
 
         $response = $this->agentGet($agent, '/tags');
+        if ($response === null) {
+            return;
+        }
+
+        $data  = $response['data']  ?? $response;
+        $count = is_array($data) ? count($data) : 0;
+
+        $this->jsonOk(['agent_id' => $this->resolvedAgentId, 'data' => $data, 'count' => $count]);
+    }
+
+    /**
+     * GET /api/v1/targets
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function targets(array $params): void
+    {
+        $pdo    = Connection::getInstance()->getPdo();
+        $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_READ);
+
+        if ($apiKey === null) {
+            return;
+        }
+
+        $agent = $this->agentClient($apiKey);
+        if ($agent === null) {
+            return;
+        }
+
+        $query = array_filter([
+            'active' => isset($_GET['active']) ? (string) (int) $_GET['active'] : null,
+        ], fn($v) => $v !== null);
+
+        $response = $this->agentGet($agent, '/targets', $query);
         if ($response === null) {
             return;
         }

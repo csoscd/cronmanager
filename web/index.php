@@ -200,6 +200,7 @@ try {
         $apiRouter->addPublicRoute('GET',    '/api/v1/jobs/{id}',              [$jobsApi, 'show']);
         $apiRouter->addPublicRoute('GET',    '/api/v1/jobs/{id}/history',      [$jobsApi, 'history']);
         $apiRouter->addPublicRoute('GET',    '/api/v1/tags',                   [$jobsApi, 'tags']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/targets',                [$jobsApi, 'targets']);
         $apiRouter->addPublicRoute('GET',    '/api/v1/timeline',               [$jobsApi, 'timeline']);
         // Jobs – write
         $apiRouter->addPublicRoute('POST',   '/api/v1/jobs',                   [$jobsApi, 'store']);

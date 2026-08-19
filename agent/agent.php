@@ -307,6 +307,11 @@ try {
     $router->addRoute('POST',   '/tags',        [$tagCreate, 'handle']);
     $router->addRoute('DELETE', '/tags/{id}',   [$tagDelete, 'handle']);
 
+    // -- Targets --------------------------------------------------------------
+
+    $targetsEndpoint = new \Cronmanager\Agent\Endpoints\TargetsEndpoint($pdo, $logger);
+    $router->addRoute('GET', '/targets', [$targetsEndpoint, 'handle']);
+
     // -- SSH Hosts ------------------------------------------------------------
 
     $sshHosts        = new \Cronmanager\Agent\Endpoints\SshHostsEndpoint($logger);

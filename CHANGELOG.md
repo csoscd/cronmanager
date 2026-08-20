@@ -20,6 +20,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Agent: `GET /targets` → `TargetsEndpoint`
   - Web: `GET /api/v1/targets` → `JobsApiController::targets()`
 
+- **REST API – Maintenance-Operationen** (drei neue Endpunkte, Scope `maintenance:write`):
+  - `POST /api/v1/maintenance/logs/purge`: Löscht abgeschlossene `execution_log`-Einträge
+    gemäß der konfigurierten Retention-Richtlinie. Entspricht "Logs jetzt bereinigen" in der
+    Web-UI. Response: `deleted_logs`, `deleted_retry_state`, `message`.
+  - `POST /api/v1/maintenance/history/cleanup`: Löscht abgeschlossene History-Einträge
+    älter als `older_than_days` Tage (Body-Parameter, optional, Default 90, muss ≥ 1 sein).
+    Laufende Ausführungen werden nie gelöscht. Response: `deleted`, `older_than_days`,
+    `message`.
+  - `POST /api/v1/maintenance/once/cleanup`: Entfernt veraltete "cronmanager-once"-Crontab-
+    Einträge, die von Run-Now-Jobs hinterlassen wurden. Response: `removed`,
+    `users_affected`, `message`.
+  - Web: drei neue Methoden in `MaintenanceApiController`; drei neue Routen in `index.php`
+  - Integrationstests: `tests/Integration/Web/MaintenanceApiControllerTest.php`
+
 ---
 
 ## [4.7.0] – branch: `feature/performance-optimisation`

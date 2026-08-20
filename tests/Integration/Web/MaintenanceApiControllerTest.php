@@ -300,32 +300,34 @@ final class MaintenanceApiControllerTest extends IntegrationTestCase
     // =========================================================================
 
     #[Test]
-    public function purgeLogsReturns404WhenKeyRestrictedToNonExistentAgent(): void
+    public function purgeLogsReturns403WhenKeyNotPermittedForSelectedAgent(): void
     {
+        // Key restricted to agent 99999; the seeded agent gets a different ID.
+        // agentClient() picks the first enabled agent then checks isAgentAllowed() → 403.
         $this->seedAgent();
         $result = $this->seedKey(agentIds: [99999]);
         $r      = $this->call('purgeLogs', $result['plainText']);
 
-        $this->assertSame(404, $r['status']);
+        $this->assertSame(403, $r['status']);
     }
 
     #[Test]
-    public function historyCleanupReturns404WhenKeyRestrictedToNonExistentAgent(): void
+    public function historyCleanupReturns403WhenKeyNotPermittedForSelectedAgent(): void
     {
         $this->seedAgent();
         $result = $this->seedKey(agentIds: [99999]);
         $r      = $this->call('historyCleanup', $result['plainText']);
 
-        $this->assertSame(404, $r['status']);
+        $this->assertSame(403, $r['status']);
     }
 
     #[Test]
-    public function onceCleanupReturns404WhenKeyRestrictedToNonExistentAgent(): void
+    public function onceCleanupReturns403WhenKeyNotPermittedForSelectedAgent(): void
     {
         $this->seedAgent();
         $result = $this->seedKey(agentIds: [99999]);
         $r      = $this->call('onceCleanup', $result['plainText']);
 
-        $this->assertSame(404, $r['status']);
+        $this->assertSame(403, $r['status']);
     }
 }

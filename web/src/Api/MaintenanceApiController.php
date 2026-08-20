@@ -233,8 +233,7 @@ final class MaintenanceApiController extends BaseApiController
      */
     public function purgeLogs(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
-        $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_MAINTENANCE_WRITE);
+        $apiKey = (new ApiKeyMiddleware($this->pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_MAINTENANCE_WRITE);
 
         if ($apiKey === null) {
             return;
@@ -273,8 +272,7 @@ final class MaintenanceApiController extends BaseApiController
      */
     public function historyCleanup(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
-        $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_MAINTENANCE_WRITE);
+        $apiKey = (new ApiKeyMiddleware($this->pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_MAINTENANCE_WRITE);
 
         if ($apiKey === null) {
             return;
@@ -328,8 +326,7 @@ final class MaintenanceApiController extends BaseApiController
      */
     public function onceCleanup(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
-        $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_MAINTENANCE_WRITE);
+        $apiKey = (new ApiKeyMiddleware($this->pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_MAINTENANCE_WRITE);
 
         if ($apiKey === null) {
             return;

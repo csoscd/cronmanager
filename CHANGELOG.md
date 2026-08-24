@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.8.1] – branch: `fix/linux-users-uid-filter`
+
+### Fixed
+
+- **`GET /linux-users` – UID-Filter entfernt**: Der Endpunkt zeigte bisher nur
+  `root` (UID 0) und Benutzer mit UID ≥ 1000 an. Service-Accounts mit UIDs
+  zwischen 1 und 999 (z. B. `www-data`, `postgres`, `fwupd-refresh`) wurden
+  ausgeblendet, obwohl für sie gültige Crontab-Einträge angelegt werden können.
+  Jetzt werden alle Benutzer aus `/etc/passwd` mit einem gültigen Username
+  zurückgegeben.
+
+---
+
 ## [4.8.0] – branch: `feature/api-targets-endpoint`
 
 ### Added

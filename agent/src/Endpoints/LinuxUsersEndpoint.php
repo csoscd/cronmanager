@@ -8,8 +8,8 @@ declare(strict_types=1);
  * Handles GET /linux-users requests.
  *
  * Returns a deduplicated, sorted list of all valid Linux users found in
- * /etc/passwd (root plus users with UID >= 1000), together with a flag
- * indicating whether the agent is running inside a Docker container.
+ * /etc/passwd, together with a flag indicating whether the agent is running
+ * inside a Docker container.
  *
  * The docker_mode flag lets the web UI decide how to present the linux_user
  * field: hidden with a fixed "root" value in Docker mode, or a dropdown list
@@ -60,8 +60,8 @@ final class LinuxUsersEndpoint
     /**
      * Handle an incoming GET /linux-users request.
      *
-     * Reads /etc/passwd to find all candidate users (root + UID >= 1000) and
-     * detects Docker mode by checking for the presence of /.dockerenv.
+     * Reads /etc/passwd to find all users with a valid username and detects
+     * Docker mode by checking for the presence of /.dockerenv.
      *
      * @param array<string, string> $params Path parameters (unused).
      *
@@ -97,12 +97,6 @@ final class LinuxUsersEndpoint
             }
 
             $username = $fields[0];
-            $uid      = (int) $fields[2];
-
-            // Only root (UID 0) and normal users (UID >= 1000)
-            if ($uid !== 0 && $uid < 1000) {
-                continue;
-            }
 
             // Skip malformed or unsafe usernames
             if (!preg_match('/^[a-zA-Z0-9_-]+$/', $username)) {

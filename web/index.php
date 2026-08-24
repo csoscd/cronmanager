@@ -200,6 +200,8 @@ try {
         $apiRouter->addPublicRoute('GET',    '/api/v1/jobs/{id}',              [$jobsApi, 'show']);
         $apiRouter->addPublicRoute('GET',    '/api/v1/jobs/{id}/history',      [$jobsApi, 'history']);
         $apiRouter->addPublicRoute('GET',    '/api/v1/tags',                   [$jobsApi, 'tags']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/targets',                [$jobsApi, 'targets']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/linux-users',            [$jobsApi, 'linuxUsers']);
         $apiRouter->addPublicRoute('GET',    '/api/v1/timeline',               [$jobsApi, 'timeline']);
         // Jobs – write
         $apiRouter->addPublicRoute('POST',   '/api/v1/jobs',                   [$jobsApi, 'store']);
@@ -215,11 +217,15 @@ try {
         // Maintenance windows – resync must be registered before /{section}
         $apiRouter->addPublicRoute('POST',   '/api/v1/settings/resync',        [$settingsApi, 'resync']);
         // Maintenance windows
-        $apiRouter->addPublicRoute('GET',    '/api/v1/maintenance/windows',     [$maintenanceApi, 'index']);
-        $apiRouter->addPublicRoute('GET',    '/api/v1/maintenance/windows/{id}',[$maintenanceApi, 'show']);
-        $apiRouter->addPublicRoute('POST',   '/api/v1/maintenance/windows',     [$maintenanceApi, 'store']);
-        $apiRouter->addPublicRoute('PUT',    '/api/v1/maintenance/windows/{id}',[$maintenanceApi, 'update']);
-        $apiRouter->addPublicRoute('DELETE', '/api/v1/maintenance/windows/{id}',[$maintenanceApi, 'destroy']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/maintenance/windows',          [$maintenanceApi, 'index']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/maintenance/windows/{id}',     [$maintenanceApi, 'show']);
+        $apiRouter->addPublicRoute('POST',   '/api/v1/maintenance/windows',          [$maintenanceApi, 'store']);
+        $apiRouter->addPublicRoute('PUT',    '/api/v1/maintenance/windows/{id}',     [$maintenanceApi, 'update']);
+        $apiRouter->addPublicRoute('DELETE', '/api/v1/maintenance/windows/{id}',     [$maintenanceApi, 'destroy']);
+        // Maintenance operations (must come before any {id}-style routes)
+        $apiRouter->addPublicRoute('POST',   '/api/v1/maintenance/logs/purge',       [$maintenanceApi, 'purgeLogs']);
+        $apiRouter->addPublicRoute('POST',   '/api/v1/maintenance/history/cleanup',  [$maintenanceApi, 'historyCleanup']);
+        $apiRouter->addPublicRoute('POST',   '/api/v1/maintenance/once/cleanup',     [$maintenanceApi, 'onceCleanup']);
 
         // Settings – {section} must come after /settings/resync
         $apiRouter->addPublicRoute('GET',    '/api/v1/settings',               [$settingsApi, 'index']);

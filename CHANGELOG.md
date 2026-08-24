@@ -6,6 +6,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [4.8.0] – branch: `feature/api-targets-endpoint`
+
+### Added
+
+- **REST API – `GET /api/v1/linux-users`**: Neuer Endpunkt, der die auf dem
+  jeweiligen Agent-Host verfügbaren Linux-Benutzer für die Crontab-Verwaltung
+  auflistet. Gibt zusätzlich `docker_mode: true/false` zurück, damit Clients
+  erkennen können, ob der Agent in einem Docker-Container läuft (in dem Fall
+  ist nur `root` ein gültiger Benutzer). Docker-Erkennung erfolgt über das
+  Vorhandensein von `/.dockerenv`. Erfordert den API-Key-Scope `jobs:read`.
+  Response: `{"agent_id": N, "docker_mode": bool, "data": ["root", ...], "count": N}`.
+  - Agent: `GET /linux-users` → `LinuxUsersEndpoint`
+  - Web: `GET /api/v1/linux-users` → `JobsApiController::linuxUsers()`
+
+- **UI – Linux-Benutzer-Feld im Job-Formular**: Das Freitext-Feld `linux_user`
+  wurde in ein `<select>`-Dropdown umgewandelt, das mit der Liste aus
+  `GET /linux-users` befüllt wird. Im Docker-Modus (`docker_mode: true`) wird
+  das Feld ausgeblendet und `root` als versteckter Wert übermittelt. Falls ein
+  bereits gespeicherter Job einen Benutzer referenziert, der nicht mehr auf dem
+  Agent-Host existiert, wird dieser als erste Option vorbelegt und eine Warnung
+  eingeblendet.
+
+- **UI – SSH-Hosts im Job-Formular entkoppelt von `linux_user`**: Die
+  SSH-Host-Checkboxen werden jetzt immer serverseitig aus `GET /import/ssh-targets`
+  gerendert (agent-weite Liste) statt abhängig vom eingegebenen Linux-Benutzer
+  per JavaScript nachgeladen. SSH-Konnektivität ist eine Eigenschaft des Agents,
+  nicht eines Benutzers. Behebt einen Bug, bei dem neue Installationen ohne
+  bestehende Jobs keine SSH-Hosts im Formular anzeigten.
+
+- **REST API – `GET /api/v1/targets`**: Neuer Endpunkt, der alle eindeutigen
+  Ausführungsziele (Targets) zurückgibt, die über alle konfigurierten Jobs verteilt sind.
+  Liest aus der `job_targets`-Tabelle, gruppiert nach Target-Name und liefert je Target
+  einen `job_count`. Optionaler Query-Parameter `?active=1` (bzw. `?active=0`) schränkt
+  das Ergebnis auf Targets aktiver bzw. inaktiver Jobs ein. Erfordert den API-Key-Scope
+  `jobs:read`. Response: `{"agent_id": N, "data": [{"target": "local", "job_count": 5},
+  ...], "count": N}`.
+  - Agent: `GET /targets` → `TargetsEndpoint`
+  - Web: `GET /api/v1/targets` → `JobsApiController::targets()`
+
+- **REST API – Maintenance-Operationen** (drei neue Endpunkte, Scope `maintenance:write`):
+  - `POST /api/v1/maintenance/logs/purge`: Löscht abgeschlossene `execution_log`-Einträge
+    gemäß der konfigurierten Retention-Richtlinie. Entspricht "Logs jetzt bereinigen" in der
+    Web-UI. Response: `deleted_logs`, `deleted_retry_state`, `message`.
+  - `POST /api/v1/maintenance/history/cleanup`: Löscht abgeschlossene History-Einträge
+    älter als `older_than_days` Tage (Body-Parameter, optional, Default 90, muss ≥ 1 sein).
+    Laufende Ausführungen werden nie gelöscht. Response: `deleted`, `older_than_days`,
+    `message`.
+  - `POST /api/v1/maintenance/once/cleanup`: Entfernt veraltete "cronmanager-once"-Crontab-
+    Einträge, die von Run-Now-Jobs hinterlassen wurden. Response: `removed`,
+    `users_affected`, `message`.
+  - Web: drei neue Methoden in `MaintenanceApiController`; drei neue Routen in `index.php`
+  - Integrationstests: `tests/Integration/Web/MaintenanceApiControllerTest.php`
+
+---
+
 ## [4.7.0] – branch: `feature/performance-optimisation`
 
 ### Fixed

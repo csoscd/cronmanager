@@ -285,22 +285,21 @@ class CronController extends BaseController
         }
 
         // ------------------------------------------------------------------
+        // Load linux users and global SSH hosts from the agent
+        // ------------------------------------------------------------------
+        [$linuxUsers, $dockerMode, $sshHosts] = $this->fetchLinuxUsersAndSshHosts();
+
+        // ------------------------------------------------------------------
         // Copy mode: pre-fill form from an existing job when ?copy_from is set
         // ------------------------------------------------------------------
         $copyFromId = trim((string) ($_GET['copy_from'] ?? ''));
         $sourceJob  = null;
-        $sshHosts   = [];
 
         if ($copyFromId !== '') {
             try {
                 $fetched = $agent->get('/crons/' . rawurlencode($copyFromId));
                 if (!empty($fetched)) {
                     $sourceJob = $fetched;
-
-                    // Pre-load SSH hosts for the source job's user so that the
-                    // target checkboxes can be rendered server-side and pre-checked.
-                    $sshHostsResponse = $agent->get('/ssh-hosts', ['user' => $sourceJob['linux_user']]);
-                    $sshHosts         = $sshHostsResponse['data'] ?? [];
                 }
             } catch (\RuntimeException $e) {
                 $this->logger->warning('CronController::create: could not fetch source job for copy', [
@@ -316,10 +315,6 @@ class CronController extends BaseController
             ? $sourceJob['targets']
             : ['local'];
 
-        // Fetch SSH hosts for all known users so JS can rebuild the checkboxes
-        // when the user changes the linux_user field.
-        $sshHostsByUser = $this->fetchSshHostsByUser();
-
         $isCopy    = $sourceJob !== null;
         $pageTitle = $isCopy
             ? $this->translator()->t('cron_copy_title', ['name' => (string) ($sourceJob['description'] ?? "Job #{$copyFromId}")])
@@ -330,7 +325,8 @@ class CronController extends BaseController
             'tags'           => $tags,
             'sshHosts'       => $sshHosts,
             'selectedTargets'=> $selectedTargets,
-            'sshHostsByUser' => json_encode($sshHostsByUser, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'linuxUsers'     => $linuxUsers,
+            'dockerMode'     => $dockerMode,
             'error'          => null,
             'isEdit'         => false,        // always POST to /crons (new job)
             'isCopy'         => $isCopy,
@@ -366,7 +362,7 @@ class CronController extends BaseController
                 $tags = [];
             }
 
-            $sshHostsByUser = $this->fetchSshHostsByUser();
+            [$linuxUsers, $dockerMode, $sshHosts] = $this->fetchLinuxUsersAndSshHosts();
 
             $postReturn = trim((string) ($_POST['_return'] ?? ''));
             if ($postReturn !== '' && !str_starts_with($postReturn, '/crons')) {
@@ -374,13 +370,14 @@ class CronController extends BaseController
             }
 
             $this->render('cron/form.php', $this->translator()->t('cron_add'), [
-                'job'            => $_POST,
-                'tags'           => $tags,
-                'sshHosts'       => [],
-                'sshHostsByUser' => json_encode($sshHostsByUser, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                'error'          => $e->getMessage(),
-                'isEdit'         => false,
-                'returnUrl'      => $postReturn,
+                'job'        => $_POST,
+                'tags'       => $tags,
+                'sshHosts'   => $sshHosts,
+                'linuxUsers' => $linuxUsers,
+                'dockerMode' => $dockerMode,
+                'error'      => $e->getMessage(),
+                'isEdit'     => false,
+                'returnUrl'  => $postReturn,
             ], '/crons');
             return;
         }
@@ -472,15 +469,8 @@ class CronController extends BaseController
             return;
         }
 
-        // Fetch SSH hosts for the specific user of this job
-        $sshHosts = [];
-        try {
-            $sshHostsResponse = $this->agentClient()->get('/ssh-hosts', ['user' => $job['linux_user']]);
-            $sshHosts = $sshHostsResponse['data'] ?? [];
-        } catch (\RuntimeException) {
-            // Non-fatal: SSH hosts list will be empty
-            $sshHosts = [];
-        }
+        // Fetch global SSH hosts and linux users from the agent
+        [$linuxUsers, $dockerMode, $sshHosts] = $this->fetchLinuxUsersAndSshHosts();
 
         // Selected targets from job data; fall back to ['local'] for old jobs
         $selectedTargets = isset($job['targets']) && is_array($job['targets']) && $job['targets'] !== []
@@ -500,7 +490,8 @@ class CronController extends BaseController
             'tags'            => $tags,
             'sshHosts'        => $sshHosts,
             'selectedTargets' => $selectedTargets,
-            'sshHostsByUser'  => json_encode([], JSON_UNESCAPED_UNICODE),
+            'linuxUsers'      => $linuxUsers,
+            'dockerMode'      => $dockerMode,
             'error'           => null,
             'isEdit'          => true,
             'returnUrl'       => $returnUrl,
@@ -538,17 +529,8 @@ class CronController extends BaseController
                 $tags = [];
             }
 
-            $mergedJob  = array_merge((array) $job, $_POST);
-            $editUser   = (string) ($mergedJob['linux_user'] ?? '');
-            $sshHosts   = [];
-            if ($editUser !== '') {
-                try {
-                    $sshHostsResponse = $this->agentClient()->get('/ssh-hosts', ['user' => $editUser]);
-                    $sshHosts = $sshHostsResponse['data'] ?? [];
-                } catch (\RuntimeException) {
-                    $sshHosts = [];
-                }
-            }
+            $mergedJob = array_merge((array) $job, $_POST);
+            [$linuxUsers, $dockerMode, $sshHosts] = $this->fetchLinuxUsersAndSshHosts();
 
             $postReturn = trim((string) ($_POST['_return'] ?? ''));
             if ($postReturn !== '' && !str_starts_with($postReturn, '/crons')) {
@@ -556,13 +538,14 @@ class CronController extends BaseController
             }
 
             $this->render('cron/form.php', $this->translator()->t('cron_edit'), [
-                'job'            => $mergedJob,
-                'tags'           => $tags,
-                'sshHosts'       => $sshHosts,
-                'sshHostsByUser' => json_encode([], JSON_UNESCAPED_UNICODE),
-                'error'          => $e->getMessage(),
-                'isEdit'         => true,
-                'returnUrl'      => $postReturn,
+                'job'        => $mergedJob,
+                'tags'       => $tags,
+                'sshHosts'   => $sshHosts,
+                'linuxUsers' => $linuxUsers,
+                'dockerMode' => $dockerMode,
+                'error'      => $e->getMessage(),
+                'isEdit'     => true,
+                'returnUrl'  => $postReturn,
             ], '/crons');
             return;
         }
@@ -1083,37 +1066,35 @@ class CronController extends BaseController
     // -------------------------------------------------------------------------
 
     /**
-     * Fetch SSH host aliases for every unique linux_user found in the job list.
+     * Fetch the linux user list, docker mode flag, and global SSH hosts from the agent.
      *
-     * Used by the create form so the JavaScript can populate the SSH host
-     * selector when the user types a linux_user name.
+     * SSH hosts are loaded from /import/ssh-targets (agent-wide, not per user)
+     * because SSH connectivity is a property of the agent, not of a Linux user.
      *
-     * @return array<string, string[]> Map of linux_user => list of SSH host aliases.
+     * @return array{0: string[], 1: bool, 2: string[]}
+     *         [linuxUsers, dockerMode, sshHosts]
      */
-    private function fetchSshHostsByUser(): array
+    private function fetchLinuxUsersAndSshHosts(): array
     {
+        $linuxUsers = [];
+        $dockerMode = false;
+        $sshHosts   = [];
+
         try {
-            $allJobs = $this->agentClient()->get('/crons');
+            $response   = $this->agentClient()->getLinuxUsers();
+            $linuxUsers = $response['data']        ?? [];
+            $dockerMode = (bool) ($response['docker_mode'] ?? false);
         } catch (\RuntimeException) {
-            return [];
+            // Non-fatal: fall back to empty list / assume non-Docker
         }
 
-        $users = array_unique(array_column($allJobs['data'] ?? [], 'linux_user'));
-        $sshHostsByUser = [];
-
-        foreach ($users as $user) {
-            if (!is_string($user) || $user === '') {
-                continue;
-            }
-            try {
-                $response = $this->agentClient()->get('/ssh-hosts', ['user' => $user]);
-                $sshHostsByUser[$user] = $response['data'] ?? [];
-            } catch (\RuntimeException) {
-                $sshHostsByUser[$user] = [];
-            }
+        try {
+            $sshHosts = $this->agentClient()->get('/import/ssh-targets')['data'] ?? [];
+        } catch (\RuntimeException) {
+            // Non-fatal: SSH host list will be empty
         }
 
-        return $sshHostsByUser;
+        return [$linuxUsers, $dockerMode, $sshHosts];
     }
 
     /**

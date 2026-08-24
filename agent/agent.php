@@ -307,14 +307,21 @@ try {
     $router->addRoute('POST',   '/tags',        [$tagCreate, 'handle']);
     $router->addRoute('DELETE', '/tags/{id}',   [$tagDelete, 'handle']);
 
+    // -- Targets --------------------------------------------------------------
+
+    $targetsEndpoint = new \Cronmanager\Agent\Endpoints\TargetsEndpoint($pdo, $logger);
+    $router->addRoute('GET', '/targets', [$targetsEndpoint, 'handle']);
+
     // -- SSH Hosts ------------------------------------------------------------
 
-    $sshHosts        = new \Cronmanager\Agent\Endpoints\SshHostsEndpoint($logger);
+    $sshHosts         = new \Cronmanager\Agent\Endpoints\SshHostsEndpoint($logger);
     $importSshTargets = new \Cronmanager\Agent\Endpoints\ImportSshTargetsEndpoint($logger);
     $sshTest          = new \Cronmanager\Agent\Endpoints\SshTestEndpoint($logger);
+    $linuxUsers       = new \Cronmanager\Agent\Endpoints\LinuxUsersEndpoint($logger);
     $router->addRoute('GET',  '/ssh-hosts',            [$sshHosts,         'handle']);
     $router->addRoute('GET',  '/import/ssh-targets',   [$importSshTargets, 'handle']);
     $router->addRoute('POST', '/ssh/test',             [$sshTest,          'handle']);
+    $router->addRoute('GET',  '/linux-users',          [$linuxUsers,       'handle']);
 
     // -- History --------------------------------------------------------------
 

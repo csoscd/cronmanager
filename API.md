@@ -17,9 +17,9 @@ agent is never exposed to external callers.
 6. [Error Responses](#6-error-responses)
 7. [Quick Start](#7-quick-start)
 8. [Endpoints – Jobs](#8-endpoints--jobs)
-9. [Endpoints – Tags](#9-endpoints--tags)
+9. [Endpoints – Tags & Targets](#9-endpoints--tags--targets)
 10. [Endpoints – Export](#10-endpoints--export)
-11. [Endpoints – Maintenance Windows](#11-endpoints--maintenance-windows)
+11. [Endpoints – Maintenance](#11-endpoints--maintenance)
 12. [Endpoints – Settings](#12-endpoints--settings)
 13. [Endpoints – Timeline](#13-endpoints--timeline)
 14. [Endpoints – Agents](#14-endpoints--agents)
@@ -496,7 +496,7 @@ Execution history for a specific job.
 
 ---
 
-## 9. Endpoints – Tags
+## 9. Endpoints – Tags & Targets
 
 Required scope: **`jobs:read`**
 
@@ -514,6 +514,61 @@ List all tags.
   "data": [
     { "id": 1, "name": "backup" },
     { "id": 2, "name": "monitoring" }
+  ],
+  "count": 2
+}
+```
+
+---
+
+### GET /api/v1/linux-users
+
+List all Linux users available for cron job scheduling on the selected agent,
+together with a flag indicating whether the agent is running in a Docker
+container.
+
+In Docker mode only `root` is a valid user (container isolation). In host
+mode the list contains `root` plus all users with UID ≥ 1000.
+
+**Query parameters (all optional):**
+
+| Parameter | Description |
+|---|---|
+| `agent_id` | Select a specific agent (defaults to the first enabled agent) |
+
+**Response 200:**
+
+```json
+{
+  "agent_id":    1,
+  "docker_mode": false,
+  "data":        ["deploy", "root"],
+  "count":       2
+}
+```
+
+---
+
+### GET /api/v1/targets
+
+List all distinct execution targets (e.g. `"local"` and SSH host aliases)
+configured across cronjobs, with the count of jobs using each target.
+
+**Query parameters (all optional):**
+
+| Parameter | Description |
+|---|---|
+| `active` | `1` = only targets of active jobs, `0` = inactive only; omit for all |
+| `agent_id` | Select a specific agent (defaults to the first enabled agent) |
+
+**Response 200:**
+
+```json
+{
+  "agent_id": 1,
+  "data": [
+    { "target": "local",    "job_count": 12 },
+    { "target": "myserver", "job_count":  3 }
   ],
   "count": 2
 }
@@ -572,10 +627,12 @@ SSH-target jobs are wrapped as `ssh -o BatchMode=yes <host> '<command>'`.
 
 ---
 
-## 11. Endpoints – Maintenance Windows
+## 11. Endpoints – Maintenance
 
 Required scope for read: **`maintenance:read`**
 Required scope for write: **`maintenance:write`**
+
+### Maintenance Windows
 
 ---
 
@@ -651,6 +708,92 @@ Delete a maintenance window.  Scope: **`maintenance:write`**
 
 ```json
 { "agent_id": 1, "success": true }
+```
+
+---
+
+### Maintenance Operations
+
+Scope: **`maintenance:write`**
+
+These endpoints trigger the same cleanup actions as the corresponding buttons
+in the web UI under **Settings → Wartung**.
+
+---
+
+### POST /api/v1/maintenance/logs/purge
+
+Immediately deletes finished `execution_log` rows that exceed the per-job or
+global log retention period.  Equivalent to the "Logs jetzt bereinigen"
+button.  Running executions are never deleted.
+
+No request body required.
+
+**Response 200:**
+
+```json
+{
+  "agent_id": 1,
+  "deleted_logs": 42,
+  "deleted_retry_state": 0,
+  "message": "Deleted 42 log row(s) and 0 retry state entr(y|ies)."
+}
+```
+
+---
+
+### POST /api/v1/maintenance/history/cleanup
+
+Permanently deletes all finished `execution_log` rows older than the given
+number of days.  Equivalent to the "Historien-Bereinigung" action.  Running
+executions are never deleted.
+
+**Request body (JSON, optional):**
+
+```json
+{ "older_than_days": 90 }
+```
+
+| Field | Type | Required | Default | Constraint |
+|---|---|---|---|---|
+| `older_than_days` | integer | no | 90 | ≥ 1 |
+
+**Response 200:**
+
+```json
+{
+  "agent_id": 1,
+  "deleted": 1234,
+  "older_than_days": 90,
+  "message": "Deleted 1234 history record(s) older than 90 days."
+}
+```
+
+**Error 400** — when `older_than_days` is provided but < 1:
+
+```json
+{ "error": "Bad Request", "message": "older_than_days must be a positive integer (≥ 1).", "code": 400 }
+```
+
+---
+
+### POST /api/v1/maintenance/once/cleanup
+
+Removes stale "run-once" crontab entries left behind by Run Now jobs whose
+automatic self-cleanup call failed (e.g. the agent was temporarily
+unreachable).  Equivalent to the "Run-Now-Bereinigung" button.
+
+No request body required.
+
+**Response 200:**
+
+```json
+{
+  "agent_id": 1,
+  "removed": 4,
+  "users_affected": 1,
+  "message": "Removed 4 stale Run Now entry(s) across 1 user(s)."
+}
 ```
 
 ---
@@ -982,6 +1125,7 @@ to 60 seconds of delay before the daemon picks up the entry.
 
 | Version | Change |
 |---|---|
+| 4.8.0 | Added `GET /api/v1/targets` (§9) — distinct execution targets with job counts; optional `?active=` filter. Added `GET /api/v1/linux-users` (§9) — available Linux users for cron scheduling; includes `docker_mode` flag. Added three maintenance operation endpoints (§11): `POST /api/v1/maintenance/logs/purge`, `POST /api/v1/maintenance/history/cleanup` (optional `older_than_days`), `POST /api/v1/maintenance/once/cleanup`. All require `maintenance:write` scope. |
 | 4.6.1 | Every agent-specific endpoint now includes `"agent_id"` as the first field in its response (jobs, maintenance, export/json, audit, settings, timeline, tags). Resolves ambiguity in multi-agent setups where the same numeric job ID may refer to different jobs on different agents. UI links (notifications, breadcrumbs, filter resets, pagination) now carry `?agent_id=X` throughout. |
 | 4.6.0 | Added `web` section to `GET /api/v1/settings` (read-only, push-managed; contains `web_agent_id` and `web_url`); added `web_url` field to `GET /api/v1/agents` response; `PUT /api/v1/settings` silently ignores the `web` section |
 | 4.5.0 | Added `notify_on_silence` (bool), `silence_grace_minutes` (int\|null), `last_silence_alert_at` (string\|null, read-only) to job objects; `GET /health` extended with `silent_jobs` (int\|null) and `last_execution_at` (string\|null) |

@@ -28,7 +28,8 @@ $job             = isset($job)             && is_array($job)             ? $job 
 $tags            = isset($tags)            && is_array($tags)            ? $tags            : [];
 $sshHosts        = isset($sshHosts)        && is_array($sshHosts)        ? $sshHosts        : [];
 $selectedTargets = isset($selectedTargets) && is_array($selectedTargets) ? $selectedTargets : ['local'];
-$sshHostsByUser  = isset($sshHostsByUser)  && is_string($sshHostsByUser) ? $sshHostsByUser  : '{}';
+$linuxUsers      = isset($linuxUsers)      && is_array($linuxUsers)      ? $linuxUsers      : [];
+$dockerMode      = isset($dockerMode)      && (bool) $dockerMode;
 $error           = isset($error)           && $error !== null            ? (string) $error  : null;
 $isEdit          = isset($isEdit)          && (bool) $isEdit;
 $isCopy          = isset($isCopy)          && (bool) $isCopy;
@@ -163,20 +164,44 @@ foreach ($tags as $tag) {
             <div id="tab-panel-basic" class="">
 
                 <!-- Linux User -->
+                <?php
+                $currentLinuxUser = $val('linux_user', 'root');
+                // Warn when an existing job references a user no longer on this agent
+                $userMissing = !$dockerMode && $currentLinuxUser !== '' && !in_array($currentLinuxUser, $linuxUsers, true);
+                ?>
+                <?php if ($dockerMode): ?>
+                    <input type="hidden" name="linux_user" value="root">
+                <?php else: ?>
                 <div class="mb-4">
                     <label for="linux_user"
                            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         <?= htmlspecialchars($t('cron_linux_user'), ENT_QUOTES, 'UTF-8') ?>
                         <span class="text-red-500">*</span>
                     </label>
-                    <input type="text" id="linux_user" name="linux_user" required
-                           value="<?= htmlspecialchars($val('linux_user'), ENT_QUOTES, 'UTF-8') ?>"
-                           class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
-                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                                  focus:outline-none focus:ring-2 focus:ring-blue-500
-                                  focus:border-blue-500 transition"
-                           placeholder="root">
+                    <select id="linux_user" name="linux_user" required
+                            class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                   bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                   focus:outline-none focus:ring-2 focus:ring-blue-500
+                                   focus:border-blue-500 transition">
+                        <?php if ($userMissing): ?>
+                            <option value="<?= htmlspecialchars($currentLinuxUser, ENT_QUOTES, 'UTF-8') ?>" selected>
+                                <?= htmlspecialchars($currentLinuxUser, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endif; ?>
+                        <?php foreach ($linuxUsers as $lu): ?>
+                            <option value="<?= htmlspecialchars($lu, ENT_QUOTES, 'UTF-8') ?>"
+                                <?= $lu === $currentLinuxUser ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($lu, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php if ($userMissing): ?>
+                        <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                            <?= htmlspecialchars($t('cron_linux_user_missing', ['user' => $currentLinuxUser]), ENT_QUOTES, 'UTF-8') ?>
+                        </p>
+                    <?php endif; ?>
                 </div>
+                <?php endif; ?>
 
                 <!-- Execution Targets -->
                 <div class="mb-4">
@@ -200,7 +225,7 @@ foreach ($tags as $tag) {
                             </span>
                         </label>
 
-                        <!-- SSH host checkboxes (pre-rendered for edit form, built by JS for create) -->
+                        <!-- SSH host checkboxes (always server-side rendered from /import/ssh-targets) -->
                         <?php foreach ($sshHosts as $host): ?>
                             <?php $hostStr = (string) $host; ?>
                             <label class="flex items-center gap-2 cursor-pointer ssh-target-label">
@@ -700,67 +725,8 @@ function addTag(tagName) {
     }
 }
 
-/**
- * SSH hosts map, keyed by linux_user.
- * Used on the create form to rebuild the target checkboxes when the user changes.
- *
- * @type {Object.<string, string[]>}
- */
-const sshHostsByUser = <?= $sshHostsByUser ?>;
-
-/**
- * Rebuild the SSH host target checkboxes in #targets-container based on the
- * selected linux_user.  Existing SSH-host checkboxes are replaced; the
- * "local" checkbox is always kept and never touched.
- *
- * On the edit form sshHostsByUser is always {} (SSH hosts already rendered
- * server-side), so this function is effectively a no-op in that case.
- *
- * @param {string} user Linux username.
- */
-function updateTargetCheckboxes(user) {
-    const container = document.getElementById('targets-container');
-    if (!container) return;
-
-    // Remove existing SSH-host checkboxes (keep "local")
-    container.querySelectorAll('.ssh-target-label').forEach(function(el) {
-        el.remove();
-    });
-
-    const hosts = sshHostsByUser[user] || [];
-
-    hosts.forEach(function(host) {
-        const label = document.createElement('label');
-        label.className = 'flex items-center gap-2 cursor-pointer ssh-target-label';
-
-        const input = document.createElement('input');
-        input.type      = 'checkbox';
-        input.name      = 'targets[]';
-        input.value     = host;
-        input.className = 'w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer';
-
-        const span = document.createElement('span');
-        span.className   = 'text-sm font-mono text-gray-700 dark:text-gray-300';
-        span.textContent = host;
-
-        label.appendChild(input);
-        label.appendChild(span);
-        container.appendChild(label);
-    });
-}
-
-// Wire up linux_user input → rebuild SSH-host checkboxes (create form only)
-(function() {
-    const linuxUserInput = document.getElementById('linux_user');
-    if (!linuxUserInput) return;
-
-    linuxUserInput.addEventListener('change', function() {
-        updateTargetCheckboxes(this.value.trim());
-    });
-    linuxUserInput.addEventListener('blur', function() {
-        updateTargetCheckboxes(this.value.trim());
-    });
-})();
+// SSH host checkboxes are rendered server-side from /import/ssh-targets.
+// No dynamic rebuilding needed — hosts are agent-wide, not per linux_user.
 
 /**
  * Live human-readable preview for the schedule input.

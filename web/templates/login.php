@@ -126,6 +126,14 @@ if ($errorKey !== null && $errorKey !== '') {
                     <?= htmlspecialchars($t('login_submit'), ENT_QUOTES, 'UTF-8') ?>
                 </button>
 
+                <?php if (!empty($config) && trim((string) $config->get('mail.host', '')) !== ''): ?>
+                    <div class="mt-3 text-center">
+                        <a href="/auth/forgot-password" class="text-sm text-blue-600 hover:underline dark:text-blue-400">
+                            <?= htmlspecialchars($t('auth_forgot_password'), ENT_QUOTES, 'UTF-8') ?>
+                        </a>
+                    </div>
+                <?php endif; ?>
+
             </form>
 
             <?php if ($oidcEnabled): ?>

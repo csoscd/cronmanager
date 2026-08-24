@@ -59,20 +59,80 @@ return [
     // Roles
     // -------------------------------------------------------------------------
     'role_admin'              => 'Admin',
-    'role_view'               => 'Viewer',
+    'role_view'               => 'Viewer',   // legacy alias
+    'role_viewer'             => 'Viewer',
+    'role_operator'           => 'Operator',
+    'role_api_only'           => 'API-Only',
 
     // -------------------------------------------------------------------------
     // User management
     // -------------------------------------------------------------------------
-    'user_username'           => 'Username',
-    'user_role'               => 'Role',
-    'user_type'               => 'Type',
-    'user_type_local'         => 'Local',
-    'user_type_sso'           => 'SSO',
-    'user_you'                => 'you',
-    'user_make_admin'         => 'Make Admin',
-    'user_make_viewer'        => 'Make Viewer',
-    'user_delete_confirm'     => 'Are you sure you want to delete this user?',
+    'user_username'                  => 'Username',
+    'user_role'                      => 'Role',
+    'user_type'                      => 'Type',
+    'user_type_local'                => 'Local',
+    'user_type_sso'                  => 'SSO',
+    'user_you'                       => 'you',
+    'user_make_admin'                => 'Make Admin',
+    'user_make_viewer'               => 'Make Viewer',
+    'user_delete_confirm'            => 'Are you sure you want to delete this user?',
+    'user_create'                    => 'Create User',
+    'user_edit'                      => 'Edit User',
+    'user_email'                     => 'Email',
+    'user_email_invalid'             => 'Invalid email address.',
+    'user_email_required_for_invite' => 'An email address is required for invitations.',
+    'user_email_invite_hint'         => 'For invitation email',
+    'user_password'                  => 'Password',
+    'user_password_required'         => 'Password is required.',
+    'user_password_too_short'        => 'Password must be at least 8 characters.',
+    'user_password_leave_blank'      => 'leave blank = unchanged',
+    'user_status'                    => 'Status',
+    'user_active'                    => 'Active',
+    'user_inactive'                  => 'Inactive',
+    'user_activate'                  => 'Activate',
+    'user_deactivate'                => 'Deactivate',
+    'user_deactivate_confirm'        => 'Really deactivate this user? Their session will end on next page load.',
+    'user_send_invite'               => 'Send invitation email',
+    'user_send_invite_hint'          => 'Sends an invite link by email; the password field may be left empty.',
+    'user_resend_invite'             => 'Resend Invite',
+    'user_agent_restriction'         => 'Agent Restriction',
+    'user_agent_restriction_hint'    => 'No checkbox = access to all agents. Check to restrict this user to specific agents.',
+    'user_role_hint'                 => 'Viewer: read-only · Operator: run jobs + maintenance · Admin: all · API-Only: no web login',
+    'user_sso_profile_readonly'      => 'Managed by the identity provider.',
+    'user_username_invalid'          => 'Username may only contain letters, numbers and @._+- (2–128 characters).',
+
+    // -------------------------------------------------------------------------
+    // Authentication (Invite / Reset)
+    // -------------------------------------------------------------------------
+    'auth_forgot_password'     => 'Forgot Password',
+    'auth_forgot_password_hint'=> 'Enter your email address – if an account exists, you will receive a reset link.',
+    'auth_send_reset_link'     => 'Send reset link',
+    'auth_reset_sent'          => 'If an account with that email address exists, a reset link has been sent.',
+    'auth_back_to_login'       => 'Back to login',
+    'auth_accept_invite'       => 'Accept Invitation',
+    'auth_welcome_user'        => 'Welcome, {username}! Please set your password now.',
+    'auth_set_password'        => 'Set Password',
+    'auth_reset_password'      => 'Reset Password',
+    'auth_new_password'        => 'New Password',
+    'auth_password_confirm'    => 'Confirm Password',
+    'auth_password_mismatch'   => 'Passwords do not match.',
+    'auth_token_invalid'       => 'This link has expired or is invalid. Please request a new one.',
+    'auth_reset_success'       => 'Password changed successfully. You may now log in.',
+
+    // -------------------------------------------------------------------------
+    // Profile
+    // -------------------------------------------------------------------------
+    'nav_profile'              => 'My Profile',
+    'profile_account_info'     => 'Account Information',
+    'profile_edit'             => 'Edit Profile',
+    'profile_saved'            => 'Changes saved.',
+
+    // -------------------------------------------------------------------------
+    // Forms (general)
+    // -------------------------------------------------------------------------
+    'form_save'                => 'Save',
+    'form_cancel'              => 'Cancel',
+    'validation_required'      => 'This field is required.',
 
     // -------------------------------------------------------------------------
     // Error pages

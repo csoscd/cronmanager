@@ -17,7 +17,9 @@ declare(strict_types=1);
 
 namespace Cronmanager\Web\Controller;
 
+use Cronmanager\Web\Auth\AuthTokenRepository;
 use Cronmanager\Web\Auth\LocalAuthProvider;
+use Cronmanager\Web\Auth\Mailer;
 use Cronmanager\Web\Auth\OidcAuthProvider;
 use Cronmanager\Web\Database\Connection;
 use Cronmanager\Web\Http\Response;
@@ -290,9 +292,344 @@ class AuthController
         (new Response())->redirect('/login');
     }
 
+    /**
+     * Show the forgot-password form (GET /auth/forgot-password).
+     *
+     * Hidden when SMTP is not configured.
+     *
+     * @param array<string,string> $params Unused.
+     *
+     * @return void
+     */
+    public function showForgotPassword(array $params): void
+    {
+        if (!$this->isMailEnabled()) {
+            (new Response())->redirect('/login');
+            return;
+        }
+
+        $this->renderStandalone('auth/forgot_password.php', $this->t('auth_forgot_password'), [
+            'error'   => null,
+            'success' => null,
+        ]);
+    }
+
+    /**
+     * Process the forgot-password form (POST /auth/forgot-password).
+     *
+     * Always shows a success message regardless of whether the email was found,
+     * to prevent user enumeration.
+     *
+     * @param array<string,string> $params Unused.
+     *
+     * @return void
+     */
+    public function handleForgotPassword(array $params): void
+    {
+        if (!$this->isMailEnabled()) {
+            (new Response())->redirect('/login');
+            return;
+        }
+
+        $email = trim((string) ($_POST['email'] ?? ''));
+
+        if ($email !== '') {
+            try {
+                $pdo  = Connection::getInstance()->getPdo();
+                $stmt = $pdo->prepare(
+                    'SELECT id, username, active FROM users WHERE email = :email AND oauth_sub IS NULL LIMIT 1'
+                );
+                $stmt->execute([':email' => $email]);
+                $user = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+                if ($user && (int) $user['active'] === 1) {
+                    $repo  = new AuthTokenRepository($pdo);
+                    $token = $repo->create((int) $user['id'], 'reset', 2);
+
+                    $baseUrl  = rtrim((string) $this->config->get('app.web_url', ''), '/');
+                    $link     = $baseUrl . '/auth/reset/' . urlencode($token);
+
+                    $mailer = new Mailer($this->config, $this->logger);
+                    $mailer->sendPasswordReset($email, (string) $user['username'], $link);
+                }
+            } catch (Throwable $e) {
+                $this->logger->error('ForgotPassword: error', ['message' => $e->getMessage()]);
+            }
+        }
+
+        // Always show success to prevent enumeration
+        $this->renderStandalone('auth/forgot_password.php', $this->t('auth_forgot_password'), [
+            'error'   => null,
+            'success' => 'auth_reset_sent',
+        ]);
+    }
+
+    /**
+     * Show the invite acceptance page (GET /auth/invite/{token}).
+     *
+     * @param array<string,string> $params Path parameters: ['token' => string].
+     *
+     * @return void
+     */
+    public function showInvite(array $params): void
+    {
+        $token = (string) ($params['token'] ?? '');
+
+        try {
+            $pdo  = Connection::getInstance()->getPdo();
+            $repo = new AuthTokenRepository($pdo);
+            $row  = $repo->find($token, 'invite');
+        } catch (Throwable $e) {
+            $this->logger->error('showInvite: error', ['message' => $e->getMessage()]);
+            $row = null;
+        }
+
+        if ($row === null) {
+            $this->renderStandalone('auth/accept_invite.php', $this->t('auth_accept_invite'), [
+                'token'    => '',
+                'username' => '',
+                'error'    => 'auth_token_invalid',
+            ]);
+            return;
+        }
+
+        $this->renderStandalone('auth/accept_invite.php', $this->t('auth_accept_invite'), [
+            'token'    => $token,
+            'username' => (string) ($row['username'] ?? ''),
+            'error'    => null,
+        ]);
+    }
+
+    /**
+     * Process the invite form (POST /auth/invite).
+     *
+     * Sets the initial password and logs the user in.
+     *
+     * @param array<string,string> $params Unused.
+     *
+     * @return void
+     */
+    public function handleInvite(array $params): void
+    {
+        $token           = (string) ($_POST['token']            ?? '');
+        $password        = (string) ($_POST['password']         ?? '');
+        $passwordConfirm = (string) ($_POST['password_confirm'] ?? '');
+
+        $error = null;
+
+        if ($password === '' || strlen($password) < 8) {
+            $error = 'user_password_too_short';
+        } elseif ($password !== $passwordConfirm) {
+            $error = 'auth_password_mismatch';
+        }
+
+        try {
+            $pdo  = Connection::getInstance()->getPdo();
+            $repo = new AuthTokenRepository($pdo);
+            $row  = $repo->find($token, 'invite');
+        } catch (Throwable $e) {
+            $this->logger->error('handleInvite: error', ['message' => $e->getMessage()]);
+            $row = null;
+        }
+
+        if ($row === null) {
+            $this->renderStandalone('auth/accept_invite.php', $this->t('auth_accept_invite'), [
+                'token'    => $token,
+                'username' => '',
+                'error'    => 'auth_token_invalid',
+            ]);
+            return;
+        }
+
+        if ($error !== null) {
+            $this->renderStandalone('auth/accept_invite.php', $this->t('auth_accept_invite'), [
+                'token'    => $token,
+                'username' => (string) ($row['username'] ?? ''),
+                'error'    => $error,
+            ]);
+            return;
+        }
+
+        try {
+            $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+            $pdo->prepare('UPDATE users SET password_hash = :hash WHERE id = :id')
+                ->execute([':hash' => $hash, ':id' => (int) $row['user_id']]);
+            $repo->consume((int) $row['id']);
+        } catch (Throwable $e) {
+            $this->logger->error('handleInvite: save error', ['message' => $e->getMessage()]);
+            $this->renderStandalone('auth/accept_invite.php', $this->t('auth_accept_invite'), [
+                'token'    => $token,
+                'username' => (string) ($row['username'] ?? ''),
+                'error'    => 'error_500',
+            ]);
+            return;
+        }
+
+        // Reload full user and log them in
+        try {
+            $stmt = $pdo->prepare(
+                'SELECT id, username, password_hash, role, active, email, agent_ids, oauth_sub
+                   FROM users WHERE id = :id LIMIT 1'
+            );
+            $stmt->execute([':id' => (int) $row['user_id']]);
+            $user = $stmt->fetch(\PDO::FETCH_ASSOC);
+        } catch (Throwable) {
+            $user = null;
+        }
+
+        if ($user) {
+            SessionManager::login($user);
+        }
+
+        (new Response())->redirect('/dashboard');
+    }
+
+    /**
+     * Show the password-reset form (GET /auth/reset/{token}).
+     *
+     * @param array<string,string> $params Path parameters: ['token' => string].
+     *
+     * @return void
+     */
+    public function showReset(array $params): void
+    {
+        if (!$this->isMailEnabled()) {
+            (new Response())->redirect('/login');
+            return;
+        }
+
+        $token = (string) ($params['token'] ?? '');
+
+        try {
+            $pdo  = Connection::getInstance()->getPdo();
+            $repo = new AuthTokenRepository($pdo);
+            $row  = $repo->find($token, 'reset');
+        } catch (Throwable $e) {
+            $this->logger->error('showReset: error', ['message' => $e->getMessage()]);
+            $row = null;
+        }
+
+        $this->renderStandalone('auth/reset_password.php', $this->t('auth_reset_password'), [
+            'token' => $token,
+            'error' => $row === null ? 'auth_token_invalid' : null,
+        ]);
+    }
+
+    /**
+     * Process the password-reset form (POST /auth/reset).
+     *
+     * @param array<string,string> $params Unused.
+     *
+     * @return void
+     */
+    public function handleReset(array $params): void
+    {
+        if (!$this->isMailEnabled()) {
+            (new Response())->redirect('/login');
+            return;
+        }
+
+        $token           = (string) ($_POST['token']            ?? '');
+        $password        = (string) ($_POST['password']         ?? '');
+        $passwordConfirm = (string) ($_POST['password_confirm'] ?? '');
+
+        $error = null;
+
+        if ($password === '' || strlen($password) < 8) {
+            $error = 'user_password_too_short';
+        } elseif ($password !== $passwordConfirm) {
+            $error = 'auth_password_mismatch';
+        }
+
+        try {
+            $pdo  = Connection::getInstance()->getPdo();
+            $repo = new AuthTokenRepository($pdo);
+            $row  = $repo->find($token, 'reset');
+        } catch (Throwable $e) {
+            $this->logger->error('handleReset: error', ['message' => $e->getMessage()]);
+            $row = null;
+        }
+
+        if ($row === null) {
+            $this->renderStandalone('auth/reset_password.php', $this->t('auth_reset_password'), [
+                'token' => $token,
+                'error' => 'auth_token_invalid',
+            ]);
+            return;
+        }
+
+        if ($error !== null) {
+            $this->renderStandalone('auth/reset_password.php', $this->t('auth_reset_password'), [
+                'token' => $token,
+                'error' => $error,
+            ]);
+            return;
+        }
+
+        try {
+            $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+            $pdo->prepare('UPDATE users SET password_hash = :hash WHERE id = :id')
+                ->execute([':hash' => $hash, ':id' => (int) $row['user_id']]);
+            $repo->consume((int) $row['id']);
+        } catch (Throwable $e) {
+            $this->logger->error('handleReset: save error', ['message' => $e->getMessage()]);
+            $this->renderStandalone('auth/reset_password.php', $this->t('auth_reset_password'), [
+                'token' => $token,
+                'error' => 'error_500',
+            ]);
+            return;
+        }
+
+        SessionManager::set('_flash_success', 'auth_reset_success');
+        (new Response())->redirect('/login');
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Check whether mail is configured.
+     */
+    private function isMailEnabled(): bool
+    {
+        return trim((string) $this->config->get('mail.host', '')) !== '';
+    }
+
+    /**
+     * Shorthand translator (without the translator object needing a separate class).
+     */
+    private function t(string $key): string
+    {
+        return (new Translator($this->config))->t($key);
+    }
+
+    /**
+     * Render a standalone (no layout) template for auth pages.
+     *
+     * @param string               $template Relative path under templates/.
+     * @param string               $title    Page title.
+     * @param array<string,mixed>  $data     Template variables.
+     *
+     * @return void
+     */
+    private function renderStandalone(string $template, string $title, array $data): void
+    {
+        $file = dirname(__DIR__, 2) . '/templates/' . $template;
+        if (!file_exists($file)) {
+            $this->logger->error('Standalone template not found', ['path' => $file]);
+            http_response_code(500);
+            echo '<h1>500</h1>';
+            return;
+        }
+
+        $translator = new Translator($this->config);
+        $data['translator'] = $translator;
+        $data['csrf_token'] = SessionManager::getCsrfToken();
+
+        extract($data, EXTR_SKIP);
+        require $file;
+    }
 
     /**
      * Include and render the login template.

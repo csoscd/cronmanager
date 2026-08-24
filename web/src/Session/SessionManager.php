@@ -26,8 +26,10 @@ use RuntimeException;
  * of functions.
  *
  * Role hierarchy (least → most privileged):
- *   view  – read-only access to all pages
- *   admin – all permissions, including create / edit / delete
+ *   viewer   – read-only access to all pages
+ *   operator – execute jobs, manage maintenance windows
+ *   admin    – all permissions, including create / edit / delete
+ *   api-only – no WebUI login; API tokens only
  */
 class SessionManager
 {
@@ -142,7 +144,8 @@ class SessionManager
      * Regenerates the session ID to prevent session fixation attacks.
      *
      * Expected $user structure:
-     *   ['id' => int, 'username' => string, 'role' => 'view'|'admin']
+     *   ['id' => int, 'username' => string, 'role' => 'viewer'|'operator'|'admin'|'api-only',
+     *    'active' => 1, 'email' => string|null, 'agent_ids' => array|null]
      *
      * @param array $user Associative user data array.
      *
@@ -248,7 +251,7 @@ class SessionManager
     }
 
     /**
-     * Return the authenticated user's role ('view' or 'admin'), or null.
+     * Return the authenticated user's role, or null.
      *
      * @return string|null
      */
@@ -261,11 +264,16 @@ class SessionManager
     /**
      * Check whether the authenticated user holds at least the given role.
      *
-     * Role hierarchy:
-     *   - hasRole('view')  → true for both 'view' and 'admin'
-     *   - hasRole('admin') → true only for 'admin'
+     * Role hierarchy (ascending privilege):
+     *   viewer < operator < admin
+     *   api-only: no UI access at all
      *
-     * @param string $role Required role ('view' or 'admin').
+     * Accepted $role values:
+     *   'viewer'   → viewer, operator, admin
+     *   'operator' → operator, admin
+     *   'admin'    → admin only
+     *
+     * @param string $role Minimum required role.
      *
      * @return bool
      */
@@ -278,10 +286,51 @@ class SessionManager
         $userRole = self::getRole();
 
         return match ($role) {
-            'view'  => in_array($userRole, ['view', 'admin'], strict: true),
-            'admin' => $userRole === 'admin',
-            default => false,
+            'viewer'   => in_array($userRole, ['viewer', 'operator', 'admin'], strict: true),
+            // Legacy alias kept for backwards-compat with old 'view' checks in controllers
+            'view'     => in_array($userRole, ['viewer', 'operator', 'admin'], strict: true),
+            'operator' => in_array($userRole, ['operator', 'admin'], strict: true),
+            'admin'    => $userRole === 'admin',
+            default    => false,
         };
+    }
+
+    /**
+     * Return the agent IDs this user is restricted to, or null for no restriction.
+     *
+     * @return list<int>|null
+     */
+    public static function getAllowedAgentIds(): ?array
+    {
+        $user = self::getUser();
+        if (!isset($user['agent_ids'])) {
+            return null;
+        }
+        $raw = $user['agent_ids'];
+        if ($raw === null) {
+            return null;
+        }
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw     = is_array($decoded) ? $decoded : null;
+        }
+        if (!is_array($raw) || empty($raw)) {
+            return null;
+        }
+        return array_values(array_map('intval', $raw));
+    }
+
+    /**
+     * Check whether the authenticated user may access a given agent.
+     *
+     * @param int $agentId Agent ID to check.
+     *
+     * @return bool True when no restriction is set or the agent is in the allowed list.
+     */
+    public static function canAccessAgent(int $agentId): bool
+    {
+        $allowed = self::getAllowedAgentIds();
+        return $allowed === null || in_array($agentId, $allowed, strict: true);
     }
 
     // -------------------------------------------------------------------------

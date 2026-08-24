@@ -528,7 +528,7 @@ together with a flag indicating whether the agent is running in a Docker
 container.
 
 In Docker mode only `root` is a valid user (container isolation). In host
-mode the list contains `root` plus all users with UID ≥ 1000.
+mode the list contains all users from `/etc/passwd` with a valid username.
 
 **Query parameters (all optional):**
 

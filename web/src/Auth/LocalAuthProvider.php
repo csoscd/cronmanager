@@ -64,7 +64,7 @@ class LocalAuthProvider
     {
         try {
             $stmt = $this->pdo->prepare(
-                'SELECT id, username, password_hash, role, oauth_sub
+                'SELECT id, username, password_hash, role, active, email, agent_ids, oauth_sub
                  FROM users
                  WHERE username = :username
                  LIMIT 1'
@@ -88,10 +88,30 @@ class LocalAuthProvider
         }
 
         // ------------------------------------------------------------------
-        // OIDC-only account – no local password
+        // OIDC-only or api-only account – no local password login
         // ------------------------------------------------------------------
         if ($row['password_hash'] === null) {
-            $this->logger->warning('Local login attempted for OIDC-only account', [
+            $this->logger->warning('Local login attempted for OIDC/api-only account', [
+                'username' => $username,
+            ]);
+            return null;
+        }
+
+        // ------------------------------------------------------------------
+        // api-only role: cannot log in via WebUI
+        // ------------------------------------------------------------------
+        if (($row['role'] ?? '') === 'api-only') {
+            $this->logger->warning('Local login attempted for api-only account', [
+                'username' => $username,
+            ]);
+            return null;
+        }
+
+        // ------------------------------------------------------------------
+        // Deactivated account
+        // ------------------------------------------------------------------
+        if ((int) ($row['active'] ?? 1) === 0) {
+            $this->logger->warning('Local login attempted for deactivated account', [
                 'username' => $username,
             ]);
             return null;
@@ -126,13 +146,13 @@ class LocalAuthProvider
      *
      * @param string $username Plain-text username.
      * @param string $password Plain-text password (will be hashed).
-     * @param string $role     Role to assign: 'view' (default) or 'admin'.
+     * @param string $role     Role to assign: 'viewer' (default), 'operator', 'admin', 'api-only'.
      *
      * @return int The ID of the created or updated user.
      *
      * @throws RuntimeException On database errors.
      */
-    public function createUser(string $username, string $password, string $role = 'view'): int
+    public function createUser(string $username, string $password, string $role = 'viewer'): int
     {
         $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
 
@@ -167,8 +187,8 @@ class LocalAuthProvider
 
             // Insert new user
             $stmt = $this->pdo->prepare(
-                'INSERT INTO users (username, password_hash, role)
-                 VALUES (:username, :hash, :role)'
+                'INSERT INTO users (username, password_hash, role, active)
+                 VALUES (:username, :hash, :role, 1)'
             );
             $stmt->execute([
                 ':username' => $username,

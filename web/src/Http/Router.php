@@ -100,7 +100,7 @@ class Router
      * @param string   $method       HTTP method (GET, POST, …).
      * @param string   $path         URL path pattern, may contain {param} placeholders.
      * @param callable $handler      Handler callable; receives array of path params.
-     * @param string   $requiredRole Minimum role required ('view' or 'admin').
+     * @param string   $requiredRole Minimum role required ('view'/'viewer', 'operator', 'admin').
      *
      * @return void
      */

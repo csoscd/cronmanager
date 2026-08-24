@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [5.0.0] – branch: `feature/user-management-v2`
+
+### Added
+
+- **Rollenmodell erweitert**: Vier feste Rollen (`viewer`, `operator`, `admin`, `api-only`) ersetzen das bisherige Zwei-Rollen-System (`view`/`admin`). Neue `operator`-Rolle erlaubt Jobausführung und Wartungsverwaltung ohne Admin-Rechte.
+- **Benutzerverwaltung v2**: Vollständige CRUD-Oberfläche für lokale Benutzer inkl. Aktivieren/Deaktivieren (Soft-Deactivation), Benutzeranlage mit optionalem Einladungsversand per E-Mail, Rollen- und Agent-Einschränkung pro Benutzer.
+- **Einladungs-Flow**: Admin legt Benutzer an, sendet per SMTP einen Einladungslink (72 Stunden gültig). Benutzer setzt Passwort über `/auth/invite/{token}`. Formular wird ausgeblendet, wenn SMTP nicht konfiguriert.
+- **Self-Service Passwort-Reset**: Nutzer können über `/auth/forgot-password` einen Reset-Link anfordern (2 Stunden gültig). Ausgeblendet, wenn SMTP nicht konfiguriert.
+- **Selbstverwaltung Profil** (`/profile`): Authentifizierte Benutzer können E-Mail-Adresse und Passwort ändern. SSO-Benutzer können nur die E-Mail-Adresse anpassen.
+- **Per-Benutzer Agent-Einschränkung**: Admins können jeden Benutzer auf bestimmte Agents beschränken (analog zu API-Keys). `NULL` = Zugriff auf alle Agents.
+- **SSO Auto-Provisioning-Modi**: Neues Umgebungsvariable `OIDC_AUTO_PROVISION` (`auto`/`disabled`/`group`). Im Modus `group` werden OIDC-Rollen aus Gruppen-Claims ermittelt (`OIDC_GROUP_ADMIN`, `OIDC_GROUP_OPERATOR`, `OIDC_GROUP_VIEWER`, `OIDC_DEFAULT_ROLE`).
+- **SMTP-Konfiguration im Web-Container**: Neue Umgebungsvariablen `WEB_MAIL_HOST`, `WEB_MAIL_PORT`, `WEB_MAIL_USERNAME`, `WEB_MAIL_PASSWORD`, `WEB_MAIL_FROM`, `WEB_MAIL_FROM_NAME`, `WEB_MAIL_ENCRYPTION` für transaktionale E-Mails (Einladung, Reset).
+- **`auth_tokens`-Tabelle**: Migration `019_user_management_v2.sql` fügt `auth_tokens`-Tabelle (Einweg-Tokens für Invite/Reset), neue Spalten `active`, `email`, `agent_ids` in `users`, erweitert ENUM um `operator` und `api-only`, migriert `view` → `viewer`.
+- **Profil-Link in der Sidebar** für alle authentifizierten Benutzer.
+- **„Passwort vergessen"-Link** auf der Login-Seite (nur wenn SMTP konfiguriert).
+- **Audit-Log** für alle Benutzerverwaltungsoperationen (`user.create`, `user.update`, `user.delete`, `user.activate`, `user.deactivate`, `user.update_role`, `user.profile_update`).
+
+### Changed
+
+- `users.role` ENUM: `'view'` → `'viewer'` (Migration übernimmt vorhandene Zeilen automatisch). Legacy-Alias `'view'` in `SessionManager::hasRole()` bleibt erhalten.
+- `OidcAuthProvider`: prüft `active`-Flag beim Login; respektiert `oidc_auto_provision`-Modus; leitet Rolle aus OIDC-Gruppen-Claims ab.
+- `LocalAuthProvider`: prüft `active`-Flag; blockiert `api-only`-Benutzer am Web-Login; Standard-Rolle bei `createUser()` ist nun `viewer` statt `view`.
+- Benutzerliste zeigt jetzt E-Mail, Status (aktiv/inaktiv) und Agent-Einschränkungen an.
+
+### Migration
+
+- **Neu:** `agent/sql/migrations/019_user_management_v2.sql`
+- **Aktualisiert:** `agent/sql/schema.sql`
+
+---
+
 ## [4.8.1] – branch: `fix/linux-users-uid-filter`
 
 ### Fixed

@@ -27,15 +27,27 @@
 #   SESSION_LIFETIME    3600
 #   SESSION_NAME        cronmanager_sess
 #   I18N_LANGUAGE       en
-#   OIDC_ENABLED        false
-#   OIDC_PROVIDER_URL   ""
-#   OIDC_CLIENT_ID      ""
-#   OIDC_CLIENT_SECRET  ""
-#   OIDC_REDIRECT_URI   ""
-#   OIDC_SSL_VERIFY     true
-#   OIDC_SSL_CA_BUNDLE  ""
-#   WEB_URL             ""  (public base URL of this web UI, e.g. https://cronmanager.example.com;
-#                            pushed to every agent so notification links include ?agent_id=X)
+#   OIDC_ENABLED               false
+#   OIDC_PROVIDER_URL          ""
+#   OIDC_CLIENT_ID             ""
+#   OIDC_CLIENT_SECRET         ""
+#   OIDC_REDIRECT_URI          ""
+#   OIDC_SSL_VERIFY            true
+#   OIDC_SSL_CA_BUNDLE         ""
+#   OIDC_AUTO_PROVISION        auto   (auto|disabled|group)
+#   OIDC_GROUP_CLAIM           groups (JWT claim key containing group names)
+#   OIDC_GROUP_ADMIN           ""     (group name → admin role)
+#   OIDC_GROUP_OPERATOR        ""     (group name → operator role)
+#   OIDC_GROUP_VIEWER          ""     (group name → viewer role)
+#   OIDC_DEFAULT_ROLE          ""     (fallback role when no group matches; empty = deny)
+#   WEB_URL                    ""     (public base URL, pushed to agents for notification links)
+#   WEB_MAIL_HOST              ""     (SMTP host; leave empty to disable invite/reset emails)
+#   WEB_MAIL_PORT              587
+#   WEB_MAIL_USERNAME          ""
+#   WEB_MAIL_PASSWORD          ""
+#   WEB_MAIL_FROM              ""     (sender address; defaults to WEB_MAIL_USERNAME)
+#   WEB_MAIL_FROM_NAME         Cronmanager
+#   WEB_MAIL_ENCRYPTION        tls    (tls|ssl|none)
 #
 # @author  Christian Schulz <technik@meinetechnikwelt.rocks>
 # @license GNU General Public License version 3 or later
@@ -123,13 +135,28 @@ php -r "
         'web_url' => rtrim(getenv('WEB_URL') ?: '', '/'),
     ],
     'auth' => [
-        'oidc_enabled'       => filter_var(getenv('OIDC_ENABLED') ?: 'false', FILTER_VALIDATE_BOOLEAN),
-        'oidc_provider_url'  => getenv('OIDC_PROVIDER_URL') ?: '',
-        'oidc_client_id'     => getenv('OIDC_CLIENT_ID') ?: '',
-        'oidc_client_secret' => getenv('OIDC_CLIENT_SECRET') ?: '',
-        'oidc_redirect_uri'  => getenv('OIDC_REDIRECT_URI') ?: '',
-        'oidc_ssl_verify'    => filter_var(getenv('OIDC_SSL_VERIFY') ?: 'true', FILTER_VALIDATE_BOOLEAN),
-        'oidc_ssl_ca_bundle' => getenv('OIDC_SSL_CA_BUNDLE') ?: '',
+        'oidc_enabled'          => filter_var(getenv('OIDC_ENABLED') ?: 'false', FILTER_VALIDATE_BOOLEAN),
+        'oidc_provider_url'     => getenv('OIDC_PROVIDER_URL') ?: '',
+        'oidc_client_id'        => getenv('OIDC_CLIENT_ID') ?: '',
+        'oidc_client_secret'    => getenv('OIDC_CLIENT_SECRET') ?: '',
+        'oidc_redirect_uri'     => getenv('OIDC_REDIRECT_URI') ?: '',
+        'oidc_ssl_verify'       => filter_var(getenv('OIDC_SSL_VERIFY') ?: 'true', FILTER_VALIDATE_BOOLEAN),
+        'oidc_ssl_ca_bundle'    => getenv('OIDC_SSL_CA_BUNDLE') ?: '',
+        'oidc_auto_provision'   => getenv('OIDC_AUTO_PROVISION') ?: 'auto',
+        'oidc_group_claim'      => getenv('OIDC_GROUP_CLAIM') ?: 'groups',
+        'oidc_group_admin'      => getenv('OIDC_GROUP_ADMIN') ?: '',
+        'oidc_group_operator'   => getenv('OIDC_GROUP_OPERATOR') ?: '',
+        'oidc_group_viewer'     => getenv('OIDC_GROUP_VIEWER') ?: '',
+        'oidc_default_role'     => getenv('OIDC_DEFAULT_ROLE') ?: '',
+    ],
+    'mail' => [
+        'host'       => getenv('WEB_MAIL_HOST') ?: '',
+        'port'       => (int)(getenv('WEB_MAIL_PORT') ?: 587),
+        'username'   => getenv('WEB_MAIL_USERNAME') ?: '',
+        'password'   => getenv('WEB_MAIL_PASSWORD') ?: '',
+        'from'       => getenv('WEB_MAIL_FROM') ?: (getenv('WEB_MAIL_USERNAME') ?: ''),
+        'from_name'  => getenv('WEB_MAIL_FROM_NAME') ?: 'Cronmanager',
+        'encryption' => getenv('WEB_MAIL_ENCRYPTION') ?: 'tls',
     ],
 ];
 file_put_contents('${CONFIG_FILE}', json_encode(\$config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);

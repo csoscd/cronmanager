@@ -521,6 +521,34 @@ List all tags.
 
 ---
 
+### GET /api/v1/linux-users
+
+List all Linux users available for cron job scheduling on the selected agent,
+together with a flag indicating whether the agent is running in a Docker
+container.
+
+In Docker mode only `root` is a valid user (container isolation). In host
+mode the list contains `root` plus all users with UID ≥ 1000.
+
+**Query parameters (all optional):**
+
+| Parameter | Description |
+|---|---|
+| `agent_id` | Select a specific agent (defaults to the first enabled agent) |
+
+**Response 200:**
+
+```json
+{
+  "agent_id":    1,
+  "docker_mode": false,
+  "data":        ["deploy", "root"],
+  "count":       2
+}
+```
+
+---
+
 ### GET /api/v1/targets
 
 List all distinct execution targets (e.g. `"local"` and SSH host aliases)
@@ -1097,7 +1125,7 @@ to 60 seconds of delay before the daemon picks up the entry.
 
 | Version | Change |
 |---|---|
-| 4.8.0 | Added `GET /api/v1/targets` (§9) — distinct execution targets with job counts; optional `?active=` filter. Added three maintenance operation endpoints (§11): `POST /api/v1/maintenance/logs/purge`, `POST /api/v1/maintenance/history/cleanup` (optional `older_than_days`), `POST /api/v1/maintenance/once/cleanup`. All require `maintenance:write` scope. |
+| 4.8.0 | Added `GET /api/v1/targets` (§9) — distinct execution targets with job counts; optional `?active=` filter. Added `GET /api/v1/linux-users` (§9) — available Linux users for cron scheduling; includes `docker_mode` flag. Added three maintenance operation endpoints (§11): `POST /api/v1/maintenance/logs/purge`, `POST /api/v1/maintenance/history/cleanup` (optional `older_than_days`), `POST /api/v1/maintenance/once/cleanup`. All require `maintenance:write` scope. |
 | 4.6.1 | Every agent-specific endpoint now includes `"agent_id"` as the first field in its response (jobs, maintenance, export/json, audit, settings, timeline, tags). Resolves ambiguity in multi-agent setups where the same numeric job ID may refer to different jobs on different agents. UI links (notifications, breadcrumbs, filter resets, pagination) now carry `?agent_id=X` throughout. |
 | 4.6.0 | Added `web` section to `GET /api/v1/settings` (read-only, push-managed; contains `web_agent_id` and `web_url`); added `web_url` field to `GET /api/v1/agents` response; `PUT /api/v1/settings` silently ignores the `web` section |
 | 4.5.0 | Added `notify_on_silence` (bool), `silence_grace_minutes` (int\|null), `last_silence_alert_at` (string\|null, read-only) to job objects; `GET /health` extended with `silent_jobs` (int\|null) and `last_execution_at` (string\|null) |

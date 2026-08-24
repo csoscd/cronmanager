@@ -393,6 +393,18 @@ class HostAgentClient
     }
 
     /**
+     * Fetch available Linux users and the docker_mode flag from the agent.
+     *
+     * @return array{docker_mode: bool, data: string[], count: int}
+     *
+     * @throws \RuntimeException
+     */
+    public function getLinuxUsers(): array
+    {
+        return $this->get('/linux-users');
+    }
+
+    /**
      * Check whether a cron schedule has conflicts with maintenance windows.
      *
      * @param string $schedule   5-field cron expression.

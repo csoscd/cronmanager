@@ -112,6 +112,7 @@ return [
     'cron_command'            => 'Befehl',
     'cron_description'        => 'Beschreibung',
     'cron_linux_user'         => 'Linux-Benutzer',
+    'cron_linux_user_missing' => 'Warnung: Der Benutzer „:user" existiert nicht mehr auf diesem Agent-Host.',
     'cron_tags'               => 'Tags',
     'cron_active'             => 'Aktiv',
     'cron_inactive'           => 'Inaktiv',

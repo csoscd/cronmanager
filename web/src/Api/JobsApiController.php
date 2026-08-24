@@ -18,6 +18,7 @@ declare(strict_types=1);
  *   GET    /api/v1/jobs/{id}/history     jobs:read
  *   GET    /api/v1/tags                  jobs:read
  *   GET    /api/v1/targets               jobs:read
+ *   GET    /api/v1/linux-users           jobs:read
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
  * @license GNU General Public License version 3 or later
@@ -416,6 +417,44 @@ final class JobsApiController extends BaseApiController
         $count = is_array($data) ? count($data) : 0;
 
         $this->jsonOk(['agent_id' => $this->resolvedAgentId, 'data' => $data, 'count' => $count]);
+    }
+
+    /**
+     * GET /api/v1/linux-users
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function linuxUsers(array $params): void
+    {
+        $pdo    = Connection::getInstance()->getPdo();
+        $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_READ);
+
+        if ($apiKey === null) {
+            return;
+        }
+
+        $agent = $this->agentClient($apiKey);
+        if ($agent === null) {
+            return;
+        }
+
+        $response = $this->agentGet($agent, '/linux-users');
+        if ($response === null) {
+            return;
+        }
+
+        $data       = $response['data']        ?? [];
+        $dockerMode = (bool) ($response['docker_mode'] ?? false);
+        $count      = is_array($data) ? count($data) : 0;
+
+        $this->jsonOk([
+            'agent_id'    => $this->resolvedAgentId,
+            'docker_mode' => $dockerMode,
+            'data'        => $data,
+            'count'       => $count,
+        ]);
     }
 
     /**

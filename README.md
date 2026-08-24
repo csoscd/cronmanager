@@ -22,28 +22,22 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 5. [Guided Setup (Alternative)](#guided-setup-alternative)
 6. [Quick Start](#quick-start)
 7. [Detailed Installation](#detailed-installation)
-   - [Step 1 – Install PHP and shared libraries on the host](#step-1--install-php-and-shared-libraries-on-the-host)
-   - [Step 2 – Deploy the files](#step-2--deploy-the-files)
-   - [Step 3 – Configure the host agent](#step-3--configure-the-host-agent)
-   - [Step 4 – Start the host agent service](#step-4--start-the-host-agent-service)
-   - [Step 5 – Configure the web application](#step-5--configure-the-web-application)
-   - [Step 6 – Start the Docker stack](#step-6--start-the-docker-stack)
-   - [Step 7 – First login and initial setup](#step-7--first-login-and-initial-setup)
-8. [OIDC / SSO Setup with Authentik](#oidc--sso-setup-with-authentik)
+8. [OIDC / SSO Setup](#oidc--sso-setup) → [SSO.md](SSO.md)
 9. [Configuration Reference](#configuration-reference)
-   - [Web application config](#web-application-config)
-   - [Agent config](#agent-config)
-10. [Failure Alerts (Email & Telegram)](#failure-alerts-email--telegram)
-11. [Multi-Host Execution](#multi-host-execution)
-12. [Crontab Import](#crontab-import)
-13. [Settings](#settings)
-14. [Multi-Agent Setup](#multi-agent-setup)
-15. [Maintenance Windows](#maintenance-windows)
-16. [Export](#export)
-17. [User Management](#user-management)
-18. [External REST API](#external-rest-api)
-19. [Updating](#updating)
-20. [Troubleshooting](#troubleshooting)
+10. [Agent TLS](#agent-tls)
+11. [Failure Alerts](#failure-alerts-email--telegram) → [ALERTS.md](ALERTS.md)
+12. [InfluxDB Metrics](#influxdb-metrics) → [INFLUXDB.md](INFLUXDB.md)
+13. [Multi-Host Execution](#multi-host-execution) → [MULTI-HOST.md](MULTI-HOST.md)
+14. [Crontab Import](#crontab-import)
+15. [Reading the Crontab](#reading-the-crontab)
+16. [Settings](#settings)
+17. [Multi-Agent Setup](#multi-agent-setup) → [MULTI-AGENT.md](MULTI-AGENT.md)
+18. [Maintenance Windows](#maintenance-windows)
+19. [Export](#export)
+20. [User Management](#user-management)
+21. [External REST API](#external-rest-api)
+22. [Updating](#updating)
+23. [Troubleshooting](#troubleshooting) → [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 
 ---
 
@@ -77,8 +71,11 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Multi-agent** | Manage cron jobs across multiple agents (different hosts) from a single web UI; switch the active agent per user session via a sidebar dropdown |
 | **Settings** | Agent management, crontab sync, stuck-execution cleanup, and history bulk-delete |
 | **Local & SSO auth** | Username/password accounts or OAuth 2.0 / OpenID Connect (OIDC) via Authentik |
-| **Role-based access** | Admin (full access) and Viewer (read-only) roles |
-| **User management** | Admins can promote, demote, or remove users |
+| **Role-based access** | Four roles: `admin` (full access), `operator` (manage jobs, no user/settings admin), `viewer` (read-only), `api-only` (API access only, no web UI login) |
+| **User management** | Admins can create, edit, deactivate, and delete users; invite new users via email; restrict each user to specific agents |
+| **Invitation flow** | Send a one-time invite link via SMTP; the invited user sets their own password on first login |
+| **Password reset** | Self-service password reset via email (requires SMTP configuration on the web container) |
+| **Profile page** | Every user can change their own email and password at `/profile` (SSO users manage credentials through their IdP) |
 | **Audit log** | Every create, update, and delete operation is recorded with actor, timestamp, and a before/after diff or snapshot; viewable in the web UI (`/audit`, admin-only) and via the REST API (`audit:read` scope) |
 | **External REST API** | Scope-based JSON API for external applications; authenticated via Bearer tokens generated in the web UI — see [API.md](API.md) |
 | **Performance Monitor** | Optionally persist per-request and per-query timing data to a `performance_log` table; optionally display the last API and DB durations in the UI footer — both toggles are independent and configurable under Settings → Agent Settings |
@@ -297,6 +294,19 @@ commented-out lines in `docker-compose-full.yml`.
 | `OIDC_REDIRECT_URI` | _(empty)_ | Callback URL registered at the provider |
 | `OIDC_SSL_VERIFY` | `true` | Verify TLS certificate of the OIDC provider |
 | `OIDC_SSL_CA_BUNDLE` | _(empty)_ | Path to custom CA bundle (inside container) |
+| `OIDC_AUTO_PROVISION` | `auto` | SSO auto-provisioning mode: `auto` = create new users automatically; `disabled` = only pre-existing local accounts can log in via SSO; `group` = role determined by group claim (see `OIDC_GROUP_*`) |
+| `OIDC_GROUP_CLAIM` | `groups` | Name of the OIDC claim containing the user's group list (used when `OIDC_AUTO_PROVISION=group`) |
+| `OIDC_GROUP_ADMIN` | _(empty)_ | Group name mapped to the `admin` role |
+| `OIDC_GROUP_OPERATOR` | _(empty)_ | Group name mapped to the `operator` role |
+| `OIDC_GROUP_VIEWER` | _(empty)_ | Group name mapped to the `viewer` role |
+| `OIDC_DEFAULT_ROLE` | _(empty)_ | Fallback role when no group claim matches (`viewer`, `operator`, or `admin`); empty = deny login for unmatched users |
+| `WEB_MAIL_HOST` | _(empty)_ | SMTP hostname for web UI emails (user invitations, password reset); leave empty to disable email features |
+| `WEB_MAIL_PORT` | `587` | SMTP port for web UI emails |
+| `WEB_MAIL_USERNAME` | _(empty)_ | SMTP username |
+| `WEB_MAIL_PASSWORD` | _(empty)_ | SMTP password |
+| `WEB_MAIL_FROM` | _(empty)_ | Sender address for web UI emails |
+| `WEB_MAIL_FROM_NAME` | `Cronmanager` | Sender display name |
+| `WEB_MAIL_ENCRYPTION` | `tls` | `tls` (STARTTLS, port 587) or `ssl` (SMTPS, port 465) |
 
 ### Updating to a new release
 
@@ -310,133 +320,10 @@ The agent container automatically applies any new SQL migrations on startup.
 ### SSH keys for remote job execution and crontab import
 
 The `docker-compose-full.yml` mounts `/root/.ssh` from the Docker host into the agent
-container by default:
+container by default, giving it access to all configured SSH key pairs and host aliases.
 
-```yaml
-- /root/.ssh:/root/.ssh:ro
-```
-
-This gives the agent access to all SSH host aliases and key pairs configured for the
-host's root user, which is the simplest setup.
-
-> **Security note:** Mounting `/root/.ssh` exposes **every** SSH key and host alias
-> configured for root — including connections to systems unrelated to Cronmanager.
-> If the agent container were ever compromised, all those keys would be at risk.
-
-#### Alternative: agent-specific SSH directory
-
-Create a dedicated directory with only the keys and hosts Cronmanager needs:
-
-```bash
-mkdir -p /opt/cronmanager/.ssh
-chmod 700 /opt/cronmanager/.ssh
-
-# Generate a dedicated key pair (no passphrase for unattended use)
-ssh-keygen -t ed25519 -C "cronmanager-agent" -N "" \
-    -f /opt/cronmanager/.ssh/id_ed25519
-
-# Create a config file listing only the hosts Cronmanager manages
-cat > /opt/cronmanager/.ssh/config <<'EOF'
-Host myserver1
-    HostName 192.168.1.10
-    User root
-    IdentityFile ~/.ssh/id_ed25519
-    BatchMode yes
-    ConnectTimeout 10
-
-Host myserver2
-    HostName 192.168.1.11
-    User root
-    IdentityFile ~/.ssh/id_ed25519
-    BatchMode yes
-    ConnectTimeout 10
-EOF
-chmod 600 /opt/cronmanager/.ssh/config
-```
-
-Then in `docker-compose-full.yml`, replace the default mount with:
-
-```yaml
-- /opt/cronmanager/.ssh:/root/.ssh:ro
-```
-
-#### Reaching the Docker host itself
-
-If you want to import or run cron jobs on the **Docker host** itself (the machine running
-the containers), the agent container must be able to SSH back to it.
-
-1. **Add the host to the SSH config** (`/root/.ssh/config` or `/opt/cronmanager/.ssh/config`):
-
-   ```
-   Host dockerhost
-       HostName host.docker.internal
-       User root
-       IdentityFile ~/.ssh/id_ed25519
-       BatchMode yes
-       ConnectTimeout 10
-   ```
-
-   > `host.docker.internal` resolves to the Docker host's gateway IP inside the container.
-   > Add it to the agent service in `docker-compose-full.yml` if not already present:
-   > ```yaml
-   > extra_hosts:
-   >   - "host.docker.internal:host-gateway"
-   > ```
-
-2. **Authorise the agent's public key on the Docker host:**
-
-   ```bash
-   # Append the public key to root's authorized_keys on the Docker host
-   cat /opt/cronmanager/.ssh/id_ed25519.pub >> /root/.ssh/authorized_keys
-   chmod 600 /root/.ssh/authorized_keys
-
-   # Ensure the SSH daemon permits key-based root login
-   grep -i permitrootlogin /etc/ssh/sshd_config
-   # Should be: PermitRootLogin prohibit-password
-   ```
-
-3. **Add `StrictHostKeyChecking accept-new` to the SSH config:**
-
-   Without this, SSH will silently refuse to connect when the host key is not
-   yet in `known_hosts` (because `BatchMode yes` suppresses all interactive prompts).
-   Add the line to the `dockerhost` block in `/root/.ssh/config`:
-
-   ```
-   Host dockerhost
-       HostName host.docker.internal
-       User root
-       IdentityFile ~/.ssh/id_ed25519
-       BatchMode yes
-       ConnectTimeout 10
-       StrictHostKeyChecking accept-new
-   ```
-
-4. **Add the host key to `known_hosts`:**
-
-   `host.docker.internal` only resolves **inside** Docker containers — not on the
-   Docker host itself — so `ssh-keyscan` cannot be run directly on the host.
-   Instead, run it from **inside** the agent container and redirect the output
-   to the host's `known_hosts` file (the `>>` executes in the host shell):
-
-   ```bash
-   docker exec cronmanager-agent ssh-keyscan -H host.docker.internal \
-       >> /root/.ssh/known_hosts
-   ```
-
-   > **Why this works:** `ssh-keyscan` runs inside the container where
-   > `host.docker.internal` resolves correctly to the Docker gateway IP.
-   > The `>>` redirect runs in the host shell and writes directly to the
-   > host's `/root/.ssh/known_hosts`. The container sees the updated file
-   > immediately via the read-only mount — no container restart required.
-
-5. **Verify:**
-
-   ```bash
-   docker exec cronmanager-agent ssh dockerhost 'crontab -l -u root'
-   ```
-
-   You should see the root crontab output. If it works here, the Cronmanager
-   import page will list the Docker host as a target and show its crontab entries.
+For SSH key setup, using a dedicated agent-specific SSH directory, reaching the Docker
+host from inside the agent container, and troubleshooting SSH, see **[MULTI-HOST.md](MULTI-HOST.md)**.
 
 ---
 
@@ -782,99 +669,14 @@ You are then redirected to the login page. Log in with the credentials you just 
 
 ---
 
-## OIDC / SSO Setup with Authentik
+## OIDC / SSO Setup
 
-Cronmanager supports Single Sign-On via any OpenID Connect provider.
-The following instructions use **Authentik** as the identity provider.
+Cronmanager supports Single Sign-On via any OpenID Connect 1.0 provider (Authentik,
+Keycloak, Dex, Google Workspace, …). Three provisioning modes control how SSO users
+are handled: `auto` (default), `disabled`, and `group` (role derived from OIDC group claim).
 
-### 1. Create a provider in Authentik
-
-1. Go to **Applications → Providers → Create**
-2. Choose **OAuth2/OpenID Connect Provider**
-3. Configure the provider:
-   - **Name:** `Cronmanager`
-   - **Client type:** Confidential
-   - **Redirect URIs:** `https://cronmanager.example.com/auth/callback`
-     (replace with your actual domain — must match `oidc_redirect_uri` exactly)
-   - **Scopes:** `openid`, `email`, `profile`
-4. After saving, note the **Client ID** and **Client Secret**
-
-### 2. Create an Application in Authentik
-
-1. Go to **Applications → Applications → Create**
-2. Set a name and slug (e.g. `cronmanager`)
-3. Assign the provider created above
-4. Save
-
-### 3. Find the Provider URL
-
-Open the provider detail page and look for the
-**OpenID Configuration URL** — it resembles:
-```
-https://auth.example.com/application/o/cronmanager/.well-known/openid-configuration
-```
-
-The value you need for `oidc_provider_url` is everything **before** `.well-known`:
-```
-https://auth.example.com/application/o/cronmanager/
-```
-
-### 4. Configure Cronmanager
-
-Edit `/opt/cronmanager/www/conf/config.json`:
-
-```json
-{
-    "auth": {
-        "oidc_enabled":       true,
-        "oidc_provider_url":  "https://auth.example.com/application/o/cronmanager/",
-        "oidc_client_id":     "<client-id-from-authentik>",
-        "oidc_client_secret": "<client-secret-from-authentik>",
-        "oidc_redirect_uri":  "https://cronmanager.example.com/auth/callback",
-        "oidc_ssl_verify":    true,
-        "oidc_ssl_ca_bundle": ""
-    }
-}
-```
-
-Restart the web container to apply:
-
-```bash
-docker restart cronmanager-web
-```
-
-The login page now shows a **"Login with SSO"** button alongside the local login form.
-
-### 5. Private CA certificates (homelab)
-
-If your Authentik instance uses a certificate issued by an internal CA:
-
-```bash
-# Copy the CA certificate (PEM format) to the config directory
-cp root_ca.crt /opt/cronmanager/www/conf/root_ca.crt
-chmod 644 /opt/cronmanager/www/conf/root_ca.crt
-```
-
-Then set in `config.json`:
-
-```json
-"oidc_ssl_ca_bundle": "/var/www/conf/root_ca.crt"
-```
-
-The `conf/` directory is already mounted as `/var/www/conf` inside the container.
-
-To disable certificate verification entirely (**not recommended**):
-```json
-"oidc_ssl_verify": false
-```
-
-### 6. SSO user provisioning
-
-When an SSO user logs in for the first time, Cronmanager automatically creates a local
-record with the **Viewer** role. An admin can promote them via the User Management page.
-
-Deleting an SSO user's Cronmanager account does **not** revoke access on the OIDC
-provider — the account will be re-created on the next login.
+For the complete setup guide including the step-by-step Authentik configuration and a
+full group-mapping example (provider side + Cronmanager side), see **[SSO.md](SSO.md)**.
 
 ---
 
@@ -908,6 +710,19 @@ provider — the account will be re-created on the next login.
 | `auth.oidc_redirect_uri` | | Callback URL (`https://your-domain/auth/callback`) |
 | `auth.oidc_ssl_verify` | `true` | `true` = system CA, `false` = disable, or path to CA bundle |
 | `auth.oidc_ssl_ca_bundle` | `""` | Path to custom PEM CA bundle (empty = system CA) |
+| `auth.oidc_auto_provision` | `auto` | SSO provisioning mode: `auto`, `disabled`, or `group` |
+| `auth.oidc_group_claim` | `groups` | OIDC claim containing the user's group list |
+| `auth.oidc_group_admin` | `""` | Group name → `admin` role |
+| `auth.oidc_group_operator` | `""` | Group name → `operator` role |
+| `auth.oidc_group_viewer` | `""` | Group name → `viewer` role |
+| `auth.oidc_default_role` | `""` | Fallback role for unmatched SSO users; empty = deny login |
+| `mail.host` | `""` | SMTP hostname for web UI emails (invitations, password reset); empty = email features disabled |
+| `mail.port` | `587` | SMTP port |
+| `mail.username` | `""` | SMTP username |
+| `mail.password` | `""` | SMTP password |
+| `mail.from` | `""` | Sender address |
+| `mail.from_name` | `Cronmanager` | Sender display name |
+| `mail.encryption` | `tls` | `tls` (STARTTLS) or `ssl` (SMTPS) |
 
 ### Agent config
 
@@ -990,163 +805,35 @@ for isolated internal networks where encryption is provided at another layer.
 
 ## Failure Alerts (Email & Telegram)
 
-Cronmanager can send failure alerts when a cron job exits with a non-zero status code,
-is auto-killed after exceeding its execution limit, or is still running past its limit.
-Both email and Telegram can be enabled independently and fire in parallel.
+Cronmanager sends failure alerts (non-zero exit codes, execution limits, silence detection)
+via email and/or Telegram. Both channels can be enabled independently via **Settings →
+Agent Settings** in the web UI or via environment variables.
 
-### Configuring via the web UI
+Recovery notifications and silence detection alerts are also covered.
 
-The recommended way to configure notifications is the **Agent Settings** page at
-**Settings → Agent Settings** (`/settings/agent-config`). It provides a form for
-all four sections (General, Email, Telegram, InfluxDB) and writes the values directly
-to the agent's database — settings persist across container restarts without changing
-environment variables.
-
-The page also supports copying settings from one agent to another, which is useful
-when running multiple agents that share the same SMTP or Telegram configuration.
-
-> **Encryption at rest**: if you set `AGENT_SETTINGS_KEY` on the agent container,
-> passwords and tokens are encrypted with AES-256-CBC before being stored. See the
-> [environment variables reference](#environment-variables-reference) for details.
-
-Alternatively, settings can still be supplied through environment variables in
-Docker Compose (see below). When both exist, the database value takes precedence.
-
-### Email alerts
-
-**To enable:**
-
-1. Set `mail.enabled = true` and fill in your SMTP credentials in the agent config
-   (or set `MAIL_ENABLED=true` and the other `MAIL_*` variables in Docker Compose),
-   **or** use the web UI at **Settings → Agent Settings**
-2. Restart the agent when using environment variables: `sudo systemctl restart cronmanager-agent`
-3. Per job: check **"Notify on failure"** when creating or editing the job
-
-Alerts are dispatched asynchronously after the job completes — SMTP runs in a background
-process so a slow or unreachable server cannot block the agent.
-
-**Encryption settings:**
-- Port **465** (SMTPS / implicit TLS) → set `mail.encryption` to `ssl`
-- Port **587** (STARTTLS) → set `mail.encryption` to `tls`
-
-Mixing these will cause the connection to hang until the SMTP timeout is reached.
-
-### Telegram alerts
-
-Cronmanager can also send alerts via a Telegram bot.
-
-**Prerequisites:**
-
-1. Create a bot via [@BotFather](https://t.me/BotFather) — it gives you a **Bot API token**
-2. Start a conversation with your bot (or add it to a group/channel) and retrieve the **chat ID**
-
-   The easiest way to get the chat ID:
-   ```
-   https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
-   ```
-   Send any message to the bot first, then call the URL — look for `"chat":{"id":...}` in the response.
-
-**To enable:**
-
-1. Set `telegram.enabled = true`, `telegram.bot_token`, and `telegram.chat_id` in the agent config
-   (or set `TELEGRAM_ENABLED=true`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_CHAT_ID` in Docker Compose)
-2. Restart the agent
-3. Per job: check **"Notify on failure"** when creating or editing the job — the same flag controls both channels
-
-**Docker Compose example (`.env`):**
-```dotenv
-TELEGRAM_ENABLED=true
-TELEGRAM_BOT_TOKEN=123456789:AABBccDDeeFFggHHiiJJkkLLmmNNoo...
-TELEGRAM_CHAT_ID=-1001234567890
-```
-
-Messages are sent in HTML parse mode and include the job ID, description, user, schedule,
-exit code, start/notification time, and the captured output (truncated to 2 000 characters).
-The same context-aware labels as email apply: jobs that are still running show
-"N/A – job still running" as the exit code and "Notified At" instead of "Finished".
+For the full configuration guide including env vars, SMTP encryption settings, and
+troubleshooting, see **[ALERTS.md](ALERTS.md)**.
 
 ---
 
 ## InfluxDB Metrics
 
-Cronmanager can write a data point to **InfluxDB 2.x** after every completed execution.
-This lets you build dashboards in Grafana (or any Flux-capable tool) showing execution
-history, success rates, durations, and failure trends across all your jobs.
+Cronmanager can write per-execution metrics to **InfluxDB 2.x** for dashboards in
+Grafana. An importable dashboard is included at `grafana/cronmanager-overview.json`.
 
-### What is written
-
-Every completed execution produces one `cron_execution` data point:
-
-| | Name | Type | Description |
-|---|---|---|---|
-| **Tag** | `job_id` | string | Numeric job ID |
-| **Tag** | `description` | string | Job description |
-| **Tag** | `linux_user` | string | Linux user that ran the job |
-| **Tag** | `target` | string | Execution target (`local` or SSH alias) |
-| **Tag** | `status` | string | `success`, `failed`, `killed`, `limit_exceeded`, `maintenance`, `interrupted` |
-| **Tag** | `job_tags` | string | Comma-separated job tags (omitted when empty) |
-| **Field** | `duration_seconds` | float | Elapsed wall-clock time in seconds |
-| **Field** | `exit_code` | int | Raw process exit code |
-| **Field** | `output_length` | int | Bytes of captured output |
-| **Field** | `during_maintenance` | int | `1` if a maintenance window was active, else `0` |
-
-Writes are dispatched in a **background process** (`send-influx.php`) so a slow or
-unreachable InfluxDB instance never blocks the agent's HTTP response.
-
-### Enable (Docker Compose / `.env`)
-
-```dotenv
-INFLUXDB_ENABLED=true
-INFLUXDB_URL=http://influxdb:8086
-INFLUXDB_TOKEN=your-api-token
-INFLUXDB_ORG=your-org
-INFLUXDB_BUCKET=cronmanager
-```
-
-After adding these variables, restart the agent container so the entrypoint regenerates
-`config.json`.
-
-### Grafana dashboard
-
-An importable Grafana dashboard is included at `grafana/cronmanager-overview.json`.
-
-**To import:**
-1. Grafana → **Dashboards → Import**
-2. Upload `grafana/cronmanager-overview.json` (or paste its JSON)
-3. Select your InfluxDB datasource when prompted for `DS_INFLUXDB`
-4. Set the `bucket` variable to your bucket name (default: `cronmanager`)
-
-**Panels included:**
-
-| Panel | Type |
-|---|---|
-| Total Executions | Stat |
-| Success Rate | Gauge |
-| Failed | Stat |
-| Avg Duration | Stat |
-| Maintenance Skipped | Stat |
-| Executions over Time by Status | Stacked time series |
-| Duration over Time by Job | Time series |
-| Executions by Job | Horizontal bar chart |
-| Avg Duration by Job | Horizontal bar chart |
-| Recent Failures (last 50) | Table |
+For the measurement schema, env var reference, Grafana import steps, and troubleshooting,
+see **[INFLUXDB.md](INFLUXDB.md)**.
 
 ---
 
 ## Multi-Host Execution
 
-A single cron job can execute on multiple targets simultaneously:
+A single cron job can execute on multiple targets simultaneously — `local` and any number
+of SSH aliases defined in `~/.ssh/config`. Each target gets its own crontab entry and
+reports results independently.
 
-- **local** – Runs on the host where the agent is installed
-- **SSH alias** – Runs on a remote host via an alias from `~/.ssh/config`
-  of the Linux user whose crontab is managed
-
-When a job has multiple targets, one independent crontab entry is created per target.
-They all fire at the same scheduled time, run in parallel via SSH (BatchMode=yes),
-and each reports its execution result back to the agent separately.
-
-**Prerequisite for SSH targets:** the Linux user must have key-based SSH access
-configured for the target host in `~/.ssh/config`. Password prompts are not supported.
+For SSH key setup, reaching the Docker host from inside the agent container, and
+troubleshooting SSH connectivity, see **[MULTI-HOST.md](MULTI-HOST.md)**.
 
 ---
 
@@ -1246,82 +933,12 @@ Lists all configured remote agents with name, URL, live connection status, and e
 
 ## Multi-Agent Setup
 
-Cronmanager v4.0.0 can manage cron jobs across **multiple agents** running on different hosts — all from a single web UI. Each agent is an independent Cronmanager agent container (or host-agent service) with its own MariaDB and crontab. The web UI stores a registry of configured agents in its own `agents` table and lets each user switch between them via a sidebar dropdown.
+Since v4.0.0, a single Cronmanager web UI can manage cron jobs across **multiple agents**
+on different hosts. Each agent has its own MariaDB and crontab; users switch between them
+via a sidebar dropdown.
 
-### Architecture
-
-```
-Browser
-  │
-  ▼
-┌──────────────────────────┐
-│  Web UI (single instance) │
-│  agents table (registry) │
-└───┬───────────┬───────────┘
-    │ HMAC      │ HMAC
-    ▼           ▼
-┌───────────┐ ┌───────────┐
-│  Agent A  │ │  Agent B  │
-│  host-1   │ │  host-2   │
-│  MariaDB  │ │  MariaDB  │
-└───────────┘ └───────────┘
-```
-
-- The `agents` table lives in the **web UI's database** (same MariaDB as users and sessions).
-- Each agent has its **own** MariaDB storing cronjobs, tags, and execution history.
-- When you switch the active agent, the web UI sends all subsequent API calls to that agent's URL. The dashboard, job list, timeline, monitor, and export all reflect the selected agent's data.
-- Each user's selection is stored in their PHP session — different users can view different agents simultaneously.
-
-### Step 1 — Deploy a second agent
-
-Set up a Cronmanager agent on the second host using the same procedure as the primary agent (Docker Hub image or manual deployment). The second agent needs:
-
-- Its own MariaDB container (or database on a shared MariaDB instance)
-- Its own HMAC secret (generate with `openssl rand -hex 32`)
-- A port reachable from the web UI container (default: 8865 / HTTPS)
-
-Make sure the web UI container can reach the second agent's URL. If the agent is on another host in your network, verify firewall rules allow TCP 8865 from the web container's host.
-
-**Test connectivity from the web container:**
-```bash
-docker exec cronmanager-web curl -sk https://<second-host>:8865/health
-# → {"status":"ok","timestamp":"...","version":"..."}
-```
-
-### Step 2 — Register the agent in the web UI
-
-1. Log in as **admin**
-2. Go to **Settings** (`/settings`)
-3. In the **Agents** section click **+ Add agent**
-4. Fill in the form:
-
-   | Field | Example | Notes |
-   |---|---|---|
-   | **Name** | `host-2` | Display name in the sidebar switcher |
-   | **Description** | `Production server 2` | Optional |
-   | **URL** | `https://192.168.1.20:8865` | Base URL of the agent; must be reachable from the web container |
-   | **HMAC secret** | `<openssl rand -hex 32>` | Must match the second agent's `agent.hmac_secret` |
-   | **Timeout** | `10` | HTTP timeout in seconds |
-   | **Verify SSL certificate** | unchecked | Uncheck for self-signed certs (default); check + supply CA bundle for private CA |
-   | **Sort order** | `1` | Controls the dropdown order (0 = first) |
-   | **Enabled** | checked | Uncheck to hide from the switcher without deleting |
-
-5. Click **Save** — the agent appears in the Agents table with a live status badge (green = reachable, red = unreachable)
-
-> **Tip:** Use the **Test connection** button on the edit form to verify URL and secret before saving.
-
-### Step 3 — Switch between agents
-
-Once two or more agents are configured, a **dropdown selector** appears at the top of the sidebar (above the navigation groups). Select the desired agent — the page reloads and all data (jobs, timeline, monitor, export) reflects the newly selected agent.
-
-The selection is per-user and per-session. It does not affect other logged-in users.
-
-### Notes
-
-- **The last agent cannot be deleted.** At least one agent must remain to keep the web UI functional.
-- **Disabling an agent** (`Enabled = unchecked`) removes it from the switcher but keeps its configuration. Re-enable it at any time.
-- **HMAC secrets are independent** per agent. Rotating a secret requires updating it in both the agent's config and the web UI's agent record.
-- **Existing installs upgrade automatically.** On first start after upgrading to v4.0.0 the web UI creates the `agents` table and seeds a "Default" agent entry from the existing `agent.*` values in `config.json`. No manual migration step is required.
+For the deployment steps, registration form reference, per-user agent restrictions, and
+upgrade notes, see **[MULTI-AGENT.md](MULTI-AGENT.md)**.
 
 ---
 
@@ -1395,17 +1012,76 @@ Large exports are streamed directly to the browser without buffering in memory.
 
 ## User Management
 
-Admins can manage accounts via **Users** in the navigation bar.
+Since v5.0.0 Cronmanager has a full four-role user management system. Admins manage
+accounts via **Users** in the navigation bar.
 
-| Action | Notes |
-|---|---|
-| **Make Admin** | Promotes a Viewer to Admin |
-| **Make Viewer** | Demotes an Admin to Viewer |
-| **Delete** | Permanently removes the account |
+### Roles
 
-- You cannot modify or delete your own account
-- SSO users are auto-created as Viewer on first login and can be promoted by an admin
-- Deleting an SSO user does not revoke their OIDC provider access
+| Role | Web UI | Create/Edit Jobs | Admin (Users, Settings, Agents) |
+|---|---|---|---|
+| `admin` | ✓ | ✓ | ✓ |
+| `operator` | ✓ | ✓ | — |
+| `viewer` | ✓ (read-only) | — | — |
+| `api-only` | — (no web login) | — | — |
+
+`api-only` accounts can only authenticate via API keys — they cannot log in to the web UI.
+
+### Creating users (local accounts)
+
+1. Go to **Users → Create user** (admin only)
+2. Fill in **Username**, **Email** (optional), **Role**, and optionally a **Password**
+3. If SMTP is configured on the web container and an email address is provided, check
+   **Send invitation email** — the user receives a one-time link to set their own password
+4. Click **Create**
+
+### Invitation flow
+
+When the **Send invitation email** option is selected:
+- The user receives an email with a one-time invite link (valid 72 hours)
+- Following the link opens a form to set a password; on success the user is logged in
+- If the link expires, an admin can resend it via the **Resend invite** button on the user list
+- The "Resend invite" button is shown only for local accounts that have an email address and where mail is enabled
+
+### Self-service password reset
+
+If SMTP is configured, a **"Forgot password?"** link appears on the login page:
+1. The user enters their email address
+2. A reset link (valid 72 hours) is sent to that address
+3. Following the link opens a form to set a new password
+4. The response is identical whether the email exists or not (prevents user enumeration)
+
+SSO-authenticated users cannot use password reset — their credentials are managed by the IdP.
+
+### Self-service profile (`/profile`)
+
+Every authenticated user can access `/profile` from the sidebar (Tools section) to:
+- Change their **email address**
+- Change their **password**
+
+SSO users see a note that their credentials are managed by the identity provider and cannot change their password here.
+
+### Deactivating users
+
+Admins can deactivate a user account (toggle via the user list). Deactivated accounts:
+- Cannot log in
+- Have any active sessions invalidated at the next request
+
+The account is not deleted and can be reactivated at any time.
+
+### Per-user agent restrictions
+
+Each user can be restricted to a subset of configured agents (the same mechanism available
+for API keys). When restrictions are set, the user's sidebar agent switcher only shows
+the permitted agents. When no restriction is set, the user can access all agents.
+
+Configure this on the user's create/edit form via the **Agent restriction** multi-select.
+
+### Notes
+
+- You cannot modify or delete your own account (self-action protection)
+- SSO users show a **SSO** badge in the user list; their role depends on the `OIDC_AUTO_PROVISION` setting (see [SSO user provisioning](#6-sso-user-provisioning))
+- Deleting an SSO user does not revoke their OIDC provider access — use `OIDC_AUTO_PROVISION=disabled` to block re-creation on next login
+- All user management actions are recorded in the **Audit Log**
 
 ---
 
@@ -1461,382 +1137,6 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
 
 ## Troubleshooting
 
-### "Agent unavailable" error in the web UI
-
-**Host-agent mode:**
-1. Check the agent is running:
-   ```bash
-   sudo systemctl status cronmanager-agent
-   curl -k https://127.0.0.1:8865/health
-   ```
-2. Verify `agent.url` in the web config points to `https://host.docker.internal:8865` and `ssl_verify` is `false`
-3. Verify the HMAC secret matches in both config files
-4. Inspect agent logs:
-   ```bash
-   sudo journalctl -u cronmanager-agent -n 100
-   # or
-   tail -f /opt/cronmanager/agent/log/cronmanager-agent.log
-   ```
-
-**Docker mode:**
-1. Check the agent container is running and healthy:
-   ```bash
-   docker ps | grep cronmanager-agent
-   docker exec cronmanager-agent curl -sk https://localhost:8865/health
-   ```
-2. Verify `agent.url` in the web config points to `https://cronmanager-agent:8865` and `ssl_verify` is `false`
-3. Verify the HMAC secret matches in both config files
-4. Inspect agent container logs:
-   ```bash
-   docker logs cronmanager-agent
-   ```
-
-### Jobs are not executing
-
-**Host-agent mode:**
-1. Verify the wrapper script is executable:
-   ```bash
-   chmod +x /opt/cronmanager/agent/bin/cron-wrapper.sh
-   ```
-2. Check the crontab for the affected user:
-   ```bash
-   crontab -u <linux-user> -l
-   ```
-3. Check the system cron log:
-   ```bash
-   grep CRON /var/log/syslog | tail -50
-   ```
-4. Test the wrapper manually:
-   ```bash
-   /opt/cronmanager/agent/bin/cron-wrapper.sh <job-id> local
-   ```
-
-**Docker mode:**
-1. Verify the container crontab has entries (use Settings → Crontab Sync if empty):
-   ```bash
-   docker exec cronmanager-agent crontab -l
-   ```
-2. Verify jobs have `linux_user = root` (required in docker mode)
-3. Check the cron log inside the container:
-   ```bash
-   docker exec cronmanager-agent grep CRON /var/log/syslog 2>/dev/null | tail -50
-   # or check the agent log for execution events:
-   docker logs cronmanager-agent | tail -50
-   ```
-4. Test the wrapper manually inside the container:
-   ```bash
-   docker exec cronmanager-agent /opt/cronmanager/agent/bin/cron-wrapper.sh <job-id> local
-   ```
-
-> **Multi-agent:** If you use multiple agents, verify that the **active agent** in the sidebar is set to the correct host before checking the job list or timeline. Each agent's data is completely independent.
-
-### OIDC login fails with SSL error
-
-| Error | Cause | Fix |
-|---|---|---|
-| `cURL error 60` | Server certificate not trusted | Set `oidc_ssl_ca_bundle` to your CA cert path |
-| `cURL error 77` | CA cert file not readable | `chmod 644 /opt/cronmanager/www/conf/root_ca.crt` |
-
-Check the web log for details:
-```bash
-tail -f /opt/cronmanager/www/log/cronmanager-web.log
-```
-
-### Database connection fails
-
-1. Check the MariaDB container health:
-   ```bash
-   docker inspect --format='{{.State.Health.Status}}' cronmanager-db
-   ```
-2. Test connectivity:
-   ```bash
-   docker exec cronmanager-db mariadb -u cronmanager -p<password> -e "SELECT 1"
-   ```
-3. Confirm passwords match across `db.credentials`, agent config, and web config
-
-### 403 Forbidden for non-admin users
-
-Actions like creating, editing, or deleting jobs require the Admin role.
-An existing admin must promote the user at **Users → Make Admin**.
-
----
-
-### Execution limit checker produces no log output / auto-kill never fires
-
-The limit checker (`check-limits.php`) runs every minute via a system cron entry. If it
-never produces any log output — even for jobs that visibly exceed their limit — the script
-is crashing silently before it can initialise logging.
-
-**Diagnose:**
-
-```bash
-# Host-agent mode: run the checker manually and look for PHP errors
-sudo php /opt/cronmanager/agent/bin/check-limits.php
-
-# Docker mode
-docker exec cronmanager-agent php /opt/cronmanager/agent/bin/check-limits.php
-```
-
-**Verify the cron entry exists:**
-
-```bash
-# Host-agent mode
-cat /etc/cron.d/cronmanager-limits
-
-# Docker mode (entry is written by the entrypoint)
-docker exec cronmanager-agent cat /etc/cron.d/cronmanager-limits
-```
-
-Expected output:
-```
-* * * * * root /usr/bin/php /opt/cronmanager/agent/bin/check-limits.php >> /dev/null 2>&1
-```
-
-If the file is missing, reinstall or run `simple_debian_setup.sh` again (it is idempotent).
-
-**Verify the checker runs and logs:**
-
-```bash
-# Host-agent mode
-grep "check-limits" /opt/cronmanager/agent/log/cronmanager-agent.log | tail -20
-
-# Docker mode
-docker exec cronmanager-agent grep "check-limits" \
-    /opt/cronmanager/agent/log/cronmanager-agent.log | tail -20
-```
-
-If there is no output at all, the script is exiting before Bootstrap initialises the
-logger. Run manually (see above) to expose the underlying PHP error.
-
----
-
-### Auto-kill fires the notification but the job keeps running
-
-This means the notification was sent (exit code `-3`) but the `kill` call failed. The
-most common causes are:
-
-**1. The job process is not a process-group leader**
-
-`kill -TERM -$PID` sends SIGTERM to the entire **process group**. This only works when
-the child process was launched with `setsid` so that its PID equals its PGID. Jobs
-started via an older wrapper script (before the `setsid` fix) inherit the wrapper's
-process group and cannot be killed this way.
-
-Check the wrapper script version in use:
-
-```bash
-grep -n "setsid" /opt/cronmanager/agent/bin/cron-wrapper.sh
-```
-
-If `setsid` does not appear, redeploy the agent to get the current wrapper.
-
-**2. Remote SSH auto-kill: process group not created on the remote host**
-
-For SSH targets the remote command must also be launched via `setsid`. Check:
-
-```bash
-grep -A3 "REMOTE_PID_FILE" /opt/cronmanager/agent/bin/cron-wrapper.sh | grep setsid
-```
-
-Again, redeploy if `setsid` is absent.
-
-**3. PID file not written / not found**
-
-For SSH targets the agent reads the PID from a temporary file on the remote host.
-If the wrapper failed to write the file (permissions, disk space, race condition)
-the kill attempt will log a warning. Check the agent log around the time the
-limit was exceeded:
-
-```bash
-grep "auto-kill\|pid_file\|PID" /opt/cronmanager/agent/log/cronmanager-agent.log | tail -30
-```
-
----
-
-### Job shows exit code 0 (or 143) after being auto-killed
-
-The wrapper script's `wait` call returns after SIGTERM (exit 143) and calls
-`POST /execution/finish`. If the execution row was already closed by the auto-killer
-with exit code `-2`, the finish endpoint ignores the second update (`AND finished_at IS NULL`
-guard). If you are seeing `0` or `143` in the UI, the running agent code predates this fix.
-
-Redeploy `agent/src/Endpoints/ExecutionFinishEndpoint.php` and restart the agent.
-
----
-
-### Jobs stuck in "running" state
-
-Executions stay open (no `finished_at`) when the wrapper script is interrupted before
-it can call `POST /execution/finish` — for example, if the agent restarts mid-run or
-the container is recreated.
-
-**Clean up via the UI:**
-
-1. Go to **Settings → Stuck Executions**
-2. Adjust the lookback threshold if needed
-3. Use **Mark Finished** (sets exit code `-1`) or **Delete** per row, or select all and use the bulk toolbar
-
-**Clean up via SQL (emergency):**
-
-```sql
--- Mark all executions running for more than 2 hours as finished
-UPDATE execution_log
-   SET finished_at = NOW(),
-       exit_code   = -1,
-       output      = CONCAT(COALESCE(output, ''), '\n[Marked finished manually]')
- WHERE finished_at IS NULL
-   AND started_at < DATE_SUB(NOW(), INTERVAL 2 HOUR);
-```
-
----
-
-### Email alerts are not being sent
-
-1. **Check that mail is enabled in the agent config:**
-   ```bash
-   grep -A10 '"mail"' /opt/cronmanager/agent/config/config.json
-   ```
-   `mail.enabled` must be `true`.
-
-2. **Per-job: verify "Notify on failure / limit exceeded" is checked** on the job edit page.
-
-3. **Test SMTP connectivity from the agent host:**
-   ```bash
-   # Replace with your SMTP host and port
-   nc -zv smtp.example.com 587
-   ```
-
-4. **Check the agent log for mail errors:**
-   ```bash
-   # Host-agent mode
-   grep -i "mail\|smtp\|notification" /opt/cronmanager/agent/log/cronmanager-agent.log | tail -30
-
-   # Docker mode
-   docker exec cronmanager-agent grep -i "mail\|smtp\|notification" \
-       /opt/cronmanager/agent/log/cronmanager-agent.log | tail -30
-   ```
-
-5. **Check the send-notification script directly** (it runs as a background process):
-   ```bash
-   # Create a minimal test payload
-   echo '{"job_id":1,"description":"Test","linux_user":"root","schedule":"* * * * *","exit_code":1,"output":"test","started_at":"2026-01-01 00:00:00","finished_at":"2026-01-01 00:01:00"}' \
-       > /tmp/test_notify.json
-   php /opt/cronmanager/agent/bin/send-notification.php /tmp/test_notify.json
-   ```
-
----
-
-### Remote SSH jobs are not executing
-
-1. **Test SSH connectivity from the agent:**
-   ```bash
-   # Host-agent mode
-   ssh -o BatchMode=yes <host-alias> 'echo ok'
-
-   # Docker mode
-   docker exec cronmanager-agent ssh -o BatchMode=yes <host-alias> 'echo ok'
-   ```
-
-2. **Verify the SSH config is accessible inside the container:**
-   ```bash
-   docker exec cronmanager-agent cat /root/.ssh/config
-   ```
-
-3. **Check `known_hosts`** — SSH silently refuses to connect to hosts not in `known_hosts`
-   when `BatchMode=yes` is set:
-   ```bash
-   # Add the remote host key
-   docker exec cronmanager-agent ssh-keyscan -H <hostname> >> /root/.ssh/known_hosts
-   ```
-   Or add `StrictHostKeyChecking accept-new` to the SSH config block for that host.
-
-4. **Verify the crontab entry on the remote host** exists after saving the job:
-   ```bash
-   ssh <host-alias> 'crontab -l'
-   # or for a specific user:
-   ssh <host-alias> 'crontab -u <linux-user> -l'
-   ```
-
-5. **Run the wrapper manually** to reproduce the exact execution path:
-   ```bash
-   # Host-agent mode
-   /opt/cronmanager/agent/bin/cron-wrapper.sh <job-id> <ssh-host-alias>
-
-   # Docker mode
-   docker exec cronmanager-agent \
-       /opt/cronmanager/agent/bin/cron-wrapper.sh <job-id> <ssh-host-alias>
-   ```
-
----
-
-### Singleton mode does not prevent duplicate runs
-
-If a job marked as singleton still spawns multiple concurrent instances:
-
-1. **Verify the `singleton` column exists** in the database:
-   ```sql
-   DESCRIBE cronjobs;
-   -- Should show a 'singleton' column
-   ```
-   If missing, apply migration `005_singleton.sql`:
-   ```bash
-   docker exec -i cronmanager-db mariadb -u cronmanager -p<password> cronmanager \
-       < /opt/cronmanager/agent/sql/migrations/005_singleton.sql
-   ```
-
-2. **Verify the job was saved with the flag** — re-open the job edit form and confirm
-   the Singleton checkbox is ticked. Due to a past bug in `CronGetEndpoint`, the flag
-   was not returned on GET, causing the form to appear unchecked and re-saving to clear
-   the value. Redeploy the current agent code to get the fix.
-
-3. **Check the agent log** for `409 Conflict` responses, which indicate the singleton
-   guard is working:
-   ```bash
-   grep "singleton\|409\|already running" /opt/cronmanager/agent/log/cronmanager-agent.log | tail -20
-   ```
-
----
-
-### Viewing live agent activity
-
-```bash
-# Host-agent mode – follow the log in real time
-tail -f /opt/cronmanager/agent/log/cronmanager-agent.log
-
-# Docker mode
-docker exec cronmanager-agent tail -f /opt/cronmanager/agent/log/cronmanager-agent.log
-# or via docker logs (combines stdout + stderr):
-docker logs -f cronmanager-agent
-# Note: the above docker exec command is required when using the default named volume.
-# If you switched to a host bind mount (see docker-compose-full.yml), you can also use:
-# tail -f /opt/cronmanager/agent/log/cronmanager-agent.log
-
-# Temporarily increase verbosity (without restarting — change in config.json + restart)
-# In config.json: "logging": { "level": "debug" }
-sudo systemctl restart cronmanager-agent   # host-agent
-docker restart cronmanager-agent           # docker mode
-```
-
----
-
-### Checking what the execution-limit checker last did
-
-```bash
-# Host-agent mode
-grep "check-limits" /opt/cronmanager/agent/log/cronmanager-agent.log | tail -50
-
-# Docker mode
-docker exec cronmanager-agent grep "check-limits" \
-    /opt/cronmanager/agent/log/cronmanager-agent.log | tail -50
-```
-
-Key log lines to look for:
-
-| Message | Meaning |
-|---|---|
-| `check-limits: starting execution-limit check` | Checker ran successfully |
-| `check-limits: no executions exceeding their limit` | No jobs over limit at that minute |
-| `check-limits: found executions exceeding limit` | At least one job exceeded its limit |
-| `check-limits: auto-killed execution` | Kill succeeded |
-| `check-limits: auto-kill did not succeed` | Kill attempt failed — see `error` field |
-| `check-limits: limit-exceeded notification dispatched` | Alert email queued |
+For the full troubleshooting guide (agent unavailable, jobs not executing, stuck
+executions, auto-kill issues, database connection failures, and more),
+see **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)**.

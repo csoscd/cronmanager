@@ -24,10 +24,16 @@ $agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&' : '';
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
-$jobs           = isset($jobs)           && is_array($jobs)           ? $jobs           : [];
-$recentFailures = isset($recentFailures) && is_array($recentFailures) ? $recentFailures : [];
-$tags           = isset($tags)           && is_array($tags)           ? $tags           : [];
-$stats          = isset($stats)          && is_array($stats)          ? $stats          : [];
+// ── Feature toggles ──────────────────────────────────────────────────────────
+// Set to false to instantly hide a feature without touching the controller.
+$showOutputPreview = true;   // Ausgabe-Vorschau in der Fehler-Tabelle
+
+$jobs               = isset($jobs)           && is_array($jobs)           ? $jobs           : [];
+$recentFailures     = isset($recentFailures) && is_array($recentFailures) ? $recentFailures : [];
+$tags               = isset($tags)           && is_array($tags)           ? $tags           : [];
+$stats              = isset($stats)          && is_array($stats)          ? $stats          : [];
+$executionStats     = isset($executionStats) && is_array($executionStats) ? $executionStats : [];
+$showExecutionStats = isset($showExecutionStats) ? (bool) $showExecutionStats : false;
 
 $total         = (int) ($stats['total']         ?? 0);
 $active        = (int) ($stats['active']        ?? 0);
@@ -128,12 +134,12 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
 </div>
 
 <!-- ======================================================================
-     Second row: Recent Failures + Jobs by User
+     Second row: Recent Failures (3/4) + Execution Stats widget (1/4)
      ====================================================================== -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
-    <!-- Recent failures --------------------------------------------------- -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+    <!-- Recent failures (spans 3 of 4 columns) ---------------------------- -->
+    <div class="lg:col-span-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
         <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
             <h2 class="text-base font-semibold text-gray-800 dark:text-gray-200">
                 <?= htmlspecialchars($t('dashboard_recent_failures'), ENT_QUOTES, 'UTF-8') ?>
@@ -172,6 +178,11 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <?= htmlspecialchars($t('duration'), ENT_QUOTES, 'UTF-8') ?>
                             </th>
+                            <?php if ($showOutputPreview): ?>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <?= htmlspecialchars($t('dashboard_output_preview'), ENT_QUOTES, 'UTF-8') ?>
+                            </th>
+                            <?php endif; ?>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -187,6 +198,14 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
                                 $duration    = isset($entry['duration_seconds'])
                                     ? round((float) $entry['duration_seconds'], 1) . 's'
                                     : '–';
+                                // Truncate output to last 120 chars for the preview column
+                                $outputRaw     = isset($entry['output']) ? trim((string) $entry['output']) : '';
+                                $outputPreview = '';
+                                if ($outputRaw !== '') {
+                                    $outputPreview = mb_strlen($outputRaw) > 120
+                                        ? '…' . mb_substr($outputRaw, -120)
+                                        : $outputRaw;
+                                }
                                 // Deep-link to Timeline pre-filtered for this specific job/target/status.
                                 // _direct=1 prevents saved date-range cookies from hiding the entry.
                                 $timelineParams = array_filter([
@@ -228,12 +247,23 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
                                         <?= $exitCode !== null ? $exitCode : '?' ?>
                                     </span>
                                 </td>
-                                <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                                <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                                     <?= htmlspecialchars($startedAt, ENT_QUOTES, 'UTF-8') ?>
                                 </td>
-                                <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                                <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                                     <?= htmlspecialchars($duration, ENT_QUOTES, 'UTF-8') ?>
                                 </td>
+                                <?php if ($showOutputPreview): ?>
+                                <td class="px-4 py-3 text-xs font-mono text-gray-500 dark:text-gray-400 max-w-xs">
+                                    <?php if ($outputPreview !== ''): ?>
+                                        <span class="block truncate" title="<?= htmlspecialchars($outputRaw, ENT_QUOTES, 'UTF-8') ?>">
+                                            <?= htmlspecialchars($outputPreview, ENT_QUOTES, 'UTF-8') ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="text-gray-300 dark:text-gray-600">—</span>
+                                    <?php endif; ?>
+                                </td>
+                                <?php endif; ?>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -242,9 +272,74 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
         <?php endif; ?>
     </div>
 
-    <!-- Jobs by user (hidden when only one linux user exists) -------------- -->
-    <?php if ($multiUser): ?>
-    <div id="cm-dash-by-user" class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+    <!-- Execution stats widget (1 of 4 columns, under 4th tile) ----------- -->
+    <?php if ($showExecutionStats): ?>
+    <div class="lg:col-span-1 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
+        <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+            <h2 class="text-base font-semibold text-gray-800 dark:text-gray-200">
+                <?= htmlspecialchars($t('dashboard_exec_stats'), ENT_QUOTES, 'UTF-8') ?>
+            </h2>
+        </div>
+        <div class="px-5 py-4 space-y-4">
+            <?php
+                $execToday    = (int) ($executionStats['executed_today'] ?? 0);
+                $failToday    = (int) ($executionStats['failed_today']   ?? 0);
+                $exec24h      = (int) ($executionStats['executed_24h']   ?? 0);
+                $fail24h      = (int) ($executionStats['failed_24h']     ?? 0);
+            ?>
+            <!-- Today -->
+            <div>
+                <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">
+                    <?= htmlspecialchars($t('dashboard_exec_today'), ENT_QUOTES, 'UTF-8') ?>
+                </p>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-600 dark:text-gray-300">
+                        <?= htmlspecialchars($t('dashboard_exec_executed'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                    <span class="text-sm font-semibold text-gray-900 dark:text-gray-100"><?= $execToday ?></span>
+                </div>
+                <div class="flex items-center justify-between mt-1">
+                    <span class="text-sm text-gray-600 dark:text-gray-300">
+                        <?= htmlspecialchars($t('dashboard_exec_failed'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                    <span class="text-sm font-semibold <?= $failToday > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100' ?>">
+                        <?= $failToday ?>
+                    </span>
+                </div>
+            </div>
+            <hr class="border-gray-100 dark:border-gray-700">
+            <!-- Last 24 h -->
+            <div>
+                <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">
+                    <?= htmlspecialchars($t('dashboard_exec_last_24h'), ENT_QUOTES, 'UTF-8') ?>
+                </p>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-600 dark:text-gray-300">
+                        <?= htmlspecialchars($t('dashboard_exec_executed'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                    <span class="text-sm font-semibold text-gray-900 dark:text-gray-100"><?= $exec24h ?></span>
+                </div>
+                <div class="flex items-center justify-between mt-1">
+                    <span class="text-sm text-gray-600 dark:text-gray-300">
+                        <?= htmlspecialchars($t('dashboard_exec_failed'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                    <span class="text-sm font-semibold <?= $fail24h > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100' ?>">
+                        <?= $fail24h ?>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+</div>
+
+<!-- ======================================================================
+     Third row: Jobs by User (multi-user mode only)
+     ====================================================================== -->
+<?php if ($multiUser): ?>
+<div class="mt-6">
+    <div id="cm-dash-by-user" class="max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
         <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
             <h2 class="text-base font-semibold text-gray-800 dark:text-gray-200">
                 <?= htmlspecialchars($t('dashboard_jobs_by_user'), ENT_QUOTES, 'UTF-8') ?>
@@ -270,7 +365,6 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         <?php
-                            // Sort by job count descending
                             arsort($byUser);
                             foreach ($byUser as $username => $count):
                         ?>
@@ -291,9 +385,8 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
             </div>
         <?php endif; ?>
     </div>
-    <?php endif; ?>
-
 </div>
+<?php endif; ?>
 
 <script>
 (function () {

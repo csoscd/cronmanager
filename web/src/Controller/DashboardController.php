@@ -29,6 +29,12 @@ use Cronmanager\Web\Session\SessionManager;
  */
 class DashboardController extends BaseController
 {
+    /**
+     * Set to false to disable the execution-statistics widget and skip the
+     * GET /stats agent call entirely (instant rollback if performance issues arise).
+     */
+    private const SHOW_EXECUTION_STATS = true;
+
     // -------------------------------------------------------------------------
     // Actions
     // -------------------------------------------------------------------------
@@ -66,18 +72,23 @@ class DashboardController extends BaseController
         // Fetch data from the host agent (three requests in parallel)
         // ------------------------------------------------------------------
         try {
-            // Dispatch all three GET requests concurrently via Guzzle promises,
+            // Dispatch all GET requests concurrently via Guzzle promises,
             // reducing wall-clock time from ~sum(latencies) to ~max(latency).
-            $results = $agent->getMultiple([
+            $batch = [
                 'crons'   => ['path' => '/crons'],
                 // Fetch more than needed so that filtering maintenance skips
                 // still leaves enough entries after the -4 exit-code filter.
                 'history' => ['path' => '/history', 'query' => ['limit' => 50, 'status' => 'failed']],
                 'tags'    => ['path' => '/tags'],
-            ]);
+            ];
+            if (self::SHOW_EXECUTION_STATS) {
+                $batch['execstats'] = ['path' => '/stats'];
+            }
+            $results = $agent->getMultiple($batch);
             $jobs           = $results['crons']['data']   ?? [];
             $recentFailures = $results['history']['data'] ?? [];
             $tags           = $results['tags']['data']    ?? [];
+            $executionStats = self::SHOW_EXECUTION_STATS ? ($results['execstats'] ?? []) : [];
         } catch (\RuntimeException $e) {
             $this->logger->error('DashboardController: agent request failed', [
                 'message' => $e->getMessage(),
@@ -146,11 +157,13 @@ class DashboardController extends BaseController
         // Render
         // ------------------------------------------------------------------
         $this->render('dashboard.php', $this->translator()->t('dashboard_title'), [
-            'jobs'           => $jobs,
-            'recentFailures' => $recentFailures,
-            'tags'           => $tags,
-            'stats'          => $stats,
-            'multiUser'      => count($byUser) > 1,
+            'jobs'                => $jobs,
+            'recentFailures'      => $recentFailures,
+            'tags'                => $tags,
+            'stats'               => $stats,
+            'multiUser'           => count($byUser) > 1,
+            'executionStats'      => $executionStats,
+            'showExecutionStats'  => self::SHOW_EXECUTION_STATS,
         ], '/dashboard');
     }
 }

@@ -332,6 +332,11 @@ try {
     $history = new \Cronmanager\Agent\Endpoints\HistoryEndpoint($pdo, $logger);
     $router->addRoute('GET', '/history', [$history, 'handle']);
 
+    // -- Stats (dashboard widget) ---------------------------------------------
+
+    $stats = new \Cronmanager\Agent\Endpoints\StatsEndpoint($pdo, $logger);
+    $router->addRoute('GET', '/stats', [$stats, 'handle']);
+
     // -- Audit log ------------------------------------------------------------
 
     $auditLog = new \Cronmanager\Agent\Endpoints\AuditLogEndpoint($pdo, $logger);

@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `feature/user-management-v2`
+## [5.1.0] – branch: `feature/user-management-v2`
 
 ### Added (Security Tests – Maßnahmen A+B)
 
@@ -49,10 +49,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **AuthController Success-Pfad nicht durch Controller testbar:** `Response::redirect()` ruft `exit()` auf. Der Pfad „gültiges Token → Passwort gesetzt → `consume()` → Redirect" lässt sich ohne Prozess-Isolation nicht vollständig durch die Controller-Action testen. Die Einmal-Nutzungs-Invariante ist durch `AuthControllerSecurityTest::resetTokenCannotBeReusedAfterConsumption` auf Repository-Ebene abgesichert. Follow-up: `Response::redirect()` injizierbar machen oder `@runInSeparateProcess` mit pre-committed Fixtures einsetzen.
 - **Own-Role-Guard nicht durch Controller-Action testbar:** `UserController::update()` ruft `Response::redirect()` → `exit()` auch im Guard-Pfad auf. Der Guard-Bedingungsnachweis erfolgt auf SessionManager-Ebene (`UserControllerAuthTest::ownRoleGuardPreventsAdminFromChangingTheirOwnRole`); die DB bleibt in beiden Testpfaden unberührt. Gleiche Lösung wie AuthController-Gap.
-
----
-
-## [5.1.0] – branch: `feature/user-management-v2`
 
 ### Fixed
 

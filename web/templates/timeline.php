@@ -28,6 +28,7 @@ $history    = isset($history)    && is_array($history)    ? $history    : [];
 $tags       = isset($tags)       && is_array($tags)       ? $tags       : [];
 $users      = isset($users)      && is_array($users)      ? $users      : [];
 $allTargets = isset($allTargets) && is_array($allTargets) ? $allTargets : [];
+$multiUser  = isset($multiUser)  ? (bool) $multiUser     : true;
 $total      = isset($total)  ? (int) $total              : 0;
 $limit      = isset($limit)  ? max(1, (int) $limit)      : 50;
 $offset     = isset($offset) ? max(0, (int) $offset)     : 0;
@@ -160,7 +161,8 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect, $a
             </select>
         </div>
 
-        <!-- User filter -->
+        <!-- User filter (hidden when only one linux user exists) -->
+        <?php if ($multiUser): ?>
         <div class="flex-1 min-w-32">
             <label for="filter-user" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 <?= htmlspecialchars($t('cron_linux_user'), ENT_QUOTES, 'UTF-8') ?>
@@ -178,6 +180,7 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect, $a
                 <?php endforeach; ?>
             </select>
         </div>
+        <?php endif; ?>
 
         <!-- Target filter (shown only when more than one unique target exists) -->
         <?php if (count($allTargets) > 1): ?>
@@ -317,9 +320,11 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect, $a
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             Job
                         </th>
+                        <?php if ($multiUser): ?>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             <?= htmlspecialchars($t('cron_linux_user'), ENT_QUOTES, 'UTF-8') ?>
                         </th>
+                        <?php endif; ?>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             <?= htmlspecialchars($t('cron_tags'), ENT_QUOTES, 'UTF-8') ?>
                         </th>
@@ -396,9 +401,11 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect, $a
                                     <?= htmlspecialchars($jobDesc, ENT_QUOTES, 'UTF-8') ?>
                                 <?php endif; ?>
                             </td>
+                            <?php if ($multiUser): ?>
                             <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                                 <?= htmlspecialchars($entryUser, ENT_QUOTES, 'UTF-8') ?>
                             </td>
+                            <?php endif; ?>
                             <td class="px-4 py-3 text-sm">
                                 <div class="flex flex-wrap gap-1">
                                     <?php foreach ($entryTags as $tag): ?>

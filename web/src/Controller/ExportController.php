@@ -79,8 +79,9 @@ class ExportController extends BaseController
         ));
 
         $this->render('export.php', $this->translator()->t('export_title'), [
-            'tags'  => $tags,
-            'users' => $users,
+            'tags'      => $tags,
+            'users'     => $users,
+            'multiUser' => count($users) > 1,
         ], '/export');
     }
 
@@ -128,7 +129,13 @@ class ExportController extends BaseController
             $secret      = (string) ($agent['hmac_secret'] ?? '');
             $path        = '/export';
             $queryString = '?' . http_build_query($query);
-            $signature   = hash_hmac('sha256', 'GET' . $path . '', $secret);
+            $userId    = \Cronmanager\Web\Session\SessionManager::getUserId()   ?? 0;
+            $userName  = \Cronmanager\Web\Session\SessionManager::getUsername() ?? '';
+            $signature = hash_hmac(
+                'sha256',
+                'GET' . $path . '' . "\0" . $userId . "\0" . $userName,
+                $secret
+            );
 
             $sslVerify = (bool)   ($agent['ssl_verify']   ?? true);
             $caBundle  = (string) ($agent['ssl_ca_bundle'] ?? '');

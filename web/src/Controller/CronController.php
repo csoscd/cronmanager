@@ -244,6 +244,7 @@ class CronController extends BaseController
             'filterResult'          => $filterResult,
             'filterActive'          => $filterActive,
             'users'                 => $users,
+            'multiUser'             => count($users) > 1,
             'allTargets'            => $allTargets,
             'isAdmin'               => SessionManager::hasRole('admin'),
             'pageSize'              => $pageSize,

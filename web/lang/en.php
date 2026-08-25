@@ -152,6 +152,12 @@ return [
     'dashboard_inactive'        => 'Inactive',
     'dashboard_recent_failures' => 'Recent Failures',
     'dashboard_jobs_by_user'    => 'Jobs by User',
+    'dashboard_exec_stats'      => 'Execution Stats',
+    'dashboard_exec_today'      => 'Today',
+    'dashboard_exec_last_24h'   => 'Last 24 Hours',
+    'dashboard_exec_executed'   => 'Executed',
+    'dashboard_exec_failed'     => 'Failed',
+    'dashboard_output_preview'  => 'Output',
 
     // -------------------------------------------------------------------------
     // Cron jobs

@@ -32,6 +32,7 @@ $filterTarget = isset($filterTarget) ? (string) $filterTarget   : '';
 $filterSearch = isset($filterSearch) ? (string) $filterSearch   : '';
 $filterResult = isset($filterResult) ? (string) $filterResult   : '';
 $filterActive = isset($filterActive) ? (string) $filterActive   : '';
+$multiUser             = isset($multiUser)             ? (bool)   $multiUser    : true;
 $isAdmin               = isset($isAdmin)              && (bool)  $isAdmin;
 $targetsInMaintenance  = isset($targetsInMaintenance) && is_array($targetsInMaintenance)
     ? $targetsInMaintenance : [];
@@ -181,7 +182,8 @@ $allTagNames = array_map(
             </select>
         </div>
 
-        <!-- User filter -->
+        <!-- User filter (hidden when only one linux user exists) -->
+        <?php if ($multiUser): ?>
         <div class="flex-1 min-w-36">
             <label for="filter-user" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 <?= htmlspecialchars($t('cron_linux_user'), ENT_QUOTES, 'UTF-8') ?>
@@ -199,6 +201,7 @@ $allTagNames = array_map(
                 <?php endforeach; ?>
             </select>
         </div>
+        <?php endif; ?>
 
         <!-- Target filter (shown when more than one unique target exists) -->
         <?php if (count($allTargets) > 1): ?>
@@ -440,9 +443,11 @@ $allTagNames = array_map(
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             <?= htmlspecialchars($t('cron_description'), ENT_QUOTES, 'UTF-8') ?>
                         </th>
+                        <?php if ($multiUser): ?>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             <?= htmlspecialchars($t('cron_linux_user'), ENT_QUOTES, 'UTF-8') ?>
                         </th>
+                        <?php endif; ?>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             <?= htmlspecialchars($t('cron_tags'), ENT_QUOTES, 'UTF-8') ?>
                         </th>
@@ -476,6 +481,7 @@ $allTagNames = array_map(
                             $crontabOk     = !isset($job['crontab_ok']) || (bool) $job['crontab_ok'];
                             $lastRun       = (string) ($job['last_run'] ?? '');
                             $exitCode      = isset($job['last_exit_code']) ? (int) $job['last_exit_code'] : null;
+                            $isRunning     = !empty($job['is_running']);
                             $limitSeconds  = isset($job['execution_limit_seconds']) && $job['execution_limit_seconds'] !== null
                                 ? (int) $job['execution_limit_seconds'] : null;
 
@@ -483,7 +489,10 @@ $allTagNames = array_map(
                             $runInMaint    = !empty($job['run_in_maintenance']);
 
                             // Exit code badge style
-                            if ($exitCode === null) {
+                            if ($isRunning) {
+                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">'
+                                    . htmlspecialchars($t('status_running'), ENT_QUOTES, 'UTF-8') . '</span>';
+                            } elseif ($exitCode === null) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">—</span>';
                             } elseif ($exitCode === -4) {
                                 $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">'
@@ -533,10 +542,12 @@ $allTagNames = array_map(
                                 <?php endif; ?>
                             </td>
 
-                            <!-- Linux user -->
+                            <!-- Linux user (hidden when only one user exists) -->
+                            <?php if ($multiUser): ?>
                             <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                                 <?= htmlspecialchars($linuxUser, ENT_QUOTES, 'UTF-8') ?>
                             </td>
+                            <?php endif; ?>
 
                             <!-- Tags -->
                             <td class="px-4 py-3 text-sm">

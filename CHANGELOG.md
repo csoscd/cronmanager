@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] – branch: `fix/execute-now-cleanup-retry`
+## [5.2.0] – branch: `feature/minor-improvements`
 
 ### Fixed
 
@@ -15,6 +15,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **CrontabManager – `getOnceEntrySchedule()`:** Neue Methode liest den Zeitplan-String (`{min} {hour} {dom} {month} *`) aus dem Crontab-Eintrag, der auf den once-Marker des angegebenen Jobs folgt. Wird von `ExecuteNowEndpoint::isScheduleInPast()` genutzt um veraltete Einträge zu erkennen.
 - **Tests – `tearDown()`-Guard:** `CronBulkDeleteEndpointTest` und `ExecuteNowEndpointTest` initialisierten `$crontabDir` nicht mit einem Default-Wert; wenn `parent::setUp()` wegen fehlender Test-DB via `markTestSkipped()` abbrach, führte `tearDown()` zu einem Typed-Property-Initialisierungsfehler. Beide Properties werden jetzt mit `= ''` initialisiert und `rmdirRecursive()` nur aufgerufen wenn der Wert nicht leer ist.
 - **ExecuteNowEndpointTest – Szenario 4:** Neuer Integrationstest deckt den Auto-Clean-Pfad ab: staler once-Eintrag mit Zeitplan 1 Stunde in der Vergangenheit + abgeschlossener `execution_log`-Row (exit code 126) → Endpoint gibt 200 zurück, schreibt einen neuen once-Eintrag, entfernt den alten.
+- **ExportController – HMAC-Signatur für `/export/download`:** Der Download-Pfad baut die Guzzle-Anfrage manuell (Streaming). Die Signatur verwendete das alte Format ohne `"\0" + userId + "\0" + username`-Felder, die seit v4.3.0 Pflicht sind. Alle Anfragen wurden deshalb mit HTTP 401 abgewiesen und führten zu einem 503 im Browser. Signatur entspricht jetzt dem in `HostAgentClient::sign()` dokumentierten Format.
+
+### Changed
+
+- **Job-Liste (`/crons`) – „Läuft"-Badge:** Wenn ein Job aktuell ausgeführt wird (`finished_at IS NULL` auf dem letzten `execution_log`-Eintrag), zeigt die Spalte „Exit-Code" jetzt einen blauen „Läuft"-Badge anstelle des letzten Exit-Codes. `CronListEndpoint` liefert dafür das neue Feld `is_running` (abgeleitet aus `el_last.finished_at`). Der bisher angezeigte Wert war der Exit-Code der letzten *abgeschlossenen* Ausführung — irreführend wenn der Job gerade läuft.
+- **Einzel-Benutzer-Modus (Docker):** Alle User-spezifischen UI-Elemente werden ausgeblendet, wenn der Agent nur einen Linux-User kennt (`count(unique linux_users) <= 1`). Betrifft: User-Filter-Dropdown auf `/crons`, `/timeline` und `/export`, `linux_user`-Spalte in den Tabellen auf `/crons` und `/timeline`, `linux_user`-Spalte in der Fehlertabelle auf dem Dashboard, gesamter „Jobs nach Benutzer"-Block auf dem Dashboard. Die Entscheidung trifft der jeweilige Controller anhand der bereits vorhandenen User-Liste; kein neues API-Feld oder Konfigurationsschalter erforderlich. Fallback `true` in den Templates stellt sicher, dass die Elemente bei fehlendem Wert sichtbar bleiben.
+- **Dashboard – Layout-Überarbeitung:** Die zweite Zeile nutzt jetzt `lg:grid-cols-4`; die Fehler-Tabelle belegt 3/4 der Breite (`lg:col-span-3`), das neue Statistik-Widget 1/4 (`lg:col-span-1`). „Jobs nach Benutzer" (Multi-User-Modus) rutscht in eine separate dritte Zeile.
+- **Dashboard – Ausgabe-Vorschau in der Fehler-Tabelle:** Die letzte Spalte zeigt die letzten 120 Zeichen des Job-Outputs als `font-mono`-Vorschau mit `title`-Tooltip (vollständiger Text). Lässt sich per `$showOutputPreview = false` am Anfang von `dashboard.php` sofort ausblenden.
+- **Dashboard – Ausführungsstatistik-Widget:** Neues `GET /stats`-Endpoint auf dem Agent liefert via zwei INDEX-Range-Scans (`idx_el_started_at`) vier Zähler: ausgeführte und fehlerhafte Ausführungen jeweils für „heute" (seit Mitternacht) und „letzte 24 Stunden". Der Widget-Call wird in denselben `getMultiple()`-Batch wie die übrigen Dashboard-Requests eingebettet (kein Extra-Round-Trip). Lässt sich per `SHOW_EXECUTION_STATS = false` in `DashboardController` ausschalten — deaktiviert sowohl den API-Call als auch die Anzeige.
+
+### Fixed (nachträglich)
+
+- **Dashboard – fehlende Tailwind-Klassen:** `lg:col-span-3` und `lg:col-span-1` fehlten in der vorgenerierten `tailwind.css`; die Fehler-Tabelle belegte deshalb nur eine statt drei Kachel-Breiten. Die fehlenden Media-Query-Regeln wurden in `assets/css/tailwind.css` ergänzt.
+- **Dashboard – Ausgabe-Vorschau zeigte Anfang statt Ende:** CSS-Klasse `truncate` (`white-space: nowrap; text-overflow: ellipsis`) kollabierte Zeilenumbrüche und schnitt den Text von rechts ab. Die letzten 120 Zeichen wurden von PHP korrekt ermittelt, aber die CSS-Kürzung versteckte den Schluss des Ausschnitts — genau die Stelle, an der Fehlermeldungen stehen. Ersetzt durch `whitespace-pre-wrap break-words`; der vollständige Tooltip bleibt erhalten.
+- **„Läuft"-Badge – inkonsistente Farbe:** Status-Badge war auf der Job-Übersichtsseite blau, auf der Job-Detailseite und in der Monitor-Ansicht hingegen gelb. Alle drei Stellen verwenden jetzt einheitlich die blauen Klassen (`bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`).
+
+### Documentation
+
+- **HOST-AGENT.md** – neues separates Dokument für die Host-Agent-Installation (systemd-Service direkt auf dem Docker-Host): Architektur-Diagramm, Voraussetzungen, `deploy.sh`-Deployment, Schritte 1–7 (manuell), Konfigurationsreferenz, Crontab lesen, Aktualisieren, Migration zu Docker-Modus.
+- **README.md** – auf Docker-Hub-Installation fokussiert; Quick-Start, Prerequisites, Guided Setup und Detailed-Installation-Kapitel entfernt; Host-Agent-Themen zu HOST-AGENT.md verlagert.
+- **deploy.sh** – `--docker`-Modus und alle docker-spezifischen Branches entfernt; das Skript dient ausschließlich der Host-Agent-Installation.
+- **simple_debian_setup.sh** entfernt (nicht mehr gewartet).
 
 ---
 

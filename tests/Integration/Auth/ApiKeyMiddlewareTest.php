@@ -308,4 +308,50 @@ final class ApiKeyMiddlewareTest extends IntegrationTestCase
         $this->assertArrayHasKey('code',    $r['body']);
         $this->assertSame(401, $r['body']['code']);
     }
+
+    // =========================================================================
+    // Scope enforcement for named API-key profiles
+    // =========================================================================
+
+    #[Test]
+    public function operatorProfileKeyAllowsJobsExecuteScope(): void
+    {
+        // 'operator' profile scopes: jobs:read, jobs:execute, maintenance:read
+        // (see ScopeHelper::PROFILES['operator'])
+        $result = $this->seedKey(scopes: ['jobs:read', 'jobs:execute', 'maintenance:read']);
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $result['plainText'];
+
+        $r = $this->callAuthenticate('jobs:execute');
+
+        $this->assertNotNull($r['result'], 'operator-profile key must be accepted for jobs:execute scope');
+        $this->assertSame(200, $r['status']);
+    }
+
+    #[Test]
+    public function operatorProfileKeyIsRejectedForJobsWriteScope(): void
+    {
+        // 'operator' profile does NOT include jobs:write; access must be denied.
+        $result = $this->seedKey(scopes: ['jobs:read', 'jobs:execute', 'maintenance:read']);
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $result['plainText'];
+
+        $r = $this->callAuthenticate('jobs:write');
+
+        $this->assertNull($r['result'], 'operator-profile key must be rejected for jobs:write scope');
+        $this->assertSame(403, $r['status']);
+    }
+
+    #[Test]
+    public function readOnlyProfileKeyIsRejectedForJobsExecuteScope(): void
+    {
+        // 'read-only' profile scopes: jobs:read, maintenance:read, export:read
+        // (see ScopeHelper::PROFILES['read-only'])
+        // Viewer-negative case: read-only access must NOT grant execute permission.
+        $result = $this->seedKey(scopes: ['jobs:read', 'maintenance:read', 'export:read']);
+        $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $result['plainText'];
+
+        $r = $this->callAuthenticate('jobs:execute');
+
+        $this->assertNull($r['result'], 'read-only-profile key must be rejected for jobs:execute scope');
+        $this->assertSame(403, $r['status']);
+    }
 }

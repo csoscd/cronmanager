@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `feature/user-management-v2`
+
+### Added (Security Tests – Maßnahmen A+B)
+
+- **AuthTokenRepositoryTest (10 Szenarien):** Vollständige Absicherung der One-Time-Token-Primitive (invite/reset): Rückgabe als 64-hex-Klartext, ausschließliche Speicherung des sha256-Hash in der DB, Invalidierung vorheriger Tokens gleichen Typs, Typ-Isolation (reset-create berührt keine invite-Tokens), find()-Ablehnung bei abgelaufenem/genutztem/falschem Token oder Phantomtoken, Unwiderruflichkeit nach consume(), purgeExpired()-Selektivität.
+- **AuthControllerSecurityTest (5 Szenarien):** Sicherheitsinvarianten des AuthControllers: keine User-Enumeration bei unbekannter E-Mail in handleForgotPassword (kein Token-Eintrag im DB), handleReset lehnt abgelaufene und falsch typisierte Tokens ab ohne Passwortänderung, handleInvite-Passwortvalidierung erhält ungültige Token erhalten, Einmal-Nutzung des Reset-Tokens nach consume() (Regressionsschutz für zweiten Anfrageversuch).
+- **HmacRejectionTest (6 Szenarien):** Absicherung der HMAC-SHA256-Signaturvalidierung: fehlender Header, korrekte Signatur, Body-Tamper-Erkennung, Pfad-Tamper-Erkennung, falsches Secret. **Regressionsschutz v4.4.4**: fehlender `X-User-Name`-Header → agent.php-Extraktion ergibt `''` (Leerstring) → cron-wrapper-Request (userId=0, username='') wird akzeptiert; ein Rückfall auf `'system'` als Default würde diesen Test zum Scheitern bringen.
+- **ApiKeyMiddlewareTest – 3 neue Szenarien:** Scope-Enforcement gegen die reale Profil-Scope-Map: operator-Profil (jobs:read, jobs:execute, maintenance:read) → jobs:execute → 200; operator-Profil → jobs:write → 403; read-only-Profil → jobs:execute → 403 (Viewer-Negativfall).
+- **AuditIdentityExtractor:** Neue Klasse `agent/src/Security/AuditIdentityExtractor.php` kapselt die Extraktion der X-User-Id/X-User-Name-Header aus `$_SERVER`. `agent.php` verwendet sie statt der bisherigen Inline-Extraktion; HmacRejectionTest/Szenario 5 ruft dieselbe Klasse auf – ein Rückfall auf `'system'` als Default würde den Test sofort brechen (echter Regressionsschutz für den v4.4.4-Vorfall).
+
+### Known Gaps
+
+- **AuthController Success-Pfad nicht durch Controller testbar:** `Response::redirect()` ruft `exit()` auf. Der Pfad „gültiges Token → Passwort gesetzt → `consume()` → Redirect" lässt sich ohne Prozess-Isolation nicht vollständig durch die Controller-Action testen. Die Einmal-Nutzungs-Invariante ist durch `AuthControllerSecurityTest::resetTokenCannotBeReusedAfterConsumption` auf Repository-Ebene abgesichert. Follow-up: `Response::redirect()` injizierbar machen oder `@runInSeparateProcess` mit pre-committed Fixtures einsetzen.
+
+---
+
 ## [5.1.0] – branch: `feature/user-management-v2`
 
 ### Fixed

@@ -125,11 +125,25 @@ $title  = $isEdit ? $t('user_edit') : $t('user_create');
 
             <!-- Password (only for local users) -->
             <?php if (!$isSSO): ?>
-                <div class="mb-4">
+                <?php if (!$isEdit && $mailEnabled): ?>
+                    <!-- Invite option shown prominently above password for new local users -->
+                    <div class="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="cm-send-invite" name="send_invite" value="1" checked
+                                   class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300"><?= $h($t('user_send_invite')) ?></span>
+                        </label>
+                        <p class="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400"><?= $h($t('user_send_invite_hint')) ?></p>
+                    </div>
+                <?php endif; ?>
+
+                <div class="mb-4" id="cm-password-wrap">
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         <?= $h($t('user_password')) ?>
                         <?php if ($isEdit): ?>
                             <span class="text-xs text-gray-400">(<?= $h($t('user_password_leave_blank')) ?>)</span>
+                        <?php elseif ($mailEnabled): ?>
+                            <span class="text-xs text-gray-400">(<?= $h($t('user_password_optional')) ?>)</span>
                         <?php else: ?>
                             *
                         <?php endif; ?>
@@ -140,20 +154,24 @@ $title  = $isEdit ? $t('user_edit') : $t('user_create');
                     <?php if (isset($errors['password'])): ?>
                         <p class="mt-1 text-xs text-red-500"><?= $h($errors['password']) ?></p>
                     <?php endif; ?>
-
-                    <?php if (!$isEdit && $mailEnabled): ?>
-                        <label class="mt-2 flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" name="send_invite" value="1" checked
-                                   class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
-                            <span class="text-sm text-gray-700 dark:text-gray-300"><?= $h($t('user_send_invite')) ?></span>
-                        </label>
-                        <p class="mt-0.5 ml-6 text-xs text-gray-400"><?= $h($t('user_send_invite_hint')) ?></p>
-                    <?php endif; ?>
                 </div>
+
+                <?php if (!$isEdit && $mailEnabled): ?>
+                <script>
+                (function () {
+                    var cb   = document.getElementById('cm-send-invite');
+                    var wrap = document.getElementById('cm-password-wrap');
+                    if (!cb || !wrap) { return; }
+                    function upd() { wrap.style.opacity = cb.checked ? '0.4' : '1'; }
+                    cb.addEventListener('change', upd);
+                    upd();
+                }());
+                </script>
+                <?php endif; ?>
             <?php endif; ?>
 
             <!-- Agent restrictions -->
-            <?php if (!empty($agents)): ?>
+            <?php if (count($agents) > 1): ?>
                 <div class="mb-6">
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         <?= $h($t('user_agent_restriction')) ?>

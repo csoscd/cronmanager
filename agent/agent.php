@@ -286,16 +286,18 @@ try {
 
     $maintenanceWindowRepo = new \Cronmanager\Agent\Repository\MaintenanceWindowRepository($pdo, $logger);
 
-    $execStart     = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger, $maintenanceWindowRepo);
-    $execFinish    = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier, $telegramNotifier, $crontabManager, $wrapperScript);
+    $execStart    = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger, $maintenanceWindowRepo);
+    $execFinish   = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier, $telegramNotifier, $crontabManager, $wrapperScript);
+    $execProgress = new \Cronmanager\Agent\Endpoints\ExecutionProgressEndpoint($pdo, $logger);
     $execUpdatePid = new \Cronmanager\Agent\Endpoints\ExecutionUpdatePidEndpoint($pdo, $logger);
     $execKill      = new \Cronmanager\Agent\Endpoints\ExecutionKillEndpoint($pdo, $logger, $auditLogger);
 
-    $router->addRoute('POST', '/execution/start',       [$execStart,     'handle']);
-    $router->addRoute('POST', '/execution/finish',      [$execFinish,    'handle']);
-    // /execution/{id}/pid and /execution/{id}/kill – more specific than /execution/start|finish
-    $router->addRoute('POST', '/execution/{id}/pid',    [$execUpdatePid, 'handle']);
-    $router->addRoute('POST', '/execution/{id}/kill',   [$execKill,      'handle']);
+    $router->addRoute('POST', '/execution/start',          [$execStart,    'handle']);
+    $router->addRoute('POST', '/execution/finish',         [$execFinish,   'handle']);
+    // /execution/{id}/* routes – more specific than /execution/start|finish
+    $router->addRoute('POST', '/execution/{id}/progress',  [$execProgress, 'handle']);
+    $router->addRoute('POST', '/execution/{id}/pid',       [$execUpdatePid, 'handle']);
+    $router->addRoute('POST', '/execution/{id}/kill',      [$execKill,      'handle']);
 
     // -- Tags -----------------------------------------------------------------
 

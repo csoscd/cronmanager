@@ -86,6 +86,7 @@ return [
     'user_password_required'         => 'Password is required.',
     'user_password_too_short'        => 'Password must be at least 8 characters.',
     'user_password_leave_blank'      => 'leave blank = unchanged',
+    'user_password_optional'         => 'optional – leave blank when sending invite',
     'user_status'                    => 'Status',
     'user_active'                    => 'Active',
     'user_inactive'                  => 'Inactive',
@@ -348,6 +349,8 @@ return [
     'status_success'          => 'Success',
     'status_failed'           => 'Failed',
     'status_running'          => 'Running',
+    'live_running'            => 'live',
+    'live_auto_refresh'       => 'Job is running – page refreshes in',
 
     // -------------------------------------------------------------------------
     // Initial Setup page

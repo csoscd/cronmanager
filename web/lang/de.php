@@ -86,6 +86,7 @@ return [
     'user_password_required'         => 'Passwort ist erforderlich.',
     'user_password_too_short'        => 'Das Passwort muss mindestens 8 Zeichen lang sein.',
     'user_password_leave_blank'      => 'leer lassen = unverändert',
+    'user_password_optional'         => 'optional – leer lassen wenn Einladungslink gesendet wird',
     'user_status'                    => 'Status',
     'user_active'                    => 'Aktiv',
     'user_inactive'                  => 'Inaktiv',
@@ -348,6 +349,8 @@ return [
     'status_success'          => 'Erfolgreich',
     'status_failed'           => 'Fehlgeschlagen',
     'status_running'          => 'Läuft',
+    'live_running'            => 'live',
+    'live_auto_refresh'       => 'Job läuft – Seite aktualisiert sich in',
 
     // -------------------------------------------------------------------------
     // Ersteinrichtung

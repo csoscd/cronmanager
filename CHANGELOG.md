@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [5.1.0] – branch: `feature/user-management-v2`
+
+### Added
+
+- **Echtzeit-Fortschrittsanzeige (Issue #76):** Laufende Cron-Jobs übertragen ihren Output alle 10 Sekunden live an den Agent (`POST /execution/{id}/progress`). Die Detail-Seite erkennt laufende Ausführungen automatisch und aktualisiert sich alle 15 Sekunden; eine Countdown-Leiste zeigt den nächsten Reload-Zeitpunkt an. Läuft der Job noch, ist der partielle Output in der History-Tabelle direkt sichtbar (gelber Pulsing-Indikator "live" in der Output-Spalte).
+- **`jq` im Agent-Container:** `docker/agent/Dockerfile` installiert jetzt `jq` (nützliches JSON-Tool im Container-Kontext).
+- **`jq` in `simple_debian_setup.sh`:** Voraussetzung für Host-Agent-Modus ergänzt.
+
+### Technical Details (Issue #76)
+
+- Neuer Agent-Endpoint `ExecutionProgressEndpoint` (`POST /execution/{id}/progress`): schreibt partiellen Output in `execution_log.output` nur wenn `finished_at IS NULL`, verhindert so Überschreiben nach Job-Ende durch verspätete Pakete.
+- `cron-wrapper.sh`: Neue Konstanten `PROGRESS_INTERVAL_SECONDS=10` und `MAX_PROGRESS_BYTES=524288`. Neue Funktionen `start_progress_loop()` (startet Background-Loop als Subshell) und `stop_progress_loop()` (bricht Loop sauber ab). Loop startet nach PID-Meldung in beiden Branches (lokal + SSH), stoppt nach `wait`. `trap 'stop_progress_loop' EXIT` sichert Cleanup bei vorzeitigem Exit.
+- Progress-Loop verwendet PHP (bereits Pflichtabhängigkeit) zum JSON-Encoding, konsistent mit den bestehenden Wrapper-Patterns.
+
+---
+
+## [5.0.1] – branch: `feature/user-management-v2`
+
+### Fixed
+
+- **Bulk Aktivieren/Deaktivieren (Issue #109):** `CronBulkStatusEndpoint` warf `SQLSTATE[23000]: Column 'id' in SELECT is ambiguous`, weil der `SELECT`-Teil des LEFT-JOIN-Queries den Tabellen-Qualifier `j.` fehlte. Alle vier Spalten (`id`, `linux_user`, `active`, `schedule`) sind jetzt korrekt als `j.id` etc. qualifiziert.
+- **Benutzerverwaltung – Agent-Einschränkung:** Die Sektion „Agent-Einschränkung" im Benutzer-Formular wurde auch bei Einzelagent-Installationen angezeigt. Sie ist jetzt wie bei den API-Keys nur sichtbar, wenn mehr als ein Agent konfiguriert ist.
+- **Benutzerverwaltung – Passwortfeld-UX:** Das Passwortfeld zeigte `*` (Pflichtfeld) beim Anlegen neuer Benutzer, auch wenn der Einladungslink als Standard-Option vorausgewählt war. Die Einladungs-Option wird jetzt zuerst hervorgehoben angezeigt; das Passwortfeld ist als `(optional)` beschriftet und wird visuell gedimmt, solange die Einladungs-Checkbox aktiv ist.
+
+---
+
 ## [5.0.0] – branch: `feature/user-management-v2`
 
 ### Added

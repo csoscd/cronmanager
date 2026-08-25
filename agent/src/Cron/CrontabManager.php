@@ -62,13 +62,18 @@ final class CrontabManager
     /**
      * CrontabManager constructor.
      *
-     * @param Logger $logger        Monolog logger instance for all crontab operations.
-     * @param string $wrapperScript Absolute path to the cron-wrapper shell script
-     *                              (from config key cron.wrapper_script).
+     * @param Logger      $logger        Monolog logger instance for all crontab operations.
+     * @param string      $wrapperScript Absolute path to the cron-wrapper shell script
+     *                                   (from config key cron.wrapper_script).
+     * @param string|null $crontabDir    When non-null, readCrontab/writeCrontab use files
+     *                                   in this directory ({dir}/{user}.crontab) instead of
+     *                                   the real system crontab.  Intended for tests only;
+     *                                   production code always passes null (the default).
      */
     public function __construct(
-        private readonly Logger $logger,
-        private readonly string $wrapperScript,
+        private readonly Logger  $logger,
+        private readonly string  $wrapperScript,
+        private readonly ?string $crontabDir = null,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -1020,6 +1025,11 @@ final class CrontabManager
      */
     private function readCrontab(string $user): string
     {
+        if ($this->crontabDir !== null) {
+            $file = $this->crontabDir . '/' . $user . '.crontab';
+            return is_file($file) ? (string) file_get_contents($file) : '';
+        }
+
         $command = sprintf('crontab -u %s -l 2>/dev/null', escapeshellarg($user));
         $output  = shell_exec($command);
 
@@ -1043,6 +1053,15 @@ final class CrontabManager
      */
     private function writeCrontab(string $user, string $content): void
     {
+        if ($this->crontabDir !== null) {
+            file_put_contents($this->crontabDir . '/' . $user . '.crontab', $content);
+            // Invalidate the managed-entry cache to maintain parity with the
+            // production path (prevents stale reads in getManagedEntriesCached).
+            @unlink($this->managedCacheFile($user));
+            $this->logger->debug('CrontabManager: crontab written (sandbox)', ['user' => $user]);
+            return;
+        }
+
         $command = sprintf('crontab -u %s -', escapeshellarg($user));
 
         $descriptorSpec = [

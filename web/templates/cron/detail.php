@@ -492,7 +492,7 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
 
                             // Exit code badge
                             if ($isRunning) {
-                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">'
+                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">'
                                     . htmlspecialchars($t('status_running'), ENT_QUOTES, 'UTF-8')
                                     . '</span>';
                             } elseif ($exitCode !== null && (int) $exitCode === -5) {

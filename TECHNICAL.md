@@ -9,9 +9,8 @@ see [README.md](README.md).
 ## Table of Contents
 
 1. [System Overview](#system-overview)
-2. [Directory Layout](#directory-layout)
-3. [Technology Stack](#technology-stack)
-4. [Host Agent](#host-agent)
+2. [Technology Stack](#technology-stack)
+3. [Host Agent](#host-agent)
    - [Entry point](#entry-point-agentphp)
    - [Bootstrap](#bootstrap)
    - [Router](#router)
@@ -71,181 +70,6 @@ Browser ──HTTPS──► Web UI container ──HTTP+HMAC──► Host Agen
 ```
 
 In host-agent mode the web container reaches the agent via `host.docker.internal:8865` (Docker `extra_hosts: host-gateway`). In docker mode the agent runs in a separate container on the same `cronmanager-internal` network, reachable as `cronmanager-agent:8865`.
-
----
-
-## Directory Layout
-
-```
-/opt/dev/cronmanager/          ← development root
-├── composer.json              ← shared PHP dependencies
-├── deploy.sh                  ← deployment script
-├── deploy.env[.example]       ← deployment configuration
-├── db.credentials[.example]   ← database passwords (not in VCS)
-├── .github/
-│   └── workflows/
-│       ├── docker-release.yml          ← builds & pushes Docker Hub images on GitHub release
-│       └── auto-patch-release.yml      ← increments patch version and creates a GitHub release (triggered on base image rebuild)
-├── docker/
-│   ├── docker-compose.yml          ← host-agent mode (web + MariaDB)
-│   ├── docker-compose-agent.yml    ← docker mode (agent + web + MariaDB, file-mounted source)
-│   ├── docker-compose-full.yml     ← Docker Hub mode (self-contained images, named volumes)
-│   ├── agent/
-│   │   ├── Dockerfile              ← self-contained agent image
-│   │   └── entrypoint.sh           ← agent container entrypoint (generates config from env)
-│   └── web/
-│       ├── Dockerfile              ← self-contained web image
-│       └── entrypoint.sh          ← web container entrypoint (generates config from env)
-├── README.md
-├── TECHNICAL.md
-│
-├── agent/                     ← host agent source
-│   ├── agent.php              ← CLI entry point
-│   ├── config/config.json     ← agent configuration
-│   ├── bin/
-│   │   ├── cron-wrapper.sh        ← injected into every crontab entry
-│   │   ├── send-notification.php  ← background SMTP dispatcher (spawned by ExecutionFinishEndpoint)
-│   │   ├── check-limits.php       ← execution limit checker (runs every minute via /etc/cron.d)
-│   │   ├── startup-cleanup.php    ← one-shot orphan cleanup; called by start-agent.sh on every start
-│   │   ├── resync-crontab.php     ← CLI: rebuild all crontab entries from the database
-│   │   ├── start-agent.sh         ← manual start helper
-│   │   └── create-admin.php       ← CLI tool: create first admin
-│   ├── sql/
-│   │   ├── schema.sql         ← full schema (run on first deploy)
-│   │   └── migrations/        ← incremental SQL migrations
-│   │       ├── 001_…sql
-│   │       ├── …
-│   │       └── 006_maintenance_windows.sql
-│   ├── systemd/
-│   │   └── cronmanager-agent.service
-│   └── src/
-│       ├── Bootstrap.php
-│       ├── Router.php
-│       ├── Database/Connection.php
-│       ├── Security/HmacValidator.php
-│       ├── Cron/CrontabManager.php
-│       ├── Notification/MailNotifier.php
-│       ├── Ssh/SshConfigParser.php
-│       ├── Util/ExitCodeMatcher.php
-│       ├── Repository/MaintenanceWindowRepository.php
-│       └── Endpoints/
-│           ├── CronListEndpoint.php
-│           ├── CronGetEndpoint.php
-│           ├── CronCreateEndpoint.php
-│           ├── CronUpdateEndpoint.php
-│           ├── CronDeleteEndpoint.php
-│           ├── CronBulkStatusEndpoint.php
-│           ├── CronBulkDeleteEndpoint.php
-│           ├── CronBulkTagEndpoint.php
-│           ├── CronUsersEndpoint.php
-│           ├── CronUnmanagedEndpoint.php
-│           ├── ExecutionStartEndpoint.php
-│           ├── ExecutionFinishEndpoint.php
-│           ├── ExecutionUpdatePidEndpoint.php
-│           ├── ExecutionKillEndpoint.php
-│           ├── TagListEndpoint.php
-│           ├── TagCreateEndpoint.php
-│           ├── TagDeleteEndpoint.php
-│           ├── SshHostsEndpoint.php
-│           ├── ImportSshTargetsEndpoint.php
-│           ├── SshTestEndpoint.php
-│           ├── HistoryEndpoint.php
-│           ├── ExportEndpoint.php
-│           ├── MonitorEndpoint.php
-│           ├── MaintenanceCrontabResyncEndpoint.php
-│           ├── MaintenanceStuckEndpoint.php
-│           ├── MaintenanceResolveEndpoint.php
-│           ├── MaintenanceDeleteExecutionEndpoint.php
-│           ├── MaintenanceHistoryCleanupEndpoint.php
-│           ├── MaintenanceWindowListEndpoint.php
-│           ├── MaintenanceWindowGetEndpoint.php
-│           ├── MaintenanceWindowCreateEndpoint.php
-│           ├── MaintenanceWindowUpdateEndpoint.php
-│           ├── MaintenanceWindowDeleteEndpoint.php
-│           └── MaintenanceWindowConflictEndpoint.php
-│
-└── web/                       ← web application source
-    ├── index.php              ← front controller
-    ├── config/config.json     ← web configuration (deployed to conf/)
-    ├── assets/
-    │   ├── css/
-    │   │   └── brand.css          ← custom CSS variables and component styles
-    │   └── js/
-    │       ├── tailwind.min.js    ← Tailwind CSS runtime (downloaded by deploy.sh)
-    │       ├── chart.min.js       ← Chart.js 4 UMD build (downloaded by deploy.sh)
-    │       └── cm-fetch.js        ← shared AJAX utilities (cmFetch, cmToast, cmPoll)
-    ├── lang/
-    │   ├── en.php
-    │   └── de.php
-    ├── templates/
-    │   ├── layout.php
-    │   ├── login.php
-    │   ├── setup.php
-    │   ├── dashboard.php
-    │   ├── timeline.php
-    │   ├── swimlane.php
-    │   ├── export.php
-    │   ├── error.php
-    │   ├── api_keys/
-    │   │   ├── index.php          ← list of own API keys with scope badges
-    │   │   ├── create.php         ← key creation form (profile picker, scope checkboxes, expiry, IP list)
-    │   │   └── created.php        ← one-time plain-text display of new key (copy button)
-    │   ├── cron/
-    │   │   ├── list.php
-    │   │   ├── detail.php
-    │   │   ├── form.php
-    │   │   ├── import.php
-    │   │   └── monitor.php
-    │   ├── users/list.php
-    │   ├── maintenance/
-    │   │   ├── list.php          ← maintenance window list (per-target + _agent_)
-    │   │   └── form.php          ← maintenance window create/edit form
-    │   └── housekeeping/
-    │       └── index.php         ← admin tools (crontab resync, stuck executions, etc.)
-    └── src/
-        ├── Bootstrap.php
-        ├── Database/Connection.php
-        ├── Session/SessionManager.php
-        ├── I18n/Translator.php
-        ├── Http/
-        │   ├── Router.php
-        │   ├── Request.php
-        │   └── Response.php
-        ├── Agent/HostAgentClient.php
-        ├── Api/                               ← external REST API controllers (Bearer token auth)
-        │   ├── BaseApiController.php          ← abstract base: jsonResponse(), errorResponse(), agentClient()
-        │   ├── JobsApiController.php          ← scopes: jobs:read, jobs:write, jobs:execute
-        │   ├── ExportApiController.php        ← scope:  export:read
-        │   ├── MaintenanceApiController.php   ← scopes: maintenance:read, maintenance:write
-        │   └── SettingsApiController.php      ← scopes: settings:read, settings:write
-        ├── Auth/
-        │   ├── ApiKey.php                     ← value object (id, userId, name, scopes, agentIds, …)
-        │   ├── ApiKeyMiddleware.php           ← Bearer-token gate: token → hash → expiry → IP → scope
-        │   ├── ApiKeyRepository.php           ← PDO CRUD for api_keys table
-        │   ├── LocalAuthProvider.php
-        │   ├── OidcAuthProvider.php
-        │   └── ScopeHelper.php               ← allowedScopesForRole(), PROFILES constant
-        ├── Bootstrap/
-        │   ├── AgentSchema.php            ← CREATE TABLE IF NOT EXISTS agents + seed from config
-        │   └── ApiKeySchema.php           ← CREATE TABLE IF NOT EXISTS api_keys (idempotent)
-        ├── Repository/
-        │   ├── AgentRepository.php        ← PDO CRUD for the agents table
-        │   └── UserPreferenceRepository.php
-        └── Controller/
-            ├── BaseController.php
-            ├── AgentController.php        ← agent CRUD + connectivity test + session switch
-            ├── ApiKeyController.php       ← UI: list, create, delete own API keys
-            ├── AuthController.php
-            ├── SetupController.php
-            ├── DashboardController.php
-            ├── CronController.php
-            ├── TimelineController.php
-            ├── SwimlaneController.php
-            ├── ExportController.php
-            ├── UserController.php
-            ├── MaintenanceController.php
-            └── TargetController.php
-```
 
 ---
 
@@ -323,13 +147,18 @@ the handler. Routes are matched in registration order.
 `src/Security/HmacValidator.php` validates the `X-Agent-Signature` header on every
 non-health request.
 
-**Signature algorithm:**
+**Signature algorithm (v4.3.0+):**
 
 ```
-signature = hmac_sha256(hmac_secret, METHOD + PATH + BODY)
+signature = hmac_sha256(hmac_secret, METHOD + PATH + BODY + "\0" + userId + "\0" + username)
 ```
 
-No separator is added between the three parts. The result is a lowercase hex string.
+`userId` and `username` are the acting web user's ID and login name, taken from the
+`X-User-Id` / `X-User-Name` request headers (set by `HostAgentClient`). The cron-wrapper
+has no user context and signs with `userId=0` and `username=""` (empty string).
+`agent.php` must default to `''` (not `'system'`) for a missing `X-User-Name` header —
+any other fallback causes all cron-wrapper requests to fail with HTTP 401. The result is a
+lowercase hex string.
 
 The web application's `HostAgentClient` computes and attaches the signature before every
 request. The validator uses `hash_equals()` for constant-time comparison to prevent
@@ -963,6 +792,26 @@ Return a paginated list of audit log entries.
 
 ---
 
+### GET /stats
+
+Returns aggregated execution counts for the dashboard statistics widget.
+Uses `idx_el_started_at` for efficient range scans — no full table scan.
+
+**Response:**
+```json
+{
+    "executed_today":  613,
+    "failed_today":      8,
+    "executed_24h":    719,
+    "failed_24h":       28
+}
+```
+
+`today` = since midnight (server timezone); `24h` = rolling `NOW() − INTERVAL 24 HOUR`.
+`failed_*` counts exclude exit codes `0` and `−4` (maintenance sentinels).
+
+---
+
 ### GET /history
 
 Paginated execution history.
@@ -1301,19 +1150,22 @@ Controllers call `isJsonRequest()` before `render()` and return early with `json
 
 Currently used by `DashboardController::index()` (returns stats array) and `CronController::monitor()` (returns chart/KPI data). The JavaScript utility `cmFetch` in `cm-fetch.js` appends `?_json=1` automatically for AJAX callers.
 
+Roles: `viewer` (read-only) ⊂ `operator` (manage jobs + maintenance) ⊂ `admin` (full). `api-only` accounts cannot log in to the web UI.
+
 | Controller | Routes | Min role |
 |---|---|---|
-| `AuthController` | `GET/POST /login`, `GET /logout`, `GET /auth/callback`, `GET /auth/oidc` | public |
+| `AuthController` | `GET/POST /login`, `GET /logout`, `GET /auth/callback`, `GET /auth/oidc`, `GET/POST /password/reset`, `GET/POST /password/reset/{token}`, `GET/POST /invite/{token}` | public |
 | `SetupController` | `GET/POST /setup` | public |
-| `DashboardController` | `GET /dashboard` | view |
-| `CronController` | `GET /crons`, `POST /crons/bulk` (admin), `GET /crons/{id}`, `GET /crons/{id}/monitor`, `GET/POST /crons/new`, `GET/POST /crons/{id}/edit`, `POST /crons/{id}/delete`, `GET/POST /crons/import` | view/admin |
-| `TimelineController` | `GET /timeline` | view |
-| `SwimlaneController` | `GET /swimlane`, `GET /swimlane?debug=1` | view |
-| `ExportController` | `GET /export`, `GET /export/download` | view |
+| `DashboardController` | `GET /dashboard` | viewer |
+| `CronController` | `GET /crons`, `POST /crons/bulk` (operator), `GET /crons/{id}`, `GET /crons/{id}/monitor`, `GET/POST /crons/new`, `GET/POST /crons/{id}/edit`, `POST /crons/{id}/delete`, `GET/POST /crons/import` | viewer/operator |
+| `TimelineController` | `GET /timeline` | viewer |
+| `SwimlaneController` | `GET /swimlane`, `GET /swimlane?debug=1` | viewer |
+| `ExportController` | `GET /export`, `GET /export/download` | viewer |
 | `AuditController` | `GET /audit` | admin |
-| `UserController` | `GET /users`, `POST /users/{id}/role`, `POST /users/{id}/delete` | admin |
-| `AgentController` | `GET /settings/agents/create`, `POST /settings/agents`, `GET /settings/agents/{id}/edit`, `POST /settings/agents/{id}`, `POST /settings/agents/{id}/delete`, `POST /settings/agents/{id}/test` (JSON), `POST /agent/select` | admin (select: view) |
-| `ApiKeyController` | `GET /api-keys`, `GET /api-keys/create`, `POST /api-keys`, `POST /api-keys/{id}/delete` | view (own keys only) |
+| `UserController` | `GET /users`, `GET/POST /users/create`, `GET/POST /users/{id}/edit`, `POST /users/{id}/delete`, `POST /users/{id}/resend-invite` | admin |
+| `ProfileController` | `GET/POST /profile` | viewer (own account only) |
+| `AgentController` | `GET /settings/agents/create`, `POST /settings/agents`, `GET /settings/agents/{id}/edit`, `POST /settings/agents/{id}`, `POST /settings/agents/{id}/delete`, `POST /settings/agents/{id}/test` (JSON), `POST /agent/select` | admin (select: viewer) |
+| `ApiKeyController` | `GET /api-keys`, `GET /api-keys/create`, `POST /api-keys`, `POST /api-keys/{id}/delete` | viewer (own keys only) |
 | `MaintenanceController` | `GET /settings`, `POST /settings/resync`, `POST /settings/executions/{id}/finish`, `POST /settings/executions/{id}/delete`, `POST /settings/executions/bulk`, `POST /settings/history/cleanup`, `POST /settings/once/cleanup`, `POST /settings/logs/prune`, `POST /settings/notification/test` | admin |
 | `TargetController` | `GET /maintenance`, `GET /maintenance/{target}/windows/new`, `POST /maintenance/{target}/windows`, `GET /maintenance/windows/{id}/edit`, `POST /maintenance/windows/{id}/edit`, `POST /maintenance/windows/{id}/delete`, `GET /maintenance/windows/conflict`, `POST /maintenance/ssh/test` | admin |
 
@@ -1526,13 +1378,30 @@ On the **first start** after upgrading to v4.0.0, `AgentSchema::ensure()` checks
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | INT UNSIGNED PK | |
-| `username` | VARCHAR(128) UNIQUE | Email or chosen username |
-| `password_hash` | VARCHAR(255) NULL | NULL for OIDC-only users |
-| `role` | ENUM('view','admin') | Default: `view` |
+| `id` | INT PK AUTO_INCREMENT | |
+| `username` | VARCHAR(128) UNIQUE | Login name |
+| `password_hash` | VARCHAR(255) NULL | bcrypt hash; NULL for OIDC-only / api-only accounts |
+| `role` | ENUM('viewer','operator','admin','api-only') | `viewer` = read-only; `operator` = manage jobs + maintenance; `admin` = full; `api-only` = no web login |
+| `active` | TINYINT(1) | `1` = active (default); `0` = deactivated (login blocked) |
+| `email` | VARCHAR(255) NULL | Contact address for invitations and password-reset emails |
+| `agent_ids` | JSON NULL | `null` = all agents; `[1,3]` = restricted to these agent IDs |
 | `oauth_sub` | VARCHAR(255) NULL UNIQUE | OIDC subject identifier |
 | `created_at` | DATETIME | |
-| `cron_list_page_size` | SMALLINT UNSIGNED NULL | Per-user preference; NULL = default |
+| `cron_list_page_size` | SMALLINT UNSIGNED NULL | Per-user preference; `0` = show all; NULL = default (25) |
+
+### `auth_tokens`
+
+One-time tokens for invitation links and password-reset flows.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INT PK AUTO_INCREMENT | |
+| `user_id` | INT FK → `users.id` | CASCADE DELETE |
+| `token_hash` | VARCHAR(64) UNIQUE | `sha256(plain_token)` — plain text is never stored |
+| `type` | ENUM('invite','reset') | `invite` = first-login invitation; `reset` = password reset |
+| `expires_at` | DATETIME | Token expiry (default: 72 h after creation) |
+| `used_at` | DATETIME NULL | Set when the token is consumed; NULL = not yet used |
+| `created_at` | DATETIME | |
 
 ### `cronjobs`
 
@@ -1545,7 +1414,12 @@ On the **first start** after upgrading to v4.0.0, `AgentSchema::ensure()` checks
 | `description` | VARCHAR(255) | Human-readable name |
 | `active` | TINYINT(1) | `1` = enabled |
 | `notify_on_failure` | TINYINT(1) | Send email/Telegram on failure or limit exceeded |
-| `notify_on_recovery` | TINYINT(1) | Send notification when job recovers after a notified failure streak; DEFAULT 0 (opt-in) |
+| `notify_on_recovery` | TINYINT(1) | Send recovery notification after a notified failure streak; DEFAULT 0 (opt-in) |
+| `notify_on_silence` | TINYINT(1) | Alert when the job has not started within its expected schedule window; DEFAULT 0 (opt-in) |
+| `silence_grace_minutes` | INT UNSIGNED NULL | Per-job override for global `silence.grace_minutes`; NULL = use global default |
+| `last_silence_alert_at` | DATETIME NULL | Timestamp of last silence alert; reset on job start; dedup max once per hour |
+| `last_execution_id` | INT NULL | ID of the most recent `execution_log` row for this job; maintained by `ExecutionStartEndpoint` |
+| `last_finished_execution_id` | INT NULL | ID of the most recent finished `execution_log` row; maintained by `ExecutionFinishEndpoint` with monotonic guard |
 | `execution_limit_seconds` | INT UNSIGNED NULL | Maximum allowed runtime; NULL = no limit |
 | `auto_kill_on_limit` | TINYINT(1) | `1` = auto-kill when limit is exceeded |
 | `singleton` | TINYINT(1) | `1` = skip new execution if a previous instance is still running |
@@ -1637,7 +1511,7 @@ The table is bootstrapped by `ApiKeySchema::ensure()` using `CREATE TABLE IF NOT
 
 ### `audit_log`
 
-Created by migration `011_audit_log.sql`.
+Created by migration `013_audit_log.sql`.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -1675,14 +1549,15 @@ Every request from the web container to the host agent carries:
 X-Agent-Signature: <hex>
 ```
 
-Where `<hex>` is:
+Where `<hex>` is (v4.3.0+):
 
 ```
-HMAC-SHA256(hmac_secret, HTTP_METHOD + REQUEST_PATH + REQUEST_BODY)
+HMAC-SHA256(hmac_secret, HTTP_METHOD + REQUEST_PATH + REQUEST_BODY + "\0" + userId + "\0" + username)
 ```
 
-The parts are concatenated without separators. An attacker who intercepts a request
-cannot forge a different method, path, or body without knowing the secret.
+`userId` and `username` identify the acting web user (cron-wrapper uses `0` and `""`).
+An attacker who intercepts a request cannot forge a different method, path, body, or
+actor without knowing the secret.
 Validation uses `hash_equals()` to prevent timing attacks.
 
 The `hmac_secret` is stored only in the two config files (agent and web).
@@ -2012,7 +1887,12 @@ only included when `debug=1` is present; normal requests are unaffected.
 
 ## Configuration Reference
 
-For the full list of available options see [README.md – Configuration Reference](README.md#configuration-reference).
+In **Docker Hub mode** (recommended), all settings are supplied as environment variables
+and `config.json` is generated by the container entrypoint on every start — no manual
+editing required. For the full env-var reference see [README.md – Environment variables reference](README.md#environment-variables-reference).
+
+In **host-agent mode**, both the agent and the web app use a hand-edited `config.json`.
+For the key reference and deployment steps see [HOST-AGENT.md – Configuration Reference](HOST-AGENT.md#configuration-reference).
 
 Config is loaded via `Noodlehaus\Config::load('/path/to/config.json')`.
 Use dot-notation to access nested keys:
@@ -2026,17 +1906,15 @@ $config->get('logging.max_days', 30);   // with default
 
 ## Deployment Script
 
-`deploy.sh` reads `deploy.env` and `db.credentials` and supports two transport modes,
-two target modes, and four deployment modes.
+`deploy.sh` is a **host-agent deployment tool** — it deploys the PHP agent as a systemd
+service on the Docker host. For the Docker Hub installation (recommended), no deployment
+script is needed; see [README.md](README.md#docker-hub--recommended-installation).
 
-### Required argument: target mode
+`deploy.sh` reads `deploy.env` and `db.credentials`.
 
-One of these flags is **required** on every invocation:
+### Required argument
 
-| Flag | Behaviour |
-|---|---|
-| `--host-agent` | Agent runs as a systemd service on the host; `deploy.sh` installs/restarts the service |
-| `--docker` | Agent runs as a Docker container; systemd steps are skipped; on first deploy, configs are automatically patched with Docker service names |
+`--host-agent` is the only supported target mode.
 
 ### Transport modes (set in `deploy.env`)
 
@@ -2049,10 +1927,10 @@ One of these flags is **required** on every invocation:
 
 | Argument | Behaviour |
 |---|---|
-| `full` | Creates directories + full rsync mirror (`--delete`); deploys example configs if absent; patches config values based on target mode |
+| `full` | Creates directories + full rsync mirror (`--delete`); deploys example configs if absent |
 | `update` | rsync with `--checksum` (only changed files); config files are never overwritten |
-| `migrate` | Migrates a running host-agent installation to docker mode: deploys changed files, stops and disables the systemd service, removes managed crontab entries from all host users, patches `database.host` and `agent.url` in both config files |
-| `undeploy` | `--host-agent` only: stops and removes the systemd service; PHP files and config are kept on the target |
+| `migrate` | Migrates a host-agent installation to Docker mode: stops and disables the systemd service, removes managed crontab entries from all host users, patches `database.host` and `agent.url` in both config files |
+| `undeploy` | Stops and removes the systemd service; PHP files and config are kept on the target |
 
 ### Fixed deployment paths
 
@@ -2070,18 +1948,9 @@ All paths are hardcoded — not configurable in `deploy.env`:
 
 ```bash
 ./deploy.sh --host-agent update --agent   # deploy only the host agent
-./deploy.sh --docker update --web         # deploy only the web application
+./deploy.sh --host-agent update --web     # deploy only the web application
 ./deploy.sh --host-agent full             # deploy both (default)
 ```
-
-### Config auto-patching on first deploy
-
-When `deploy.sh` deploys the example config files for the first time (i.e., no config exists on the target yet), it automatically patches mode-specific values:
-
-| Config file | Key | `--host-agent` | `--docker` |
-|---|---|---|---|
-| Agent `config.json` | `database.host` | `127.0.0.1` | `cronmanager-db` |
-| Web `config.json` | `agent.url` | `http://host.docker.internal:8865` | `http://cronmanager-agent:8865` |
 
 ### Composer handling
 
@@ -2095,15 +1964,15 @@ exists on the target:
 
 ### Static asset downloads
 
-During deployment `deploy.sh` automatically downloads static assets that are not
-checked into the repository:
+`deploy.sh` downloads one static asset that is not version-controlled:
 
 | Asset | Target path | Condition |
 |---|---|---|
-| Tailwind CSS | `assets/js/tailwind.min.js` | Downloaded if absent |
 | Chart.js 4 UMD | `assets/js/chart.min.js` | Downloaded if absent |
 
-Both files are excluded from `rsync --delete` so re-deployments never remove them.
+The Tailwind CSS stylesheet (`assets/css/tailwind.css`) is a **pre-built, purged file
+committed to the repository** — it is deployed via rsync like any other source file.
+No download or build step is required.
 
 ### SSH host override
 
@@ -2342,10 +2211,10 @@ ssh myserver 'docker exec -i cronmanager-db mariadb \
 **Migration tracking via `schema_migrations`:**
 
 Every applied migration is recorded in the `schema_migrations` table (filename + timestamp).
-Both the Docker entrypoint and `simple_debian_setup.sh` check this table before applying a file,
-so re-running the installer on an existing deployment is always safe. On a fresh install, all
-bundled migration filenames are seeded into the table immediately after `schema.sql` is applied,
-since all their changes are already included in the baseline schema.
+The Docker entrypoint checks this table before applying a file, so re-running the container
+on an existing deployment is always safe. On a fresh install, all bundled migration filenames
+are seeded into the table immediately after `schema.sql` is applied, since all their changes
+are already included in the baseline schema.
 
 **Existing migrations:**
 
@@ -2362,6 +2231,14 @@ since all their changes are already included in the baseline schema.
 | `009_notify_after_limit_exceeded.sql` | Added `notify_after_limit_exceeded` column to `cronjobs` |
 | `010_notify_on_recovery.sql` | Added `notify_on_recovery` column to `cronjobs` |
 | `011_restart_on_exitcodes.sql` | Added `restart_on_exitcodes` column to `cronjobs` for per-job exit-code filter on auto-retry |
+| `012_agent_settings.sql` | Added `agent_settings` table for persistent per-agent notification/integration config (mail, Telegram, InfluxDB) |
+| `013_audit_log.sql` | Added `audit_log` table; all write operations are recorded with actor, resource, and diff/snapshot |
+| `014_performance_log.sql` | Added `performance_log` table for optional per-request timing data (Performance Monitor feature) |
+| `015_execution_log_indexes.sql` | Added `idx_el_started_at`, `idx_el_job_finished`, and related indexes to `execution_log` for COUNT and history query performance |
+| `016_silence_detection.sql` | Added `notify_on_silence`, `silence_grace_minutes`, `last_silence_alert_at` columns to `cronjobs` |
+| `017_performance_indexes.sql` | Added composite indexes for `CronListEndpoint` and `HistoryEndpoint`; repairs `schema.sql` to include objects from migrations 011, 012, and 016 |
+| `018_last_execution_refs.sql` | Added `last_execution_id` and `last_finished_execution_id` to `cronjobs` (denormalised pointers for O(1) last-run lookups; replaces the previous `MAX(id) GROUP BY` aggregate) |
+| `019_user_management_v2.sql` | Added `active`, `email`, `agent_ids` to `users`; changed `role` ENUM to `('viewer','operator','admin','api-only')`; added `auth_tokens` table for invitation and password-reset tokens |
 
 Always apply migrations in order. The full schema in `agent/sql/schema.sql` reflects
 the current state after all migrations and is used for fresh installations.

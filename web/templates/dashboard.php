@@ -35,6 +35,7 @@ $inactive      = (int) ($stats['inactive']      ?? 0);
 $tagsCount     = (int) ($stats['tagsCount']     ?? 0);
 $failedLast24h = (int) ($stats['failedLast24h'] ?? 0);
 $byUser        = (array) ($stats['byUser']      ?? []);
+$multiUser     = isset($multiUser) ? (bool) $multiUser : true;
 ?>
 
 <!-- ======================================================================
@@ -154,9 +155,11 @@ $byUser        = (array) ($stats['byUser']      ?? []);
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                                 <?= htmlspecialchars($t('cron_description'), ENT_QUOTES, 'UTF-8') ?>
                             </th>
+                            <?php if ($multiUser): ?>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <?= htmlspecialchars($t('cron_linux_user'), ENT_QUOTES, 'UTF-8') ?>
                             </th>
+                            <?php endif; ?>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <?= htmlspecialchars($t('cron_targets'), ENT_QUOTES, 'UTF-8') ?>
                             </th>
@@ -206,9 +209,11 @@ $byUser        = (array) ($stats['byUser']      ?? []);
                                         <?= htmlspecialchars($desc, ENT_QUOTES, 'UTF-8') ?>
                                     <?php endif; ?>
                                 </td>
+                                <?php if ($multiUser): ?>
                                 <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                                     <?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?>
                                 </td>
+                                <?php endif; ?>
                                 <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                                     <?php if ($entryTarget !== ''): ?>
                                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
@@ -237,7 +242,8 @@ $byUser        = (array) ($stats['byUser']      ?? []);
         <?php endif; ?>
     </div>
 
-    <!-- Jobs by user ------------------------------------------------------- -->
+    <!-- Jobs by user (hidden when only one linux user exists) -------------- -->
+    <?php if ($multiUser): ?>
     <div id="cm-dash-by-user" class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
         <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
             <h2 class="text-base font-semibold text-gray-800 dark:text-gray-200">
@@ -285,6 +291,7 @@ $byUser        = (array) ($stats['byUser']      ?? []);
             </div>
         <?php endif; ?>
     </div>
+    <?php endif; ?>
 
 </div>
 

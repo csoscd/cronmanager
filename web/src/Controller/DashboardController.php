@@ -150,6 +150,7 @@ class DashboardController extends BaseController
             'recentFailures' => $recentFailures,
             'tags'           => $tags,
             'stats'          => $stats,
+            'multiUser'      => count($byUser) > 1,
         ], '/dashboard');
     }
 }

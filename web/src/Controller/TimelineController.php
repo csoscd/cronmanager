@@ -179,6 +179,7 @@ class TimelineController extends BaseController
             'history'    => $history,
             'tags'       => $tags,
             'users'      => $users,
+            'multiUser'  => count($users) > 1,
             'allTargets' => $allTargets,
             'total'      => $total,
             'limit'      => $limit,

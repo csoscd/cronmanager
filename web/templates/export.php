@@ -19,8 +19,9 @@ declare(strict_types=1);
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
 
-$tags  = isset($tags)  && is_array($tags)  ? $tags  : [];
-$users = isset($users) && is_array($users) ? $users : [];
+$tags      = isset($tags)  && is_array($tags)  ? $tags  : [];
+$users     = isset($users) && is_array($users) ? $users : [];
+$multiUser = isset($multiUser) ? (bool) $multiUser : true;
 ?>
 
 <!-- ======================================================================
@@ -51,6 +52,7 @@ $users = isset($users) && is_array($users) ? $users : [];
 
         <form method="GET" action="/export/download">
 
+            <?php if ($multiUser): ?>
             <!-- User filter -->
             <div class="mb-4">
                 <label for="export-user" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -68,6 +70,7 @@ $users = isset($users) && is_array($users) ? $users : [];
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php endif; ?>
 
             <!-- Tag filter -->
             <div class="mb-4">

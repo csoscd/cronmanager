@@ -153,8 +153,13 @@ final class ExecuteNowEndpoint
         //    Detection order: TZ env var → /etc/timezone → PHP default.
         // ------------------------------------------------------------------
 
-        $tz   = new \DateTimeZone($this->resolveSystemTimezone());
-        $next = new \DateTime('+1 minute', $tz);
+        $tz = new \DateTimeZone($this->resolveSystemTimezone());
+        $now = new \DateTime('now', $tz);
+        // If we are within the last 10 seconds of a minute, cron may already
+        // have processed the next minute by the time the crontab is written.
+        // Add an extra minute in that case to guarantee the entry is picked up.
+        $offset = (int) $now->format('s') > 50 ? '+2 minutes' : '+1 minute';
+        $next   = new \DateTime($offset, $tz);
         $schedule = sprintf(
             '%d %d %d %d *',
             (int) $next->format('i'),  // minute

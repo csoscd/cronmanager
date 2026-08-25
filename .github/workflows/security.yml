@@ -142,13 +142,15 @@ jobs:
           TARBALL="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           BASE_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
 
-          curl -sSL "${BASE_URL}/${TARBALL}"         -o /tmp/gitleaks.tar.gz
+          curl -sSL "${BASE_URL}/${TARBALL}"         -o "/tmp/${TARBALL}"
           curl -sSL "${BASE_URL}/checksums.txt"      -o /tmp/gitleaks_checksums.txt
 
-          # Verify checksum – fails the step if the download does not match
+          # Verify checksum – sha256sum -c resolves the filename from the
+          # checksums.txt line, so the tarball must be saved under its original
+          # name (not a generic alias like gitleaks.tar.gz).
           cd /tmp && grep "${TARBALL}" gitleaks_checksums.txt | sha256sum -c -
 
-          tar -xz -C /usr/local/bin gitleaks < /tmp/gitleaks.tar.gz
+          tar -xz -C /usr/local/bin gitleaks < "/tmp/${TARBALL}"
           gitleaks version
 
       # Scan the full git history for secrets.

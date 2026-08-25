@@ -153,8 +153,13 @@ final class ExecuteNowEndpoint
         //    Detection order: TZ env var → /etc/timezone → PHP default.
         // ------------------------------------------------------------------
 
-        $tz   = new \DateTimeZone($this->resolveSystemTimezone());
-        $next = new \DateTime('+1 minute', $tz);
+        $tz = new \DateTimeZone($this->resolveSystemTimezone());
+        $now = new \DateTime('now', $tz);
+        // If we are within the last 10 seconds of a minute, cron may already
+        // have processed the next minute by the time the crontab is written.
+        // Add an extra minute in that case to guarantee the entry is picked up.
+        $offset = (int) $now->format('s') > 50 ? '+2 minutes' : '+1 minute';
+        $next   = new \DateTime($offset, $tz);
         $schedule = sprintf(
             '%d %d %d %d *',
             (int) $next->format('i'),  // minute
@@ -167,6 +172,31 @@ final class ExecuteNowEndpoint
         // ------------------------------------------------------------------
         // 4. Add once-only crontab entries
         // ------------------------------------------------------------------
+
+        // Guard against double-clicks: reject when a once-entry for this job+target
+        // is already waiting in the crontab.  addOnceEntry() has no deduplication
+        // of its own; without this check a second click would create a duplicate
+        // entry that fires the job twice in the same minute.
+        $alreadyPending = [];
+        foreach ($targets as $target) {
+            if ($this->crontabManager->hasOnceEntry((string) $job['linux_user'], $jobId, $target)) {
+                $alreadyPending[] = $target;
+            }
+        }
+
+        if ($alreadyPending !== []) {
+            $this->logger->info('ExecuteNowEndpoint: once-entry already pending – rejecting duplicate', [
+                'job_id'  => $jobId,
+                'targets' => $alreadyPending,
+            ]);
+            jsonResponse(409, [
+                'error'   => 'Conflict',
+                'message' => 'A once-only execution is already pending for this job. Please wait for it to run.',
+                'code'    => 409,
+                'targets' => $alreadyPending,
+            ]);
+            return;
+        }
 
         try {
             foreach ($targets as $target) {

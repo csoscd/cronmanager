@@ -16,14 +16,34 @@
 -- users – application users (local auth or OIDC)
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
-    id            INT          AUTO_INCREMENT PRIMARY KEY,
-    username      VARCHAR(128) UNIQUE NOT NULL       COMMENT 'Login name or OIDC subject',
-    password_hash VARCHAR(255)                       COMMENT 'bcrypt hash; NULL for OIDC-only accounts',
-    role          ENUM('view','admin') NOT NULL DEFAULT 'view'
-                                                    COMMENT 'view = read-only, admin = full access',
-    oauth_sub            VARCHAR(255)                       COMMENT 'OIDC subject identifier',
-    created_at           DATETIME     DEFAULT CURRENT_TIMESTAMP,
-    cron_list_page_size  SMALLINT UNSIGNED NULL DEFAULT NULL COMMENT '0 = show all, NULL = use default (25), other values = page size'
+    id                  INT           AUTO_INCREMENT PRIMARY KEY,
+    username            VARCHAR(128)  UNIQUE NOT NULL COMMENT 'Login name or OIDC subject',
+    password_hash       VARCHAR(255)                  COMMENT 'bcrypt hash; NULL for OIDC-only / api-only accounts',
+    role                ENUM('viewer','operator','admin','api-only') NOT NULL DEFAULT 'viewer'
+                                                      COMMENT 'viewer = read-only, operator = execute+maintenance, admin = full, api-only = no UI login',
+    active              TINYINT(1)    NOT NULL DEFAULT 1 COMMENT '0 = deactivated (login blocked); 1 = active',
+    email               VARCHAR(255)  NULL     DEFAULT NULL COMMENT 'Contact / invite address; may differ from username',
+    agent_ids           JSON          NULL     DEFAULT NULL COMMENT 'NULL = all agents; [1,3] = restricted to these agent IDs',
+    oauth_sub           VARCHAR(255)                  COMMENT 'OIDC subject identifier',
+    created_at          DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    cron_list_page_size SMALLINT UNSIGNED NULL DEFAULT NULL COMMENT '0 = show all, NULL = use default (25), other values = page size'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- auth_tokens – invite and password-reset one-time tokens
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS auth_tokens (
+    id         INT          AUTO_INCREMENT PRIMARY KEY,
+    user_id    INT          NOT NULL,
+    token_hash VARCHAR(64)  NOT NULL UNIQUE COMMENT 'sha256(plain_token) – plain text is never stored',
+    type       ENUM('invite','reset') NOT NULL,
+    expires_at DATETIME     NOT NULL,
+    used_at    DATETIME     NULL DEFAULT NULL,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_auth_tokens_user
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_auth_tokens_user_type (user_id, type),
+    INDEX idx_auth_tokens_expires   (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------

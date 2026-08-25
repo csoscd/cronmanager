@@ -998,6 +998,23 @@ class CronController extends BaseController
 
         try {
             $this->agentClient()->post("/crons/{$id}/execute", $payload);
+        } catch (AgentHttpException $e) {
+            if ($e->getStatusCode() === 409) {
+                // A once-entry is already pending – tell the user instead of showing a generic error.
+                $t = $this->translator();
+                SessionManager::set('_flash_error', $t->t('execute_now_already_pending'));
+                $returnUrl = trim((string) ($_POST['_return'] ?? ''));
+                $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : $this->agentPath('/crons');
+                (new Response())->redirect($safe);
+                return;
+            }
+            $this->logger->error('CronController::executeNow: agent error', [
+                'id'     => $id,
+                'status' => $e->getStatusCode(),
+                'error'  => $e->getMessage(),
+            ]);
+            $this->renderError(503, 'error_agent_unavailable', '/crons');
+            return;
         } catch (\RuntimeException $e) {
             $this->logger->error('CronController::executeNow: agent error', [
                 'id'    => $id,

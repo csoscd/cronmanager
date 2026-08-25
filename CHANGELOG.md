@@ -6,6 +6,109 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [5.1.0] – branch: `feature/user-management-v2`
+
+### Added (Security Tests – Maßnahmen A+B)
+
+- **AuthTokenRepositoryTest (10 Szenarien):** Vollständige Absicherung der One-Time-Token-Primitive (invite/reset): Rückgabe als 64-hex-Klartext, ausschließliche Speicherung des sha256-Hash in der DB, Invalidierung vorheriger Tokens gleichen Typs, Typ-Isolation (reset-create berührt keine invite-Tokens), find()-Ablehnung bei abgelaufenem/genutztem/falschem Token oder Phantomtoken, Unwiderruflichkeit nach consume(), purgeExpired()-Selektivität.
+- **AuthControllerSecurityTest (5 Szenarien):** Sicherheitsinvarianten des AuthControllers: keine User-Enumeration bei unbekannter E-Mail in handleForgotPassword (kein Token-Eintrag im DB), handleReset lehnt abgelaufene und falsch typisierte Tokens ab ohne Passwortänderung, handleInvite-Passwortvalidierung erhält ungültige Token erhalten, Einmal-Nutzung des Reset-Tokens nach consume() (Regressionsschutz für zweiten Anfrageversuch).
+- **HmacRejectionTest (6 Szenarien):** Absicherung der HMAC-SHA256-Signaturvalidierung: fehlender Header, korrekte Signatur, Body-Tamper-Erkennung, Pfad-Tamper-Erkennung, falsches Secret. **Regressionsschutz v4.4.4**: fehlender `X-User-Name`-Header → agent.php-Extraktion ergibt `''` (Leerstring) → cron-wrapper-Request (userId=0, username='') wird akzeptiert; ein Rückfall auf `'system'` als Default würde diesen Test zum Scheitern bringen.
+- **ApiKeyMiddlewareTest – 3 neue Szenarien:** Scope-Enforcement gegen die reale Profil-Scope-Map: operator-Profil (jobs:read, jobs:execute, maintenance:read) → jobs:execute → 200; operator-Profil → jobs:write → 403; read-only-Profil → jobs:execute → 403 (Viewer-Negativfall).
+- **AuditIdentityExtractor:** Neue Klasse `agent/src/Security/AuditIdentityExtractor.php` kapselt die Extraktion der X-User-Id/X-User-Name-Header aus `$_SERVER`. `agent.php` verwendet sie statt der bisherigen Inline-Extraktion; HmacRejectionTest/Szenario 5 ruft dieselbe Klasse auf – ein Rückfall auf `'system'` als Default würde den Test sofort brechen (echter Regressionsschutz für den v4.4.4-Vorfall).
+
+### Added (CI – Maßnahme D)
+
+- **gitleaks Secret-Scanning:** Neuer Job `secret-scanning` in `.github/workflows/security.yml`; läuft parallel zu `dependency-audit` und `semgrep`. Scannt die volle Git-Historie (`fetch-depth: 0`) mit SHA-256-Checksummen-Verifikation des Binaries (Supply-Chain-Härtung) und `--redact` (kein Secret-Text in CI-Logs). Konfiguration über `.gitleaks.toml` (Pfad-basierte Allowlist für bekannte Fake-Werte in Example-Dateien und Test-Fixtures).
+- **`.gitleaks.toml`:** Minimale Allowlist: `db.credentials.example`, `docker/.env.example`, `tests/Integration/Endpoints/HmacRejectionTest.php` (64-Hex-Teststring `TEST_SECRET`). Bewusst keine Directory-Exclusion, um Real-Secrets in Fixtures nicht zu übersehen.
+- **`API.md`:** Realistisch aussehender Beispiel-API-Key (`cm_aB3x…`) durch offensichtlichen Platzhalter `cm_YOUR_API_KEY_HERE` ersetzt (beide Vorkommen, Zeilen 54 + 241) — didaktisch besser, kein Allowlist-Eintrag nötig.
+- **Lokaler Vorab-Scan:** volle Git-Historie (216 Commits) vor CI-Einführung gescannt — kein echtes Secret gefunden.
+
+### Added (Security Tests – Maßnahme H)
+
+- **UserRoutesRegistrar:** Neue Klasse `web/src/Http/UserRoutesRegistrar.php` kapselt die Registrierung aller `/users/*`-Routen in einer statischen `register()`-Methode. `index.php` ruft diese statt der bisherigen 10 inline-`addProtectedRoute`-Aufrufe auf. Beide Aufruforte (index.php und Tests) verwenden exakt dieselbe Code-Strecke; eine fehlende oder falsch konfigurierte Route bricht den Integritätstest sofort.
+- **Router::isAuthorized():** Neue public-Methode auf `Router` delegiert an `SessionManager::hasRole()`; ermöglicht Tests der Autorisierungslogik ohne dispatch() (das auch Redirects, CSRF und Output abwickelt).
+- **Router::getProtectedRoutes():** Neue public-Methode gibt die interne `$protectedRoutes`-Liste zurück; wird vom Registrierungs-Integritätstest genutzt um sicherzustellen, dass alle erwarteten Routen mit korrekter Rolle vorhanden sind.
+- **BaseController::requireAdmin():** Neue protected-Methode als Defense-in-Depth-Gate: setzt HTTP 403 und ruft `exit()` auf, wenn die aktuelle Session nicht die Rolle `admin` trägt. Schützt controller-seitig auch dann, wenn eine Route versehentlich ohne `requiredRole='admin'` registriert würde.
+- **UserControllerAuthTest (6 Szenarien):** Registrierungs-Integrität (alle 10 `/users/*`-Schreibrouten mit korrekter Rolle via echter `UserRoutesRegistrar::register()`), `viewer`/`operator` → `isAuthorized('admin')` → false, `admin` → true, Own-Role-Guard-Bedingung (admin ändert eigene Rolle → Guard-Kondition evaluiert zu `true` → DB-Assertion auf Condition-Level, da `Response::redirect()` → `exit()` den direkten Controller-Pfad sperrt), Existenz und Sichtbarkeit von `BaseController::requireAdmin()` via Reflection.
+- **ProfileControllerAuthTest (1 Szenario):** `POST /profile` mit `role=admin` und `active=0` im Body → `ProfileController::update()` schreibt weder `role` noch `active` in die DB (validiert über den Validierungsfehler-Pfad, der kein `exit()` auslöst; Success-Pfad verhält sich identisch, da `UPDATE`-Statements nur `email` und `password_hash` referenzieren).
+
+### Added (CI – Maßnahme E)
+
+- **`coverage.yml` – Coverage-Report-Workflow:** Neuer separater GitHub-Actions-Workflow (nicht in `php-tests.yml` integriert, um den Gate-Job nicht zu verlangsamen). Trigger: `pull_request` (non-draft) + `push` auf `main` — läuft nicht bei jedem Feature-Branch-Push, da die volle Integration-Suite mit MariaDB sonst doppelt ausgeführt würde. PCOV als Coverage-Driver (schneller als Xdebug, kein Debugger-Overhead). Kein Hard-Gate auf Abdeckungsprozentsatz (informativ, nicht merge-blockierend).
+- **Coverage-Sichtbarkeit via `$GITHUB_STEP_SUMMARY`:** `--coverage-text`-Output wird in die Workflow-Run-Zusammenfassung geschrieben — prominent auf der GitHub-UI-Seite sichtbar ohne externe Marketplace-Action und ohne `pull-requests: write`-Berechtigung. Konsequent mit der Supply-Chain-Haltung des Projekts (kein Marketplace-Bot für kosmetische PR-Kommentare).
+- **Clover-Artefakt:** `coverage.xml` wird 14 Tage als Build-Artifact aufbewahrt (für mögliche nachgelagerte Tooling-Integration). `--colors=never` verhindert ANSI-Codes in CI-Log und Step-Summary.
+
+### Added (Security Tests – Maßnahme C)
+
+- **CrontabManager – Datei-Backed-Seam:** Neuer optionaler Konstruktor-Parameter `?string $crontabDir = null`. Bei gesetztem Wert lesen/schreiben `readCrontab()`/`writeCrontab()` eine Datei `{crontabDir}/{user}.crontab` statt `crontab -u {user}` aufzurufen. Default `null` = unverändertes Produktionsverhalten. Motiviert durch Testbarkeit: Tests, die `removeAllEntries()`, `addOnceEntry()` o. Ä. aufrufen, dürfen niemals die echte System-Crontab (insbes. Root auf dem Build-Host) lesen oder schreiben. Cache-Invalidierung (`@unlink(managedCacheFile)`) bleibt im Sandbox-Pfad erhalten, um Parität mit dem Produktionsverhalten zu wahren und Cache-bedingte Flakiness zu vermeiden.
+- **IntegrationTestCase – `$useTransactionIsolation`-Flag:** Neues `protected bool $useTransactionIsolation = true`-Property. Wenn `false`, startet `setUp()` keine Outer-Transaktion und `tearDown()` ruft kein `rollBack()` auf. Notwendig für Tests, deren Subject Under Test (hier: `CronBulkDeleteEndpoint`) intern `PDO::beginTransaction()` aufruft — PDO wirft sonst „There is already an active transaction". Subklassen mit `false` übernehmen manuelles Cleanup.
+- **CronBulkDeleteEndpointTest (6 Szenarien):** Vollständige Absicherung von `POST /crons/bulk/delete`: Ablehnung leeres IDs-Array (400), Ablehnung bei unbekannter Job-ID (404), atomisches 409-Guard (Batch `[laufend, nicht-laufend]` → beide Jobs erhalten, kein Partial-Delete), erfolgreiche Mehrzahl-Löschung mit korrektem `deleted`-Count (200), Cascade-Nachweis (execution_log-Zeilen des gelöschten Jobs via `fk_el_cronjob ON DELETE CASCADE` entfernt — Grundlage für die Freistellung von last_execution_id-Re-Derivation), Survivor-Ref-Integrität (nicht gelöschter Job behält `last_execution_id` / `last_finished_execution_id` unverändert nach Bulk-Delete-Vorgang).
+- **ExecuteNowEndpointTest (4 Szenarien):** Absicherung von `POST /crons/{id}/execute`: Ablehnung ungültiger ID 0 (400), Ablehnung nicht-existenter Job-ID (404), Duplikat-Klick-Guard via Sandbox-Crontab (manuelle Vorbelegung mit `addOnceEntry` → Endpoint → 409), Erfolgreiche Planung mit direkter Datei-Inspektion der Sandbox-Crontab (Once-Marker `# cronmanager-once:{id}:local` muss vorhanden sein — ungecachte Prüfung, da `getManagedEntriesCached` global nach User-ID keyed ist und parallele Tests mit gleichem User stören würden).
+
+### Known Gaps
+
+- **AuthController Success-Pfad nicht durch Controller testbar:** `Response::redirect()` ruft `exit()` auf. Der Pfad „gültiges Token → Passwort gesetzt → `consume()` → Redirect" lässt sich ohne Prozess-Isolation nicht vollständig durch die Controller-Action testen. Die Einmal-Nutzungs-Invariante ist durch `AuthControllerSecurityTest::resetTokenCannotBeReusedAfterConsumption` auf Repository-Ebene abgesichert. Follow-up: `Response::redirect()` injizierbar machen oder `@runInSeparateProcess` mit pre-committed Fixtures einsetzen.
+- **Own-Role-Guard nicht durch Controller-Action testbar:** `UserController::update()` ruft `Response::redirect()` → `exit()` auch im Guard-Pfad auf. Der Guard-Bedingungsnachweis erfolgt auf SessionManager-Ebene (`UserControllerAuthTest::ownRoleGuardPreventsAdminFromChangingTheirOwnRole`); die DB bleibt in beiden Testpfaden unberührt. Gleiche Lösung wie AuthController-Gap.
+
+### Fixed
+
+- **Sidebar – Agent-Label bei Einzelagent:** Der Agent-Name ("Default") wurde in der Sidebar auch bei Einzelagent-Installationen angezeigt. Der `elseif`-Block in `layout.php` ist jetzt entfernt; das Label erscheint nur noch wenn das Dropdown aktiv ist (≥ 2 Agents).
+
+### Added
+
+- **Echtzeit-Fortschrittsanzeige (Issue #76):** Laufende Cron-Jobs übertragen ihren Output alle 10 Sekunden live an den Agent (`POST /execution/{id}/progress`). Die Detail-Seite erkennt laufende Ausführungen automatisch und aktualisiert sich alle 15 Sekunden; eine Countdown-Leiste zeigt den nächsten Reload-Zeitpunkt an. Läuft der Job noch, ist der partielle Output in der History-Tabelle direkt sichtbar (gelber Pulsing-Indikator "live" in der Output-Spalte).
+- **`jq` im Agent-Container:** `docker/agent/Dockerfile` installiert jetzt `jq` (nützliches JSON-Tool im Container-Kontext).
+- **`jq` in `simple_debian_setup.sh`:** Voraussetzung für Host-Agent-Modus ergänzt.
+
+### Technical Details (Issue #76)
+
+- Neuer Agent-Endpoint `ExecutionProgressEndpoint` (`POST /execution/{id}/progress`): schreibt partiellen Output in `execution_log.output` nur wenn `finished_at IS NULL`, verhindert so Überschreiben nach Job-Ende durch verspätete Pakete.
+- `cron-wrapper.sh`: Neue Konstanten `PROGRESS_INTERVAL_SECONDS=10` und `MAX_PROGRESS_BYTES=524288`. Neue Funktionen `start_progress_loop()` (startet Background-Loop als Subshell) und `stop_progress_loop()` (bricht Loop sauber ab). Loop startet nach PID-Meldung in beiden Branches (lokal + SSH), stoppt nach `wait`. `trap 'stop_progress_loop' EXIT` sichert Cleanup bei vorzeitigem Exit.
+- Progress-Loop verwendet PHP (bereits Pflichtabhängigkeit) zum JSON-Encoding, konsistent mit den bestehenden Wrapper-Patterns.
+
+---
+
+## [5.0.1] – branch: `feature/user-management-v2`
+
+### Fixed
+
+- **Bulk Aktivieren/Deaktivieren (Issue #109):** `CronBulkStatusEndpoint` warf `SQLSTATE[23000]: Column 'id' in SELECT is ambiguous`, weil der `SELECT`-Teil des LEFT-JOIN-Queries den Tabellen-Qualifier `j.` fehlte. Alle vier Spalten (`id`, `linux_user`, `active`, `schedule`) sind jetzt korrekt als `j.id` etc. qualifiziert.
+- **Benutzerverwaltung – Agent-Einschränkung:** Die Sektion „Agent-Einschränkung" im Benutzer-Formular wurde auch bei Einzelagent-Installationen angezeigt. Sie ist jetzt wie bei den API-Keys nur sichtbar, wenn mehr als ein Agent konfiguriert ist.
+- **Benutzerverwaltung – Passwortfeld-UX:** Das Passwortfeld zeigte `*` (Pflichtfeld) beim Anlegen neuer Benutzer, auch wenn der Einladungslink als Standard-Option vorausgewählt war. Die Einladungs-Option wird jetzt zuerst hervorgehoben angezeigt; das Passwortfeld ist als `(optional)` beschriftet und wird visuell gedimmt, solange die Einladungs-Checkbox aktiv ist.
+
+---
+
+## [5.0.0] – branch: `feature/user-management-v2`
+
+### Added
+
+- **Rollenmodell erweitert**: Vier feste Rollen (`viewer`, `operator`, `admin`, `api-only`) ersetzen das bisherige Zwei-Rollen-System (`view`/`admin`). Neue `operator`-Rolle erlaubt Jobausführung und Wartungsverwaltung ohne Admin-Rechte.
+- **Benutzerverwaltung v2**: Vollständige CRUD-Oberfläche für lokale Benutzer inkl. Aktivieren/Deaktivieren (Soft-Deactivation), Benutzeranlage mit optionalem Einladungsversand per E-Mail, Rollen- und Agent-Einschränkung pro Benutzer.
+- **Einladungs-Flow**: Admin legt Benutzer an, sendet per SMTP einen Einladungslink (72 Stunden gültig). Benutzer setzt Passwort über `/auth/invite/{token}`. Formular wird ausgeblendet, wenn SMTP nicht konfiguriert.
+- **Self-Service Passwort-Reset**: Nutzer können über `/auth/forgot-password` einen Reset-Link anfordern (2 Stunden gültig). Ausgeblendet, wenn SMTP nicht konfiguriert.
+- **Selbstverwaltung Profil** (`/profile`): Authentifizierte Benutzer können E-Mail-Adresse und Passwort ändern. SSO-Benutzer können nur die E-Mail-Adresse anpassen.
+- **Per-Benutzer Agent-Einschränkung**: Admins können jeden Benutzer auf bestimmte Agents beschränken (analog zu API-Keys). `NULL` = Zugriff auf alle Agents.
+- **SSO Auto-Provisioning-Modi**: Neues Umgebungsvariable `OIDC_AUTO_PROVISION` (`auto`/`disabled`/`group`). Im Modus `group` werden OIDC-Rollen aus Gruppen-Claims ermittelt (`OIDC_GROUP_ADMIN`, `OIDC_GROUP_OPERATOR`, `OIDC_GROUP_VIEWER`, `OIDC_DEFAULT_ROLE`).
+- **SMTP-Konfiguration im Web-Container**: Neue Umgebungsvariablen `WEB_MAIL_HOST`, `WEB_MAIL_PORT`, `WEB_MAIL_USERNAME`, `WEB_MAIL_PASSWORD`, `WEB_MAIL_FROM`, `WEB_MAIL_FROM_NAME`, `WEB_MAIL_ENCRYPTION` für transaktionale E-Mails (Einladung, Reset).
+- **`auth_tokens`-Tabelle**: Migration `019_user_management_v2.sql` fügt `auth_tokens`-Tabelle (Einweg-Tokens für Invite/Reset), neue Spalten `active`, `email`, `agent_ids` in `users`, erweitert ENUM um `operator` und `api-only`, migriert `view` → `viewer`.
+- **Profil-Link in der Sidebar** für alle authentifizierten Benutzer.
+- **„Passwort vergessen"-Link** auf der Login-Seite (nur wenn SMTP konfiguriert).
+- **Audit-Log** für alle Benutzerverwaltungsoperationen (`user.create`, `user.update`, `user.delete`, `user.activate`, `user.deactivate`, `user.update_role`, `user.profile_update`).
+
+### Changed
+
+- `users.role` ENUM: `'view'` → `'viewer'` (Migration übernimmt vorhandene Zeilen automatisch). Legacy-Alias `'view'` in `SessionManager::hasRole()` bleibt erhalten.
+- `OidcAuthProvider`: prüft `active`-Flag beim Login; respektiert `oidc_auto_provision`-Modus; leitet Rolle aus OIDC-Gruppen-Claims ab.
+- `LocalAuthProvider`: prüft `active`-Flag; blockiert `api-only`-Benutzer am Web-Login; Standard-Rolle bei `createUser()` ist nun `viewer` statt `view`.
+- Benutzerliste zeigt jetzt E-Mail, Status (aktiv/inaktiv) und Agent-Einschränkungen an.
+
+### Migration
+
+- **Neu:** `agent/sql/migrations/019_user_management_v2.sql`
+- **Aktualisiert:** `agent/sql/schema.sql`
+
+---
+
 ## [4.8.1] – branch: `fix/linux-users-uid-filter`
 
 ### Fixed

@@ -37,6 +37,7 @@ spl_autoload_register(function (string $class): void {
 
 use Cronmanager\Agent\Bootstrap;
 use Cronmanager\Agent\Router;
+use Cronmanager\Agent\Security\AuditIdentityExtractor;
 use Cronmanager\Agent\Security\HmacValidator;
 
 // =============================================================================
@@ -114,11 +115,12 @@ try {
     $signatureHeader = $_SERVER['HTTP_X_AGENT_SIGNATURE'] ?? '';
 
     // User-context headers (included in the HMAC, so they can be trusted after validation).
-    // Default to 0 / '' when the headers are absent (cron-wrapper requests carry no user context).
-    // 'system' must NOT be used as the default here because the cron-wrapper signs with an empty
-    // username; mismatching the default would cause every cron-wrapper request to fail with 401.
-    $auditUserId   = max(0, (int) ($_SERVER['HTTP_X_USER_ID']   ?? 0));
-    $auditUsername = substr(trim((string) ($_SERVER['HTTP_X_USER_NAME'] ?? '')), 0, 128);
+    // Extraction is delegated to AuditIdentityExtractor so the same logic is testable:
+    // the regression guard in HmacRejectionTest calls the identical code path and would
+    // immediately break if the default for a missing X-User-Name header were changed from
+    // '' to anything else (root cause of the v4.4.4 silent-reject incident).
+    ['userId' => $auditUserId, 'username' => $auditUsername] =
+        AuditIdentityExtractor::fromServer($_SERVER);
 
     // -------------------------------------------------------------------------
     // Skip HMAC validation for the /health endpoint
@@ -286,16 +288,18 @@ try {
 
     $maintenanceWindowRepo = new \Cronmanager\Agent\Repository\MaintenanceWindowRepository($pdo, $logger);
 
-    $execStart     = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger, $maintenanceWindowRepo);
-    $execFinish    = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier, $telegramNotifier, $crontabManager, $wrapperScript);
+    $execStart    = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger, $maintenanceWindowRepo);
+    $execFinish   = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier, $telegramNotifier, $crontabManager, $wrapperScript);
+    $execProgress = new \Cronmanager\Agent\Endpoints\ExecutionProgressEndpoint($pdo, $logger);
     $execUpdatePid = new \Cronmanager\Agent\Endpoints\ExecutionUpdatePidEndpoint($pdo, $logger);
     $execKill      = new \Cronmanager\Agent\Endpoints\ExecutionKillEndpoint($pdo, $logger, $auditLogger);
 
-    $router->addRoute('POST', '/execution/start',       [$execStart,     'handle']);
-    $router->addRoute('POST', '/execution/finish',      [$execFinish,    'handle']);
-    // /execution/{id}/pid and /execution/{id}/kill – more specific than /execution/start|finish
-    $router->addRoute('POST', '/execution/{id}/pid',    [$execUpdatePid, 'handle']);
-    $router->addRoute('POST', '/execution/{id}/kill',   [$execKill,      'handle']);
+    $router->addRoute('POST', '/execution/start',          [$execStart,    'handle']);
+    $router->addRoute('POST', '/execution/finish',         [$execFinish,   'handle']);
+    // /execution/{id}/* routes – more specific than /execution/start|finish
+    $router->addRoute('POST', '/execution/{id}/progress',  [$execProgress, 'handle']);
+    $router->addRoute('POST', '/execution/{id}/pid',       [$execUpdatePid, 'handle']);
+    $router->addRoute('POST', '/execution/{id}/kill',      [$execKill,      'handle']);
 
     // -- Tags -----------------------------------------------------------------
 

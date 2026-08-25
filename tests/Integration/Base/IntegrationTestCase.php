@@ -34,6 +34,16 @@ abstract class IntegrationTestCase extends TestCase
     /** @var bool Track whether the schema has been initialised in this PHP process */
     private static bool $schemaInitialised = false;
 
+    /**
+     * When true (default), each test runs inside a database transaction that is
+     * rolled back in tearDown() — providing automatic, zero-cleanup test isolation.
+     *
+     * Set to false in subclasses whose SUT calls beginTransaction() itself
+     * (PDO throws "There is already an active transaction" on nested calls).
+     * Those tests must perform manual cleanup in their own tearDown().
+     */
+    protected bool $useTransactionIsolation = true;
+
     // -------------------------------------------------------------------------
     // Lifecycle
     // -------------------------------------------------------------------------
@@ -49,15 +59,17 @@ abstract class IntegrationTestCase extends TestCase
             self::$schemaInitialised = true;
         }
 
-        // Each test runs inside a transaction; rolled back in tearDown
-        $this->pdo->beginTransaction();
+        if ($this->useTransactionIsolation) {
+            // Each test runs inside a transaction; rolled back in tearDown
+            $this->pdo->beginTransaction();
+        }
     }
 
     protected function tearDown(): void
     {
         // Guard against setUp() failure (e.g. DB unreachable → markTestSkipped()
         // before $this->pdo was ever initialised).
-        if (isset($this->pdo) && $this->pdo->inTransaction()) {
+        if ($this->useTransactionIsolation && isset($this->pdo) && $this->pdo->inTransaction()) {
             $this->pdo->rollBack();
         }
 

@@ -74,7 +74,7 @@ class ApiKeyController extends BaseController
     public function create(array $params): void
     {
         $userId = SessionManager::getUserId();
-        $role   = SessionManager::getRole() ?? 'view';
+        $role   = SessionManager::getRole() ?? 'viewer';
 
         $pdo        = Connection::getInstance()->getPdo();
         $agentRepo  = new AgentRepository($pdo);
@@ -104,7 +104,7 @@ class ApiKeyController extends BaseController
     public function store(array $params): void
     {
         $userId = SessionManager::getUserId();
-        $role   = SessionManager::getRole() ?? 'view';
+        $role   = SessionManager::getRole() ?? 'viewer';
 
         if ($userId === null) {
             (new Response())->redirect('/login');

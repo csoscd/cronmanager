@@ -56,6 +56,7 @@ use Cronmanager\Web\Http\Request;
 use Cronmanager\Web\Service\AgentIdentityPusher;
 use Cronmanager\Web\Http\Response;
 use Cronmanager\Web\Http\Router;
+use Cronmanager\Web\Http\UserRoutesRegistrar;
 use Cronmanager\Web\Session\SessionManager;
 
 try {
@@ -256,10 +257,18 @@ try {
     // -------------------------------------------------------------------------
     // Public routes (no authentication required)
     // -------------------------------------------------------------------------
-    $router->addPublicRoute('GET',  '/login',         [$authController, 'showLogin']);
-    $router->addPublicRoute('POST', '/login',         [$authController, 'handleLogin']);
-    $router->addPublicRoute('GET',  '/auth/callback', [$authController, 'handleOidcCallback']);
-    $router->addPublicRoute('GET',  '/logout',        [$authController, 'logout']);
+    $router->addPublicRoute('GET',  '/login',                    [$authController, 'showLogin']);
+    $router->addPublicRoute('POST', '/login',                    [$authController, 'handleLogin']);
+    $router->addPublicRoute('GET',  '/auth/callback',            [$authController, 'handleOidcCallback']);
+    $router->addPublicRoute('GET',  '/logout',                   [$authController, 'logout']);
+    // Password reset and invite flows – public (no session required)
+    // /auth/invite and /auth/reset must be registered before /auth/{token} patterns
+    $router->addPublicRoute('GET',  '/auth/forgot-password',     [$authController, 'showForgotPassword']);
+    $router->addPublicRoute('POST', '/auth/forgot-password',     [$authController, 'handleForgotPassword']);
+    $router->addPublicRoute('GET',  '/auth/invite/{token}',      [$authController, 'showInvite']);
+    $router->addPublicRoute('POST', '/auth/invite',              [$authController, 'handleInvite']);
+    $router->addPublicRoute('GET',  '/auth/reset/{token}',       [$authController, 'showReset']);
+    $router->addPublicRoute('POST', '/auth/reset',               [$authController, 'handleReset']);
 
     // Language switcher – sets session lang and redirects back to the referer
     $router->addPublicRoute('GET', '/lang/{code}', static function (array $params) use ($config): void {
@@ -339,9 +348,12 @@ try {
     $router->addProtectedRoute('GET',  '/export',              [$exportCtrl, 'index']);
     $router->addProtectedRoute('GET',  '/export/download',     [$exportCtrl, 'download']);
 
-    $router->addProtectedRoute('GET',  '/users',               [$userCtrl,  'index'],      'admin');
-    $router->addProtectedRoute('POST', '/users/{id}/role',     [$userCtrl,  'updateRole'], 'admin');
-    $router->addProtectedRoute('POST', '/users/{id}/delete',   [$userCtrl,  'destroy'],    'admin');
+    UserRoutesRegistrar::register($router, $userCtrl);
+
+    // Profile – available to every authenticated user
+    $profileCtrl = new \Cronmanager\Web\Controller\ProfileController($config, $logger);
+    $router->addProtectedRoute('GET',  '/profile', [$profileCtrl, 'index'],  'view');
+    $router->addProtectedRoute('POST', '/profile', [$profileCtrl, 'update'], 'view');
 
     $router->addProtectedRoute('GET',  '/audit',               [$auditCtrl, 'index'],      'admin');
 

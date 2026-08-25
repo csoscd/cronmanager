@@ -59,20 +59,81 @@ return [
     // Rollen
     // -------------------------------------------------------------------------
     'role_admin'              => 'Administrator',
-    'role_view'               => 'Betrachter',
+    'role_view'               => 'Betrachter',   // Legacy-Alias
+    'role_viewer'             => 'Betrachter',
+    'role_operator'           => 'Operator',
+    'role_api_only'           => 'API-Only',
 
     // -------------------------------------------------------------------------
     // Benutzerverwaltung
     // -------------------------------------------------------------------------
-    'user_username'           => 'Benutzername',
-    'user_role'               => 'Rolle',
-    'user_type'               => 'Typ',
-    'user_type_local'         => 'Lokal',
-    'user_type_sso'           => 'SSO',
-    'user_you'                => 'du',
-    'user_make_admin'         => 'Zum Admin machen',
-    'user_make_viewer'        => 'Zum Betrachter machen',
-    'user_delete_confirm'     => 'Diesen Benutzer wirklich löschen?',
+    'user_username'                  => 'Benutzername',
+    'user_role'                      => 'Rolle',
+    'user_type'                      => 'Typ',
+    'user_type_local'                => 'Lokal',
+    'user_type_sso'                  => 'SSO',
+    'user_you'                       => 'du',
+    'user_make_admin'                => 'Zum Admin machen',
+    'user_make_viewer'               => 'Zum Betrachter machen',
+    'user_delete_confirm'            => 'Diesen Benutzer wirklich löschen?',
+    'user_create'                    => 'Benutzer anlegen',
+    'user_edit'                      => 'Benutzer bearbeiten',
+    'user_email'                     => 'E-Mail',
+    'user_email_invalid'             => 'Ungültige E-Mail-Adresse.',
+    'user_email_required_for_invite' => 'Eine E-Mail-Adresse ist für Einladungen erforderlich.',
+    'user_email_invite_hint'         => 'Für Einladungs-E-Mail',
+    'user_password'                  => 'Passwort',
+    'user_password_required'         => 'Passwort ist erforderlich.',
+    'user_password_too_short'        => 'Das Passwort muss mindestens 8 Zeichen lang sein.',
+    'user_password_leave_blank'      => 'leer lassen = unverändert',
+    'user_password_optional'         => 'optional – leer lassen wenn Einladungslink gesendet wird',
+    'user_status'                    => 'Status',
+    'user_active'                    => 'Aktiv',
+    'user_inactive'                  => 'Inaktiv',
+    'user_activate'                  => 'Aktivieren',
+    'user_deactivate'                => 'Deaktivieren',
+    'user_deactivate_confirm'        => 'Diesen Benutzer wirklich deaktivieren? Die Sitzung wird beim nächsten Seitenaufruf beendet.',
+    'user_send_invite'               => 'Einladungs-E-Mail senden',
+    'user_send_invite_hint'          => 'Sendet einen Einladungslink per E-Mail; das Passwortfeld kann leer bleiben.',
+    'user_resend_invite'             => 'Einladung erneut senden',
+    'user_agent_restriction'         => 'Agent-Einschränkung',
+    'user_agent_restriction_hint'    => 'Kein Haken = Zugriff auf alle Agents. Haken setzen, um den Benutzer auf bestimmte Agents zu beschränken.',
+    'user_role_hint'                 => 'Betrachter: nur lesen · Operator: Jobs ausführen + Wartung · Administrator: alles · API-Only: kein Web-Login',
+    'user_sso_profile_readonly'      => 'Wird vom Identity Provider verwaltet.',
+    'user_username_invalid'          => 'Benutzername darf nur Buchstaben, Zahlen und @._+- enthalten (2–128 Zeichen).',
+
+    // -------------------------------------------------------------------------
+    // Authentifizierung (Invite / Reset)
+    // -------------------------------------------------------------------------
+    'auth_forgot_password'     => 'Passwort vergessen',
+    'auth_forgot_password_hint'=> 'Geben Sie Ihre E-Mail-Adresse ein – sofern ein Konto vorhanden ist, erhalten Sie einen Link zum Zurücksetzen.',
+    'auth_send_reset_link'     => 'Zurücksetz-Link senden',
+    'auth_reset_sent'          => 'Falls ein Konto mit dieser E-Mail-Adresse existiert, wurde ein Zurücksetz-Link gesendet.',
+    'auth_back_to_login'       => 'Zurück zur Anmeldung',
+    'auth_accept_invite'       => 'Einladung annehmen',
+    'auth_welcome_user'        => 'Willkommen, {username}! Bitte setzen Sie jetzt Ihr Passwort.',
+    'auth_set_password'        => 'Passwort setzen',
+    'auth_reset_password'      => 'Passwort zurücksetzen',
+    'auth_new_password'        => 'Neues Passwort',
+    'auth_password_confirm'    => 'Passwort bestätigen',
+    'auth_password_mismatch'   => 'Die Passwörter stimmen nicht überein.',
+    'auth_token_invalid'       => 'Dieser Link ist abgelaufen oder ungültig. Bitte fordern Sie einen neuen an.',
+    'auth_reset_success'       => 'Passwort erfolgreich geändert. Sie können sich jetzt anmelden.',
+
+    // -------------------------------------------------------------------------
+    // Profil
+    // -------------------------------------------------------------------------
+    'nav_profile'              => 'Mein Profil',
+    'profile_account_info'     => 'Kontoinformationen',
+    'profile_edit'             => 'Profil bearbeiten',
+    'profile_saved'            => 'Änderungen gespeichert.',
+
+    // -------------------------------------------------------------------------
+    // Formulare (allgemein)
+    // -------------------------------------------------------------------------
+    'form_save'                => 'Speichern',
+    'form_cancel'              => 'Abbrechen',
+    'validation_required'      => 'Dieses Feld ist erforderlich.',
 
     // -------------------------------------------------------------------------
     // Fehlerseiten
@@ -288,6 +349,9 @@ return [
     'status_success'          => 'Erfolgreich',
     'status_failed'           => 'Fehlgeschlagen',
     'status_running'          => 'Läuft',
+    'execute_now_already_pending' => 'Sofortausführung bereits geplant – bitte warten bis der Job gestartet wurde.',
+    'live_running'            => 'live',
+    'live_auto_refresh'       => 'Job läuft – Seite aktualisiert sich in',
 
     // -------------------------------------------------------------------------
     // Ersteinrichtung

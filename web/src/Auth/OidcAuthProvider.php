@@ -387,12 +387,19 @@ class OidcAuthProvider
             // 1. Lookup by oauth_sub
             // ----------------------------------------------------------------
             $stmt = $this->pdo->prepare(
-                'SELECT id, username, role, oauth_sub FROM users WHERE oauth_sub = :sub LIMIT 1'
+                'SELECT id, username, role, active, email, agent_ids, oauth_sub
+                 FROM users WHERE oauth_sub = :sub LIMIT 1'
             );
             $stmt->execute([':sub' => $sub]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($row !== false) {
+                if ((int) ($row['active'] ?? 1) === 0) {
+                    $this->logger->warning('OIDC: login attempted for deactivated account', [
+                        'username' => $row['username'],
+                    ]);
+                    return null;
+                }
                 $this->logger->info('OIDC: user found by oauth_sub', [
                     'username' => $row['username'],
                     'sub'      => $sub,
@@ -404,12 +411,19 @@ class OidcAuthProvider
             // 2. Lookup by username (email)
             // ----------------------------------------------------------------
             $stmt = $this->pdo->prepare(
-                'SELECT id, username, role, oauth_sub FROM users WHERE username = :username LIMIT 1'
+                'SELECT id, username, role, active, email, agent_ids, oauth_sub
+                 FROM users WHERE username = :username LIMIT 1'
             );
             $stmt->execute([':username' => $email !== '' ? $email : $username]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($row !== false) {
+                if ((int) ($row['active'] ?? 1) === 0) {
+                    $this->logger->warning('OIDC: login attempted for deactivated account', [
+                        'username' => $row['username'],
+                    ]);
+                    return null;
+                }
                 // Link the OIDC subject to the existing account
                 $update = $this->pdo->prepare(
                     'UPDATE users SET oauth_sub = :sub WHERE id = :id'
@@ -426,17 +440,41 @@ class OidcAuthProvider
             }
 
             // ----------------------------------------------------------------
-            // 3. Create new user
+            // 3. Auto-provisioning check
+            // ----------------------------------------------------------------
+            $autoProvision = (string) $this->config->get('auth.oidc_auto_provision', 'auto');
+
+            if ($autoProvision === 'disabled') {
+                $this->logger->warning('OIDC: auto-provisioning disabled, unknown user denied', [
+                    'sub' => $sub, 'username' => $username,
+                ]);
+                return null;
+            }
+
+            $assignedRole = $this->resolveRoleFromGroups($userInfo);
+
+            if ($autoProvision === 'group' && $assignedRole === null) {
+                $this->logger->warning('OIDC: group mode – no matching group for user', [
+                    'sub' => $sub, 'username' => $username,
+                ]);
+                return null;
+            }
+
+            $roleToAssign = $assignedRole ?? 'viewer';
+
+            // ----------------------------------------------------------------
+            // 4. Create new user
             // ----------------------------------------------------------------
             $newUsername = $email !== '' ? $email : $username;
 
             $stmt = $this->pdo->prepare(
-                'INSERT INTO users (username, password_hash, role, oauth_sub)
-                 VALUES (:username, NULL, :role, :sub)'
+                'INSERT INTO users (username, password_hash, role, active, email, oauth_sub)
+                 VALUES (:username, NULL, :role, 1, :email, :sub)'
             );
             $stmt->execute([
                 ':username' => $newUsername,
-                ':role'     => 'view',
+                ':role'     => $roleToAssign,
+                ':email'    => $email !== '' ? $email : null,
                 ':sub'      => $sub,
             ]);
 
@@ -445,13 +483,17 @@ class OidcAuthProvider
             $this->logger->info('OIDC: new user created via OIDC', [
                 'id'       => $newId,
                 'username' => $newUsername,
+                'role'     => $roleToAssign,
                 'sub'      => $sub,
             ]);
 
             return [
                 'id'        => $newId,
                 'username'  => $newUsername,
-                'role'      => 'view',
+                'role'      => $roleToAssign,
+                'active'    => 1,
+                'email'     => $email !== '' ? $email : null,
+                'agent_ids' => null,
                 'oauth_sub' => $sub,
             ];
 
@@ -462,6 +504,54 @@ class OidcAuthProvider
             ]);
             throw new RuntimeException('OIDC user resolution failed due to a database error.', previous: $e);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers – group-to-role mapping
+    // -------------------------------------------------------------------------
+
+    /**
+     * Resolve a Cronmanager role from OIDC group claims.
+     *
+     * Reads OIDC group-mapping config keys (set via environment variables):
+     *   auth.oidc_group_admin    → 'admin' role
+     *   auth.oidc_group_operator → 'operator' role
+     *   auth.oidc_group_viewer   → 'viewer' role
+     *   auth.oidc_default_role   → fallback when no group matches ('' = no access)
+     *
+     * The group claim name is read from auth.oidc_group_claim (default: 'groups').
+     * Returns the highest role that matches, or the default_role, or null.
+     *
+     * @param array<string, mixed> $userInfo Decoded OIDC userinfo claims.
+     *
+     * @return string|null Resolved role, or null when no match and no default.
+     */
+    private function resolveRoleFromGroups(array $userInfo): ?string
+    {
+        $claimKey = (string) $this->config->get('auth.oidc_group_claim', 'groups');
+        $groups   = $userInfo[$claimKey] ?? [];
+
+        if (!is_array($groups)) {
+            $groups = [];
+        }
+
+        $groupAdmin    = trim((string) $this->config->get('auth.oidc_group_admin',    ''));
+        $groupOperator = trim((string) $this->config->get('auth.oidc_group_operator', ''));
+        $groupViewer   = trim((string) $this->config->get('auth.oidc_group_viewer',   ''));
+        $defaultRole   = trim((string) $this->config->get('auth.oidc_default_role',   ''));
+
+        // Highest privilege wins
+        if ($groupAdmin !== '' && in_array($groupAdmin, $groups, strict: true)) {
+            return 'admin';
+        }
+        if ($groupOperator !== '' && in_array($groupOperator, $groups, strict: true)) {
+            return 'operator';
+        }
+        if ($groupViewer !== '' && in_array($groupViewer, $groups, strict: true)) {
+            return 'viewer';
+        }
+
+        return $defaultRole !== '' ? $defaultRole : null;
     }
 
     // -------------------------------------------------------------------------

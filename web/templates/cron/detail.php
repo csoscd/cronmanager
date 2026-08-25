@@ -419,6 +419,22 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
         </h2>
     </div>
 
+    <?php
+        // Detect whether any execution is still running so auto-refresh can be armed.
+        $hasRunning = false;
+        foreach ($history as $_e) {
+            $ec = $_e['exit_code'] ?? null;
+            $fa = (string) ($_e['finished_at'] ?? '');
+            if ($ec === null && $fa === '') { $hasRunning = true; break; }
+        }
+    ?>
+    <?php if ($hasRunning): ?>
+        <div class="mx-6 mb-3 flex items-center gap-2 text-sm text-yellow-600 dark:text-yellow-400">
+            <span class="inline-block w-2 h-2 rounded-full bg-yellow-400 animate-pulse flex-shrink-0"></span>
+            <?= htmlspecialchars($t('live_auto_refresh'), ENT_QUOTES, 'UTF-8') ?>
+            <span id="cm-live-countdown" class="font-medium">15</span>s
+        </div>
+    <?php endif; ?>
     <?php if (empty($history)): ?>
         <div class="px-6 py-10 text-center text-gray-400 dark:text-gray-500 text-sm">
             <?= htmlspecialchars($t('no_results'), ENT_QUOTES, 'UTF-8') ?>
@@ -538,6 +554,12 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                                 <?php endif; ?>
                             </td>
                             <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-sm">
+                                <?php if ($isRunning): ?>
+                                    <div class="flex items-center gap-1.5 mb-1">
+                                        <span class="inline-block w-2 h-2 rounded-full bg-yellow-400 animate-pulse flex-shrink-0"></span>
+                                        <span class="text-xs text-yellow-600 dark:text-yellow-400 font-medium"><?= htmlspecialchars($t('live_running'), ENT_QUOTES, 'UTF-8') ?></span>
+                                    </div>
+                                <?php endif; ?>
                                 <?php if ($output !== ''): ?>
                                     <!-- Full output stored for copy/download (hidden) -->
                                     <span id="<?= htmlspecialchars($outputId . '-data', ENT_QUOTES, 'UTF-8') ?>"
@@ -872,3 +894,17 @@ document.addEventListener('keydown', function (e) {
     });
 })();
 </script>
+
+<?php if ($hasRunning): ?>
+<script>
+(function () {
+    var countdown = 15;
+    var el = document.getElementById('cm-live-countdown');
+    var tick = setInterval(function () {
+        countdown--;
+        if (el) { el.textContent = countdown; }
+        if (countdown <= 0) { clearInterval(tick); location.reload(); }
+    }, 1000);
+}());
+</script>
+<?php endif; ?>

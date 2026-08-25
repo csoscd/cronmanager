@@ -49,7 +49,7 @@ LABEL org.opencontainers.image.title="Cronmanager Agent" \
 # with &, so without tini the container gradually fills with defunct PHP
 # processes until fork() fails and the cron daemon can no longer start jobs.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tini \
+ && apt-get install -y --no-install-recommends tini jq \
  && rm -rf /var/lib/apt/lists/*
 
 # Copy Composer-installed vendor tree into the expected path

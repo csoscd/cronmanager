@@ -51,9 +51,11 @@ set -uo pipefail
 # =============================================================================
 
 readonly CONFIG_FILE="/opt/cronmanager/agent/config/config.json"
-readonly MAX_OUTPUT_BYTES=50000   # Truncate captured output to this many bytes
-readonly FINISH_MAX_ATTEMPTS=10   # Total attempts for /execution/finish (1 initial + 9 retries)
-readonly FINISH_RETRY_INTERVAL=30 # Seconds between /execution/finish retry attempts
+readonly MAX_OUTPUT_BYTES=50000    # Truncate captured output to this many bytes
+readonly FINISH_MAX_ATTEMPTS=10    # Total attempts for /execution/finish (1 initial + 9 retries)
+readonly FINISH_RETRY_INTERVAL=30  # Seconds between /execution/finish retry attempts
+readonly PROGRESS_INTERVAL_SECONDS=10   # How often partial output is pushed to the agent (seconds)
+readonly MAX_PROGRESS_BYTES=524288      # Cap partial output per progress report at 512 KB
 
 # =============================================================================
 # Logging helpers (all output goes to stderr so it appears in the cron mail)
@@ -272,6 +274,54 @@ json_get() {
 }
 
 # =============================================================================
+# Real-time progress reporting
+# =============================================================================
+
+# PID of the background progress loop; empty when not running.
+PROGRESS_LOOP_PID=""
+
+# Ensure the progress loop is always stopped when the wrapper exits.
+trap 'stop_progress_loop' EXIT
+
+# Starts a background loop that periodically sends partial job output to the
+# agent's POST /execution/{id}/progress endpoint so the web UI can show live
+# progress while the job is still running.
+#
+# The loop sleeps first, then reads TMP_OUTPUT and POSTs whatever has
+# accumulated so far (up to MAX_PROGRESS_BYTES).  If the execution ID is 0
+# (agent unreachable at start), the loop is skipped entirely.
+#
+# Call after backgrounding the job process and reporting its PID.
+# Argument: $1 = execution ID string.
+start_progress_loop() {
+    local exec_id="$1"
+    [[ "${exec_id}" == "0" || -z "${exec_id}" ]] && return
+    (
+        while true; do
+            sleep "${PROGRESS_INTERVAL_SECONDS}"
+            [[ -f "${TMP_OUTPUT}" ]] || break
+            local body
+            body="$(php -r "
+                \$out = file_get_contents('${TMP_OUTPUT}', false, null, 0, ${MAX_PROGRESS_BYTES});
+                if (\$out !== false && \$out !== '') {
+                    echo json_encode(['output' => \$out], JSON_UNESCAPED_UNICODE);
+                }
+            " 2>/dev/null)"
+            [[ -n "${body}" ]] && agent_request "POST" "/execution/${exec_id}/progress" "${body}" >/dev/null 2>&1 || true
+        done
+    ) &
+    PROGRESS_LOOP_PID=$!
+}
+
+# Stops the background progress loop started by start_progress_loop.
+# Safe to call even when no loop is running.
+stop_progress_loop() {
+    [[ -n "${PROGRESS_LOOP_PID:-}" ]] || return
+    kill "${PROGRESS_LOOP_PID}" 2>/dev/null || true
+    PROGRESS_LOOP_PID=""
+}
+
+# =============================================================================
 # Step 1: Notify agent – execution start
 # =============================================================================
 
@@ -436,8 +486,11 @@ if [[ "${TARGET}" != "local" ]]; then
         agent_request "POST" "/execution/${EXECUTION_ID}/pid" "${PID_BODY}" >/dev/null 2>&1 || true
     fi
 
+    start_progress_loop "${EXECUTION_ID}"
+
     wait "${SSH_BG_PID}"
     JOB_EXIT_CODE=$?
+    stop_progress_loop
 
     # Remove the remote pid file on clean finish (best-effort; kill endpoint also removes it)
     if [[ "$EXECUTION_ID" != "0" ]]; then
@@ -480,8 +533,11 @@ else
         agent_request "POST" "/execution/${EXECUTION_ID}/pid" "${PID_BODY}" >/dev/null 2>&1 || true
     fi
 
+    start_progress_loop "${EXECUTION_ID}"
+
     wait "${LOCAL_JOB_PID}"
     JOB_EXIT_CODE=$?
+    stop_progress_loop
     rm -f "${LOCAL_CMD_FILE}"
 fi
 

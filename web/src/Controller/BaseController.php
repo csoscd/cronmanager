@@ -192,6 +192,27 @@ abstract class BaseController
      *
      * @return WebAuditLogger
      */
+    /**
+     * Defense-in-depth admin gate.
+     *
+     * Terminates with HTTP 403 when the current session does not hold the
+     * 'admin' role.  The router already enforces role checks for every
+     * /users/* route; this secondary check prevents privilege escalation if a
+     * route is ever mis-registered without the required role.
+     *
+     * Callers must return immediately after this call on the non-exit paths
+     * (it does not return on a 403 — it calls exit()).
+     *
+     * @return void
+     */
+    protected function requireAdmin(): void
+    {
+        if (!SessionManager::hasRole('admin')) {
+            http_response_code(403);
+            exit();
+        }
+    }
+
     protected function auditLogger(): WebAuditLogger
     {
         return new WebAuditLogger(

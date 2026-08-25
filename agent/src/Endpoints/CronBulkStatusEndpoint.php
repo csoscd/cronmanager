@@ -88,7 +88,7 @@ final class CronBulkStatusEndpoint
             // nosemgrep: php.lang.security.injection.tainted-callable.tainted-callable
             "SELECT j.id, j.linux_user, j.active, j.schedule, GROUP_CONCAT(jt.target ORDER BY jt.target) AS targets
              FROM cronjobs j
-             LEFT JOIN job_targets jt ON jt.cronjob_id = j.id
+             LEFT JOIN job_targets jt ON jt.job_id = j.id
              WHERE j.id IN ({$placeholders})
              GROUP BY j.id, j.linux_user, j.active, j.schedule"
         );

@@ -1,0 +1,123 @@
+################################################################################
+# GitHub Actions – Coverage report (PCOV)
+#
+# Generates a line-coverage report using PCOV and makes it visible in the
+# GitHub UI without any third-party Marketplace action:
+#
+#   - --coverage-text output is written to $GITHUB_STEP_SUMMARY so it
+#     appears prominently on the workflow-run summary page
+#   - coverage.xml (Clover format) is uploaded as a build artifact
+#     (14-day retention) for downstream tooling if needed
+#
+# Trigger strategy
+# ----------------
+# Coverage is informative, not merge-blocking.  Running it on every branch
+# push would duplicate the full integration suite (incl. MariaDB) on each
+# push – the same work the gate job in php-tests.yml already does.  Instead:
+#
+#   pull_request (non-draft) – report visible when a PR is opened / updated
+#   push to main             – baseline after every merge
+#
+# Draft PRs are excluded via the job-level `if` condition.
+#
+# No hard coverage gate is enforced.  Per-class minimum thresholds can be
+# added later once a baseline has been established.
+#
+# @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+# @license GNU General Public License version 3 or later
+################################################################################
+
+name: Coverage report
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  coverage:
+    name: Coverage report (PCOV)
+    runs-on: ubuntu-latest
+
+    # Skip draft PRs – coverage is only useful when the work is ready for review
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
+
+    services:
+      mariadb:
+        image: mariadb:lts
+        env:
+          MYSQL_ROOT_PASSWORD: root_test
+          MYSQL_DATABASE: cronmanager_test
+          MYSQL_USER: cronmanager_test
+          MYSQL_PASSWORD: cronmanager_test
+        ports:
+          - 13306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -u root -proot_test --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+          --health-start-period=20s
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────────────────
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # ── PHP 8.4 + PCOV ───────────────────────────────────────────────────────
+      - name: Set up PHP 8.4 with PCOV
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, mbstring, pdo, pdo_mysql, pcov
+          coverage: pcov
+
+      # ── Composer cache ────────────────────────────────────────────────────────
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      # ── Install dependencies ──────────────────────────────────────────────────
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      # ── Run tests with coverage ───────────────────────────────────────────────
+      # --coverage-text  Human-readable summary (captured for Step Summary below)
+      # --coverage-clover Machine-readable Clover XML (uploaded as artifact)
+      # --colors=never   No ANSI codes in Step Summary / CI log
+      - name: Run tests with PCOV coverage
+        run: |
+          ./vendor/bin/phpunit \
+            --testsuite unit,integration \
+            --coverage-text \
+            --coverage-clover=coverage.xml \
+            --colors=never \
+          | tee /tmp/coverage-text.txt
+
+      # ── Publish coverage summary ──────────────────────────────────────────────
+      # Write the plain-text coverage report to the workflow run summary page.
+      # Visible directly in the GitHub UI without any third-party action.
+      - name: Write coverage summary
+        if: always()
+        run: |
+          echo '## Coverage report' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/coverage-text.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Upload Clover report as artifact ──────────────────────────────────────
+      - name: Upload coverage report (Clover XML)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-clover
+          path: coverage.xml
+          retention-days: 14

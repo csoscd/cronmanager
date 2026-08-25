@@ -16,6 +16,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **ApiKeyMiddlewareTest – 3 neue Szenarien:** Scope-Enforcement gegen die reale Profil-Scope-Map: operator-Profil (jobs:read, jobs:execute, maintenance:read) → jobs:execute → 200; operator-Profil → jobs:write → 403; read-only-Profil → jobs:execute → 403 (Viewer-Negativfall).
 - **AuditIdentityExtractor:** Neue Klasse `agent/src/Security/AuditIdentityExtractor.php` kapselt die Extraktion der X-User-Id/X-User-Name-Header aus `$_SERVER`. `agent.php` verwendet sie statt der bisherigen Inline-Extraktion; HmacRejectionTest/Szenario 5 ruft dieselbe Klasse auf – ein Rückfall auf `'system'` als Default würde den Test sofort brechen (echter Regressionsschutz für den v4.4.4-Vorfall).
 
+### Added (CI – Maßnahme D)
+
+- **gitleaks Secret-Scanning:** Neuer Job `secret-scanning` in `.github/workflows/security.yml`; läuft parallel zu `dependency-audit` und `semgrep`. Scannt die volle Git-Historie (`fetch-depth: 0`) mit SHA-256-Checksummen-Verifikation des Binaries (Supply-Chain-Härtung) und `--redact` (kein Secret-Text in CI-Logs). Konfiguration über `.gitleaks.toml` (Pfad-basierte Allowlist für bekannte Fake-Werte in Example-Dateien und Test-Fixtures).
+- **`.gitleaks.toml`:** Minimale Allowlist: `db.credentials.example`, `docker/.env.example`, `tests/Integration/Endpoints/HmacRejectionTest.php` (64-Hex-Teststring `TEST_SECRET`). Bewusst keine Directory-Exclusion, um Real-Secrets in Fixtures nicht zu übersehen.
+- **`API.md`:** Realistisch aussehender Beispiel-API-Key (`cm_aB3x…`) durch offensichtlichen Platzhalter `cm_YOUR_API_KEY_HERE` ersetzt (beide Vorkommen, Zeilen 54 + 241) — didaktisch besser, kein Allowlist-Eintrag nötig.
+- **Lokaler Vorab-Scan:** volle Git-Historie (216 Commits) vor CI-Einführung gescannt — kein echtes Secret gefunden.
+
 ### Added (Security Tests – Maßnahme H)
 
 - **UserRoutesRegistrar:** Neue Klasse `web/src/Http/UserRoutesRegistrar.php` kapselt die Registrierung aller `/users/*`-Routen in einer statischen `register()`-Methode. `index.php` ruft diese statt der bisherigen 10 inline-`addProtectedRoute`-Aufrufe auf. Beide Aufruforte (index.php und Tests) verwenden exakt dieselbe Code-Strecke; eine fehlende oder falsch konfigurierte Route bricht den Integritätstest sofort.

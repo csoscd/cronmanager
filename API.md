@@ -51,7 +51,7 @@ cm_<40 random URL-safe base64 characters>
 
 Example:
 ```
-cm_aB3xQ7rLmP2kZw9sYvUd1nEjTfHgCo6R8iN0pA4e
+cm_YOUR_API_KEY_HERE
 ```
 
 ### What causes a 401
@@ -238,7 +238,7 @@ you need, then click **Save**. Copy the displayed `cm_…` token — it will not
 
 ```bash
 export CM_URL=https://cronmanager.example.com
-export CM_KEY=cm_aB3xQ7rLmP2kZw9sYvUd1nEjTfHgCo6R8iN0pA4e
+export CM_KEY=cm_YOUR_API_KEY_HERE
 ```
 
 ### Step 3 – Try it

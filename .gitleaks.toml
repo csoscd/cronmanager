@@ -1,0 +1,37 @@
+################################################################################
+# Gitleaks configuration – Cronmanager
+#
+# Path-based allowlist for known legitimate placeholder files and test fixtures.
+# Only files that produce confirmed false positives are listed here.
+#
+# To add a new allowlist entry:
+#   1. Run gitleaks detect --config .gitleaks.toml --redact --source .
+#   2. Confirm the finding is a false positive (placeholder / test fixture).
+#   3. Add the narrowest possible entry (file path, not directory).
+#
+# NEVER add entire directories (e.g. tests/) – that would blind the scanner
+# to real secrets accidentally committed to fixture files.
+#
+# @author  Christian Schulz <technik@meinetechnikwelt.rocks>
+# @license GNU General Public License version 3 or later
+################################################################################
+
+title = "Cronmanager – Gitleaks configuration"
+
+[allowlist]
+  description = "Placeholder secrets in example/template files and test fixtures"
+
+  # Paths are matched as regular expressions against the file path relative
+  # to the repository root.  Anchor with $ to avoid prefix collisions.
+  paths = [
+    # Example credential files – contain intentional placeholder values
+    # (e.g. DB_PASSWORD=cronmanagerpassword, change-me).
+    # These files are excluded from version control for real deployments.
+    '''db\.credentials\.example$''',
+    '''docker/\.env\.example$''',
+
+    # HMAC integration test – contains a 64-char hex test secret
+    # (TEST_SECRET constant) used exclusively as a fake signing key.
+    # Verified false positive; no real secret is present in this file.
+    '''tests/Integration/Endpoints/HmacRejectionTest\.php$''',
+  ]

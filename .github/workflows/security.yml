@@ -116,3 +116,47 @@ jobs:
           # Optional: set SEMGREP_APP_TOKEN as a repository secret to enable
           # full Registry access and upload results to semgrep.dev.
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+  # ============================================================================
+  # Job 3: Secret scanning – gitleaks
+  # ============================================================================
+  secret-scanning:
+    name: Secret scanning (gitleaks)
+    runs-on: ubuntu-latest
+
+    steps:
+      # fetch-depth: 0 fetches the full git history so gitleaks can scan all
+      # commits, not just the latest.  A shallow clone would miss secrets
+      # introduced in earlier commits.
+      - name: Check out repository (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Download the gitleaks binary and verify its SHA-256 checksum before
+      # extracting.  This guards against a compromised release asset being
+      # silently swapped in between the upload and this download step.
+      - name: Download and verify gitleaks
+        run: |
+          GITLEAKS_VERSION=8.27.2
+          TARBALL="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          BASE_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+
+          curl -sSL "${BASE_URL}/${TARBALL}"         -o /tmp/gitleaks.tar.gz
+          curl -sSL "${BASE_URL}/checksums.txt"      -o /tmp/gitleaks_checksums.txt
+
+          # Verify checksum – fails the step if the download does not match
+          cd /tmp && grep "${TARBALL}" gitleaks_checksums.txt | sha256sum -c -
+
+          tar -xz -C /usr/local/bin gitleaks < /tmp/gitleaks.tar.gz
+          gitleaks version
+
+      # Scan the full git history for secrets.
+      # --config   uses the project allowlist (.gitleaks.toml) to suppress
+      #            confirmed false positives (placeholder values in example
+      #            files and test fixtures).
+      # --redact   replaces matched secret values with REDACTED in the output
+      #            so the CI log never contains the actual secret text.
+      # --source . scans the checked-out repository root.
+      - name: Run gitleaks
+        run: gitleaks detect --config .gitleaks.toml --redact --source .

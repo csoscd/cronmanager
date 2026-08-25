@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [5.1.0] – branch: `feature/user-management-v2`
 
+### Fixed
+
+- **Sidebar – Agent-Label bei Einzelagent:** Der Agent-Name ("Default") wurde in der Sidebar auch bei Einzelagent-Installationen angezeigt. Der `elseif`-Block in `layout.php` ist jetzt entfernt; das Label erscheint nur noch wenn das Dropdown aktiv ist (≥ 2 Agents).
+
 ### Added
 
 - **Echtzeit-Fortschrittsanzeige (Issue #76):** Laufende Cron-Jobs übertragen ihren Output alle 10 Sekunden live an den Agent (`POST /execution/{id}/progress`). Die Detail-Seite erkennt laufende Ausführungen automatisch und aktualisiert sich alle 15 Sekunden; eine Countdown-Leiste zeigt den nächsten Reload-Zeitpunkt an. Läuft der Job noch, ist der partielle Output in der History-Tabelle direkt sichtbar (gelber Pulsing-Indikator "live" in der Output-Spalte).

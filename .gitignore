@@ -5,3 +5,4 @@ deploy.env
 vendor/
 coverage/
 .phpunit.result.cache
+TEST-SECURITY-ASSESSMENT.md

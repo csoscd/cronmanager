@@ -49,7 +49,7 @@ final class CronBulkDeleteEndpointTest extends AgentEndpointTestCase
      */
     protected bool $useTransactionIsolation = false;
 
-    private string $crontabDir;
+    private string $crontabDir = '';
     private CrontabManager $crontabMgr;
 
     /** @var int[] Job IDs inserted by this test that must be deleted in tearDown */
@@ -85,7 +85,9 @@ final class CronBulkDeleteEndpointTest extends AgentEndpointTestCase
                       ->execute($this->seedJobIds);
         }
 
-        $this->rmdirRecursive($this->crontabDir);
+        if ($this->crontabDir !== '') {
+            $this->rmdirRecursive($this->crontabDir);
+        }
         parent::tearDown();
     }
 

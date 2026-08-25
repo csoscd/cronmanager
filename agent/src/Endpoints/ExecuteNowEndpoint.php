@@ -185,17 +185,43 @@ final class ExecuteNowEndpoint
         }
 
         if ($alreadyPending !== []) {
-            $this->logger->info('ExecuteNowEndpoint: once-entry already pending – rejecting duplicate', [
-                'job_id'  => $jobId,
-                'targets' => $alreadyPending,
-            ]);
-            jsonResponse(409, [
-                'error'   => 'Conflict',
-                'message' => 'A once-only execution is already pending for this job. Please wait for it to run.',
-                'code'    => 409,
-                'targets' => $alreadyPending,
-            ]);
-            return;
+            // Auto-clean stale once-entries: when the scheduled time is already in
+            // the past and the job has no currently running execution, the cleanup
+            // step of the previous run failed.  Remove the stale marker so the user
+            // can re-trigger without manual intervention.
+            if (!$this->hasRunningExecution($jobId)) {
+                foreach ($alreadyPending as $key => $pendingTarget) {
+                    $existingSchedule = $this->crontabManager->getOnceEntrySchedule(
+                        (string) $job['linux_user'], $jobId, $pendingTarget
+                    );
+                    if ($existingSchedule !== null && $this->isScheduleInPast($existingSchedule, $tz)) {
+                        $this->crontabManager->removeOnceEntries(
+                            (string) $job['linux_user'], $jobId, $pendingTarget
+                        );
+                        $this->logger->info('ExecuteNowEndpoint: stale once-entry auto-cleaned', [
+                            'job_id'   => $jobId,
+                            'target'   => $pendingTarget,
+                            'schedule' => $existingSchedule,
+                        ]);
+                        unset($alreadyPending[$key]);
+                    }
+                }
+                $alreadyPending = array_values($alreadyPending);
+            }
+
+            if ($alreadyPending !== []) {
+                $this->logger->info('ExecuteNowEndpoint: once-entry already pending – rejecting duplicate', [
+                    'job_id'  => $jobId,
+                    'targets' => $alreadyPending,
+                ]);
+                jsonResponse(409, [
+                    'error'   => 'Conflict',
+                    'message' => 'A once-only execution is already pending for this job. Please wait for it to run.',
+                    'code'    => 409,
+                    'targets' => $alreadyPending,
+                ]);
+                return;
+            }
         }
 
         try {
@@ -279,6 +305,53 @@ final class ExecuteNowEndpoint
         $stmt->execute([':id' => $jobId]);
 
         return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    }
+
+    /**
+     * Return true when the job has at least one execution that is currently
+     * running (started but not yet finished: finished_at IS NULL).
+     *
+     * @param int $jobId Job ID.
+     *
+     * @return bool
+     */
+    private function hasRunningExecution(int $jobId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM execution_log WHERE cronjob_id = :id AND finished_at IS NULL'
+        );
+        $stmt->execute([':id' => $jobId]);
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    /**
+     * Return true when the given cron schedule string represents a point in time
+     * that lies in the past relative to now.
+     *
+     * Once-only entries use a full-date schedule: "{min} {hour} {dom} {month} *".
+     * The year is resolved to the current year; the rare cross-year edge case
+     * (entry created Dec 31, checked in January of the next year) is not handled
+     * and will require manual cleanup, but it is extremely unlikely in practice.
+     *
+     * @param string        $schedule Five-field cron expression, e.g. "37 14 26 8 *".
+     * @param \DateTimeZone $tz       Timezone for the comparison.
+     *
+     * @return bool
+     */
+    private function isScheduleInPast(string $schedule, \DateTimeZone $tz): bool
+    {
+        $parts = preg_split('/\s+/', trim($schedule));
+        if (!is_array($parts) || count($parts) < 4) {
+            return false;
+        }
+        [$min, $hour, $dom, $month] = $parts;
+        $now  = new \DateTime('now', $tz);
+        $year = (int) $now->format('Y');
+
+        $dateStr   = sprintf('%04d-%02d-%02d %02d:%02d:00', $year, (int) $month, (int) $dom, (int) $hour, (int) $min);
+        $scheduled = \DateTime::createFromFormat('Y-m-d H:i:s', $dateStr, $tz);
+
+        return $scheduled !== false && $scheduled < $now;
     }
 
     /**

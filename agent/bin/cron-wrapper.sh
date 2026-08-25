@@ -54,6 +54,8 @@ readonly CONFIG_FILE="/opt/cronmanager/agent/config/config.json"
 readonly MAX_OUTPUT_BYTES=50000    # Truncate captured output to this many bytes
 readonly FINISH_MAX_ATTEMPTS=10    # Total attempts for /execution/finish (1 initial + 9 retries)
 readonly FINISH_RETRY_INTERVAL=30  # Seconds between /execution/finish retry attempts
+readonly QUICK_MAX_ATTEMPTS=3      # Total attempts for quick-retry agent calls
+readonly QUICK_RETRY_INTERVAL=5    # Seconds between quick-retry attempts
 readonly PROGRESS_INTERVAL_SECONDS=10   # How often partial output is pushed to the agent (seconds)
 readonly MAX_PROGRESS_BYTES=524288      # Cap partial output per progress report at 512 KB
 
@@ -346,10 +348,29 @@ START_BODY="$(php -r "
 ")"
 
 START_RESPONSE=""
-if START_RESPONSE="$(agent_request "POST" "/execution/start" "${START_BODY}")"; then
-    EXECUTION_ID="$(json_get "${START_RESPONSE}" "execution_id")"
-else
-    log_warn "Job ${JOB_ID}: agent unreachable for /execution/start – continuing without tracking"
+_start_attempt=0
+while [[ $_start_attempt -lt $QUICK_MAX_ATTEMPTS ]]; do
+    _start_attempt=$((_start_attempt + 1))
+    if [[ $_start_attempt -gt 1 ]]; then
+        log_info "Job ${JOB_ID}: retrying /execution/start in ${QUICK_RETRY_INTERVAL}s (attempt ${_start_attempt}/${QUICK_MAX_ATTEMPTS})..."
+        sleep "${QUICK_RETRY_INTERVAL}"
+    fi
+    if START_RESPONSE="$(agent_request "POST" "/execution/start" "${START_BODY}")"; then
+        # curl succeeded → server received the request; extract execution_id and stop.
+        EXECUTION_ID="$(json_get "${START_RESPONSE}" "execution_id")"
+        break
+    fi
+    # curl transport error (_HTTP_CODE == 0): server never received the request,
+    # retry is safe.  Any HTTP response (even 5xx) means the server received it;
+    # retrying would create a duplicate execution_log row, so stop immediately.
+    if [[ "${_HTTP_CODE}" != "0" ]]; then
+        log_warn "Job ${JOB_ID}: agent returned HTTP ${_HTTP_CODE} for /execution/start – not retrying (server received request)"
+        break
+    fi
+    log_warn "Job ${JOB_ID}: agent unreachable for /execution/start (attempt ${_start_attempt}/${QUICK_MAX_ATTEMPTS})"
+done
+if [[ -z "${START_RESPONSE}" ]]; then
+    log_warn "Job ${JOB_ID}: could not reach agent for /execution/start after ${_start_attempt} attempt(s) – continuing without tracking"
 fi
 
 # 409 Conflict = job skipped (singleton busy, or regular run suppressed because
@@ -381,11 +402,26 @@ COMMAND=""
 CRON_PATH="/crons/${JOB_ID}"
 CRON_RESPONSE=""
 
-if CRON_RESPONSE="$(agent_request "GET" "${CRON_PATH}" "")"; then
-    COMMAND="$(json_get "${CRON_RESPONSE}" "command")"
-else
-    log_warn "Job ${JOB_ID}: agent unreachable for GET ${CRON_PATH}"
-fi
+_cron_attempt=0
+while [[ $_cron_attempt -lt $QUICK_MAX_ATTEMPTS ]]; do
+    _cron_attempt=$((_cron_attempt + 1))
+    if [[ $_cron_attempt -gt 1 ]]; then
+        log_info "Job ${JOB_ID}: retrying GET ${CRON_PATH} in ${QUICK_RETRY_INTERVAL}s (attempt ${_cron_attempt}/${QUICK_MAX_ATTEMPTS})..."
+        sleep "${QUICK_RETRY_INTERVAL}"
+    fi
+    if CRON_RESPONSE="$(agent_request "GET" "${CRON_PATH}" "")"; then
+        COMMAND="$(json_get "${CRON_RESPONSE}" "command")"
+        [[ -n "${COMMAND}" ]] && break
+        # Got a response but no command – 4xx means a client error, no point retrying
+        if [[ "${_HTTP_CODE}" -ge 400 && "${_HTTP_CODE}" -lt 500 ]]; then
+            log_warn "Job ${JOB_ID}: agent returned HTTP ${_HTTP_CODE} for GET ${CRON_PATH} – not retrying (client error)"
+            break
+        fi
+        log_warn "Job ${JOB_ID}: agent returned HTTP ${_HTTP_CODE} for GET ${CRON_PATH} – no command in response (attempt ${_cron_attempt}/${QUICK_MAX_ATTEMPTS})"
+    else
+        log_warn "Job ${JOB_ID}: agent unreachable for GET ${CRON_PATH} (attempt ${_cron_attempt}/${QUICK_MAX_ATTEMPTS})"
+    fi
+done
 
 if [[ -z "$COMMAND" ]]; then
     log_error "Job ${JOB_ID}: could not retrieve command from agent (http_code=${_HTTP_CODE})"
@@ -572,14 +608,31 @@ if [[ "${RUN_ONCE}" == "--once" ]]; then
         echo json_encode(['target' => '${TARGET}'], JSON_UNESCAPED_UNICODE);
     ")"
 
-    if agent_request "POST" "${CLEANUP_PATH}" "${CLEANUP_BODY}" >/dev/null; then
-        if [[ "${_HTTP_CODE}" -ge 200 && "${_HTTP_CODE}" -lt 300 ]]; then
-            log_info "Job ${JOB_ID}: once-entry removed from crontab (http_code=${_HTTP_CODE})"
-        else
-            log_warn "Job ${JOB_ID}: cleanup returned HTTP ${_HTTP_CODE} – once-entry may remain in crontab (harmless, expires next year)"
+    _cleanup_attempt=0
+    _cleanup_ok=false
+    while [[ $_cleanup_attempt -lt $QUICK_MAX_ATTEMPTS ]]; do
+        _cleanup_attempt=$((_cleanup_attempt + 1))
+        if [[ $_cleanup_attempt -gt 1 ]]; then
+            log_info "Job ${JOB_ID}: retrying cleanup in ${QUICK_RETRY_INTERVAL}s (attempt ${_cleanup_attempt}/${QUICK_MAX_ATTEMPTS})..."
+            sleep "${QUICK_RETRY_INTERVAL}"
         fi
-    else
-        log_warn "Job ${JOB_ID}: could not reach agent for cleanup – once-entry may remain in crontab (harmless, expires next year)"
+        if agent_request "POST" "${CLEANUP_PATH}" "${CLEANUP_BODY}" >/dev/null; then
+            if [[ "${_HTTP_CODE}" -ge 200 && "${_HTTP_CODE}" -lt 300 ]]; then
+                log_info "Job ${JOB_ID}: once-entry removed from crontab (http_code=${_HTTP_CODE}, attempt ${_cleanup_attempt})"
+                _cleanup_ok=true
+                break
+            elif [[ "${_HTTP_CODE}" -ge 400 && "${_HTTP_CODE}" -lt 500 ]]; then
+                log_warn "Job ${JOB_ID}: cleanup returned HTTP ${_HTTP_CODE} – not retrying (client error)"
+                break
+            else
+                log_warn "Job ${JOB_ID}: cleanup returned HTTP ${_HTTP_CODE} (attempt ${_cleanup_attempt}/${QUICK_MAX_ATTEMPTS})"
+            fi
+        else
+            log_warn "Job ${JOB_ID}: could not reach agent for cleanup (attempt ${_cleanup_attempt}/${QUICK_MAX_ATTEMPTS})"
+        fi
+    done
+    if [[ "${_cleanup_ok}" == false ]]; then
+        log_warn "Job ${JOB_ID}: once-entry cleanup failed after ${_cleanup_attempt} attempt(s) – entry may remain in crontab; auto-cleanup will apply on next manual trigger"
     fi
 fi
 

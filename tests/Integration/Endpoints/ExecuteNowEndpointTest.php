@@ -5,13 +5,15 @@ declare(strict_types=1);
 /**
  * Cronmanager – Integration Tests: ExecuteNowEndpoint
  *
- * Covers the four correctness invariants of POST /crons/{id}/execute:
+ * Covers the correctness invariants of POST /crons/{id}/execute:
  *
  *   1. Rejects an invalid (zero) job ID (HTTP 400)
  *   2. Rejects a non-existent job ID (HTTP 404)
  *   3. Rejects a duplicate "Run Now" request when a once-only entry is already
  *      pending for the job+target (HTTP 409 – double-click guard)
- *   4. Schedules a once-only crontab entry for the next minute and returns the
+ *   4. Auto-cleans a stale once-entry (past schedule, no running execution) and
+ *      schedules a fresh run (HTTP 200) — self-healing after failed cleanup
+ *   5. Schedules a once-only crontab entry for the next minute and returns the
  *      expected JSON payload (HTTP 200); the entry is verified by direct
  *      inspection of the sandbox crontab file (not via the cached reader)
  *
@@ -37,7 +39,7 @@ final class ExecuteNowEndpointTest extends AgentEndpointTestCase
     // Properties
     // -------------------------------------------------------------------------
 
-    private string $crontabDir;
+    private string $crontabDir = '';
     private CrontabManager $crontabMgr;
 
     // -------------------------------------------------------------------------
@@ -60,7 +62,11 @@ final class ExecuteNowEndpointTest extends AgentEndpointTestCase
 
     protected function tearDown(): void
     {
-        $this->rmdirRecursive($this->crontabDir);
+        // Guard: $crontabDir may be empty when setUp() bailed out early (e.g. DB
+        // unreachable → markTestSkipped() before the directory was created).
+        if ($this->crontabDir !== '') {
+            $this->rmdirRecursive($this->crontabDir);
+        }
         parent::tearDown();
     }
 
@@ -156,7 +162,67 @@ final class ExecuteNowEndpointTest extends AgentEndpointTestCase
     }
 
     // =========================================================================
-    // 4. 200 – once-entry scheduled; verified via direct sandbox file inspection
+    // 4. 200 – stale once-entry auto-cleaned when job is not running
+    //
+    //    Scenario: a previous "Run Now" fired (exit code ≠ 0) but the cleanup
+    //    call from cron-wrapper failed.  The once-entry has a past schedule and
+    //    the job has a finished execution (finished_at IS NOT NULL).  The endpoint
+    //    must remove the stale marker and schedule a fresh execution (HTTP 200).
+    // =========================================================================
+
+    #[Test]
+    public function autoCleansStalePendingEntryAndSchedulesNewRun(): void
+    {
+        $jobId = $this->seedJob(['linux_user' => 'root']);
+        $this->seedJobTarget($jobId, 'local');
+
+        // Simulate a finished execution (cleanup step failed to remove the marker)
+        $this->seedFinishedExecution($jobId, ['exit_code' => 126]);
+
+        // Insert a once-entry with a schedule 1 hour in the past
+        $pastTime    = new \DateTimeImmutable('-1 hour');
+        $pastSchedule = sprintf(
+            '%d %d %d %d *',
+            (int) $pastTime->format('i'),
+            (int) $pastTime->format('G'),
+            (int) $pastTime->format('j'),
+            (int) $pastTime->format('n')
+        );
+        $this->crontabMgr->addOnceEntry('root', $jobId, $pastSchedule, '/dev/null', 'local');
+
+        // Verify the stale marker is present before the request
+        $this->assertTrue(
+            $this->crontabMgr->hasOnceEntry('root', $jobId, 'local'),
+            'Pre-condition: stale once-entry must be present in sandbox crontab'
+        );
+
+        AgentResponse::reset();
+        $this->makeEndpoint()->handle(['id' => (string) $jobId]);
+
+        // Endpoint must auto-clean and return 200 (not 409)
+        $this->assertStatus(200);
+
+        $body = AgentResponse::$body ?? [];
+        $this->assertSame($jobId, $body['job_id'] ?? null, 'Response must contain the job_id');
+        $this->assertSame(['local'], $body['targets'] ?? null, 'Response must list the targets');
+
+        // The sandbox crontab must now contain the fresh once-entry (not the stale one)
+        $raw = $this->readSandboxCrontab('root');
+        $this->assertStringContainsString(
+            '# cronmanager-once:' . $jobId . ':local',
+            $raw,
+            'Fresh once-entry marker must be present after auto-clean'
+        );
+        // Stale schedule must be gone; fresh schedule must differ from the past one
+        $this->assertStringNotContainsString(
+            $pastSchedule . ' /dev/null',
+            $raw,
+            'Stale crontab command line must have been replaced'
+        );
+    }
+
+    // =========================================================================
+    // 6. 200 – once-entry scheduled; verified via direct sandbox file inspection
     // =========================================================================
 
     #[Test]

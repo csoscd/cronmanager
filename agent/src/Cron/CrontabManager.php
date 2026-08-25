@@ -808,6 +808,49 @@ final class CrontabManager
         return str_contains($this->readCrontab($user), $marker);
     }
 
+    /**
+     * Return the schedule string of the once-only crontab entry for the given
+     * job ID and target, or null if no such entry exists.
+     *
+     * The schedule is the five-field cron expression (first five whitespace-
+     * separated tokens) from the command line that immediately follows the
+     * once-marker comment line.
+     *
+     * @param string $user   Linux user name.
+     * @param int    $jobId  Cronmanager job ID.
+     * @param string $target Execution target to match.
+     *
+     * @return string|null Schedule like "37 14 26 8 *", or null when absent.
+     *
+     * @throws \InvalidArgumentException When $user contains disallowed characters.
+     */
+    public function getOnceEntrySchedule(string $user, int $jobId, string $target): ?string
+    {
+        $this->validateUser($user);
+        $marker      = self::ONCE_MARKER_PREFIX . $jobId . ':' . $target;
+        $lines       = explode("\n", $this->readCrontab($user));
+        $markerFound = false;
+
+        foreach ($lines as $line) {
+            if ($markerFound) {
+                $trimmed = trim($line);
+                if ($trimmed === '') {
+                    continue;
+                }
+                // Command line format: "{min} {hour} {dom} {month} * {wrapper} {id} {target} --once"
+                $parts = preg_split('/\s+/', $trimmed, 6);
+                if (is_array($parts) && count($parts) >= 5) {
+                    return implode(' ', array_slice($parts, 0, 5));
+                }
+                return null;
+            }
+            if (str_contains($line, $marker)) {
+                $markerFound = true;
+            }
+        }
+        return null;
+    }
+
     public function addOnceEntry(
         string $user,
         int    $jobId,

@@ -349,6 +349,7 @@ return [
     'status_success'          => 'Erfolgreich',
     'status_failed'           => 'Fehlgeschlagen',
     'status_running'          => 'Läuft',
+    'execute_now_already_pending' => 'Sofortausführung bereits geplant – bitte warten bis der Job gestartet wurde.',
     'live_running'            => 'live',
     'live_auto_refresh'       => 'Job läuft – Seite aktualisiert sich in',
 

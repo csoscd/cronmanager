@@ -349,6 +349,7 @@ return [
     'status_success'          => 'Success',
     'status_failed'           => 'Failed',
     'status_running'          => 'Running',
+    'execute_now_already_pending' => 'Immediate execution already scheduled – please wait for the job to start.',
     'live_running'            => 'live',
     'live_auto_refresh'       => 'Job is running – page refreshes in',
 

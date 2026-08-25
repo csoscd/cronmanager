@@ -168,6 +168,31 @@ final class ExecuteNowEndpoint
         // 4. Add once-only crontab entries
         // ------------------------------------------------------------------
 
+        // Guard against double-clicks: reject when a once-entry for this job+target
+        // is already waiting in the crontab.  addOnceEntry() has no deduplication
+        // of its own; without this check a second click would create a duplicate
+        // entry that fires the job twice in the same minute.
+        $alreadyPending = [];
+        foreach ($targets as $target) {
+            if ($this->crontabManager->hasOnceEntry((string) $job['linux_user'], $jobId, $target)) {
+                $alreadyPending[] = $target;
+            }
+        }
+
+        if ($alreadyPending !== []) {
+            $this->logger->info('ExecuteNowEndpoint: once-entry already pending – rejecting duplicate', [
+                'job_id'  => $jobId,
+                'targets' => $alreadyPending,
+            ]);
+            jsonResponse(409, [
+                'error'   => 'Conflict',
+                'message' => 'A once-only execution is already pending for this job. Please wait for it to run.',
+                'code'    => 409,
+                'targets' => $alreadyPending,
+            ]);
+            return;
+        }
+
         try {
             foreach ($targets as $target) {
                 $this->crontabManager->addOnceEntry(

@@ -1,22 +1,23 @@
 #!/bin/bash
 # =============================================================================
-# Cronmanager – Deployment Script
+# Cronmanager – Host-Agent Deployment Script
+#
+# Deploys the host-agent installation (PHP agent as systemd service on the
+# Docker host). For the recommended Docker-only installation, use the
+# pre-built images from Docker Hub (see README.md).
 #
 # Configuration is read from deploy.env in the same directory.
 # Database credentials are read from db.credentials in the same directory.
 #
 # Usage:
-#   ./deploy.sh <--host-agent|--docker> [full|update|migrate] [ssh-host] [--agent|--web]
-#
-#   --host-agent  – Target is a host-agent installation (installs/restarts systemd service)
-#   --docker      – Target is a docker-agent installation (skips systemd; use docker-compose)
+#   ./deploy.sh --host-agent [full|update|migrate|undeploy] [ssh-host] [--agent|--web]
 #
 #   full     – Create folder structure + deploy all files (default)
 #   update   – Deploy only changed files (rsync checksum comparison)
 #   migrate  – Migrate host-agent installation → docker-agent:
 #              deploys changed files, stops+disables systemd service,
 #              patches agent and web config.json for docker-mode values.
-#   undeploy – Remove systemd service only (--host-agent only);
+#   undeploy – Remove systemd service only;
 #              PHP files and config are kept on the target system.
 #   --agent  – Deploy agent only  (skip web app)
 #   --web    – Deploy web app only (skip agent)
@@ -78,7 +79,7 @@ fi
 # ---------------------------------------------------------------------------
 
 DEPLOY_MODE="full"           # full = mirror; update = changed files only
-DEPLOY_TARGET=""             # host-agent or docker (required)
+DEPLOY_TARGET=""             # must be host-agent
 DEPLOY_AGENT_PART=true       # deploy the host agent?
 DEPLOY_WEB_PART=true         # deploy the web application?
 SSH_HOST="${DEPLOY_SSH:-}"   # may be overridden by positional CLI arg
@@ -87,9 +88,6 @@ for arg in "$@"; do
     case "${arg}" in
         --host-agent)
             DEPLOY_TARGET="host-agent"
-            ;;
-        --docker)
-            DEPLOY_TARGET="docker"
             ;;
         full|update|migrate|undeploy)
             DEPLOY_MODE="${arg}"
@@ -104,7 +102,7 @@ for arg in "$@"; do
             ;;
         -*)
             echo "[deploy] ERROR: Unknown option '${arg}'." >&2
-            echo "[deploy]        Usage: ./deploy.sh <--host-agent|--docker> [full|update|migrate] [ssh-host] [--agent|--web]" >&2
+            echo "[deploy]        Usage: ./deploy.sh --host-agent [full|update|migrate|undeploy] [ssh-host] [--agent|--web]" >&2
             exit 1
             ;;
         *)
@@ -115,8 +113,8 @@ for arg in "$@"; do
 done
 
 if [[ -z "${DEPLOY_TARGET}" ]]; then
-    echo "[deploy] ERROR: --host-agent or --docker is required." >&2
-    echo "[deploy]        Usage: ./deploy.sh <--host-agent|--docker> [full|update|migrate] [ssh-host] [--agent|--web]" >&2
+    echo "[deploy] ERROR: --host-agent is required." >&2
+    echo "[deploy]        Usage: ./deploy.sh --host-agent [full|update|migrate|undeploy] [ssh-host] [--agent|--web]" >&2
     exit 1
 fi
 
@@ -248,7 +246,6 @@ fi
 
 log "============================================================"
 log "  Deploy mode  : ${DEPLOY_MODE}"
-log "  Deploy target: ${DEPLOY_TARGET}"
 log "  Transport    : ${DEPLOY_TYPE}"
 if [[ "${DEPLOY_TYPE}" == "SSH" ]]; then
 log "  SSH host     : ${SSH_HOST}"
@@ -428,21 +425,6 @@ if [[ "${DEPLOY_AGENT_PART}" == "true" ]]; then
         if ! file_exists_on_target "${AGENT_TARGET}/config/config.json" 2>/dev/null; then
             log "No existing agent config – deploying example config..."
             copy_to_target "${AGENT_SRC}/config/config.json" "${AGENT_TARGET}/config/config.json"
-            # Patch database.host for docker mode (container reaches DB via service name)
-            if [[ "${DEPLOY_TARGET}" == "docker" ]]; then
-                log "Docker mode: patching agent config database.host → cronmanager-db..."
-                _run_remote_python \
-'import json, sys
-path = sys.argv[1]
-with open(path, "r") as fh:
-    cfg = json.load(fh)
-if isinstance(cfg.get("database"), dict):
-    cfg["database"]["host"] = "cronmanager-db"
-with open(path, "w") as fh:
-    json.dump(cfg, fh, indent=4, ensure_ascii=False)
-print("[deploy] Agent config database.host patched.")' \
-                    "${AGENT_TARGET}/config/config.json"
-            fi
         else
             log "Agent config already exists – skipping (update manually if needed)."
         fi
@@ -469,7 +451,7 @@ print("[deploy] Agent config database.host patched.")' \
     # Install / reload systemd service  (skipped in migrate mode)
     # -------------------------------------------------------------------------
 
-    if [[ "${DEPLOY_TARGET}" == "host-agent" && "${DEPLOY_MODE}" != "migrate" ]]; then
+    if [[ "${DEPLOY_MODE}" != "migrate" ]]; then
         log "Installing systemd service..."
         run_on_target "cp '${AGENT_TARGET}/systemd/cronmanager-agent.service' /etc/systemd/system/cronmanager-agent.service"
         run_on_target "systemctl daemon-reload"
@@ -479,10 +461,8 @@ print("[deploy] Agent config database.host patched.")' \
         run_on_target "systemctl is-active --quiet cronmanager-agent \
             && echo '[deploy] Service is running.' \
             || echo '[deploy] WARNING: Service is NOT running – check: journalctl -u cronmanager-agent'"
-    elif [[ "${DEPLOY_MODE}" == "migrate" ]]; then
-        log "Migrate mode: skipping systemd service install (will be stopped in migration step)."
     else
-        log "Docker mode: skipping systemd service install."
+        log "Migrate mode: skipping systemd service install (will be stopped in migration step)."
     fi
 
     # -------------------------------------------------------------------------
@@ -524,54 +504,6 @@ EOF
             || log "WARNING: Schema application failed – container may not be running yet. Apply manually."
     fi
 
-    # ── Database migrations ───────────────────────────────────────────────────
-    # Applies pending SQL migrations from agent/sql/migrations/ in sorted order.
-    # Each migration is recorded in schema_migrations so it runs at most once.
-    # Runs on both full and update deploys (safe to re-run; schema.sql already
-    # contains the full column set, so migrations are no-ops on fresh installs
-    # once the tracking table catches up).
-    if [[ "${DEPLOY_TARGET}" == "docker" ]]; then
-        log "Checking pending database migrations..."
-
-        run_on_target "docker exec -i cronmanager-db mariadb \
-            -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' \
-            -e \"CREATE TABLE IF NOT EXISTS schema_migrations (
-                     migration  VARCHAR(255) NOT NULL PRIMARY KEY,
-                     applied_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
-                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\"" 2>/dev/null \
-            && log "Migrations tracking table ready." \
-            || log "WARNING: Could not create schema_migrations table – DB may not be running yet."
-
-        _mig_dir="${AGENT_TARGET}/sql/migrations"
-        _mig_list=$(run_on_target "ls '${_mig_dir}/'*.sql 2>/dev/null | sort" 2>/dev/null || true)
-
-        if [[ -z "${_mig_list}" ]]; then
-            log "No migration files found in ${_mig_dir}."
-        else
-            while IFS= read -r _mig_path; do
-                [[ -z "${_mig_path}" ]] && continue
-                _mig_name=$(basename "${_mig_path}")
-                _applied=$(run_on_target "docker exec -i cronmanager-db mariadb \
-                    -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' \
-                    -sNe \"SELECT COUNT(*) FROM schema_migrations WHERE migration='${_mig_name}'\"" 2>/dev/null || echo "0")
-                if [[ "${_applied}" == "0" ]]; then
-                    log "Applying migration: ${_mig_name}..."
-                    if run_on_target "docker exec -i cronmanager-db mariadb \
-                        -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' \
-                        < '${_mig_path}'" 2>/dev/null; then
-                        run_on_target "docker exec -i cronmanager-db mariadb \
-                            -u '${DB_USER}' -p'${DB_PASSWORD}' '${DB_NAME}' \
-                            -e \"INSERT IGNORE INTO schema_migrations (migration) VALUES ('${_mig_name}')\"" 2>/dev/null || true
-                        log "Migration applied: ${_mig_name}"
-                    else
-                        log "WARNING: Migration failed: ${_mig_name} – apply manually if needed."
-                    fi
-                else
-                    log "Migration already applied: ${_mig_name}"
-                fi
-            done <<< "${_mig_list}"
-        fi
-    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -593,63 +525,11 @@ if [[ "${DEPLOY_WEB_PART}" == "true" ]]; then
             "${WEB_SRC}/" "${TARGET_PREFIX}${WEB_WWW_TARGET}/"
     fi
 
-    # ── TLS migration: upgrade pre-2.8.0 http:// agent URL in existing config ──
-    # Runs on every update deploy. Idempotent: no-op when already on https or
-    # when ssl_verify key is already present (written by 2.8.0+ entrypoint).
-    if [[ "${DEPLOY_TARGET}" == "docker" && "${DEPLOY_MODE}" == "update" ]]; then
-        if run_on_target "test -f '${WEB_CONF_TARGET}/config.json'" 2>/dev/null; then
-            log "Checking web config for pre-2.8.0 http:// agent URL..."
-            _run_remote_python \
-'import json, sys
-path = sys.argv[1]
-with open(path, "r") as fh:
-    cfg = json.load(fh)
-agent = cfg.get("agent", {})
-url = agent.get("url", "")
-changed = False
-if url.startswith("http://"):
-    agent["url"] = "https://" + url[len("http://"):]
-    changed = True
-if "ssl_verify" not in agent:
-    agent["ssl_verify"] = False
-    agent["ssl_ca_bundle"] = agent.get("ssl_ca_bundle", "")
-    changed = True
-if changed:
-    cfg["agent"] = agent
-    with open(path, "w") as fh:
-        json.dump(cfg, fh, indent=4, ensure_ascii=False)
-    print("[deploy] Web config migrated: agent.url upgraded to https://, ssl_verify added.")
-else:
-    print("[deploy] Web config already up to date – no migration needed.")' \
-                "${WEB_CONF_TARGET}/config.json"
-        fi
-    fi
-
     # Deploy example web config only on full deploy if none exists yet
     if [[ "${DEPLOY_MODE}" == "full" ]]; then
         if ! file_exists_on_target "${WEB_CONF_TARGET}/config.json" 2>/dev/null; then
             log "No existing web config – deploying example config..."
             copy_to_target "${WEB_SRC}/config/config.json" "${WEB_CONF_TARGET}/config.json"
-            # Patch agent.url for docker mode (web → agent via Docker service name)
-            if [[ "${DEPLOY_TARGET}" == "docker" ]]; then
-                log "Docker mode: patching web config agent.url → https://cronmanager-agent:8865..."
-                _run_remote_python \
-'import json, re, sys
-path = sys.argv[1]
-with open(path, "r") as fh:
-    cfg = json.load(fh)
-if isinstance(cfg.get("agent"), dict) and "url" in cfg["agent"]:
-    url = cfg["agent"]["url"]
-    m = re.search(r":(\d+)", url)
-    port = m.group(1) if m else "8865"
-    cfg["agent"]["url"] = "https://cronmanager-agent:" + port
-    cfg["agent"]["ssl_verify"] = False
-    cfg["agent"]["ssl_ca_bundle"] = ""
-with open(path, "w") as fh:
-    json.dump(cfg, fh, indent=4, ensure_ascii=False)
-print("[deploy] Web config agent.url patched.")' \
-                    "${WEB_CONF_TARGET}/config.json"
-            fi
         else
             log "Web config already exists – skipping."
         fi
@@ -829,17 +709,6 @@ if [[ "${DEPLOY_AGENT_PART}" == "true" && "${DEPLOY_WEB_PART}" == "true" ]]; the
 log "Next steps:"
 log "  1. Review and adjust ${AGENT_TARGET}/config/config.json"
 log "  2. Review and adjust ${WEB_CONF_TARGET}/config.json"
-if [[ "${DEPLOY_TARGET}" == "docker" ]]; then
-log "  3. Deploy Docker stack via Portainer:"
-log "       - Paste the contents of docker/docker-compose-agent.yml into a new Portainer stack"
-log "       - Add the following environment variables in Portainer:"
-log "           DB_NAME          = ${DB_NAME}"
-log "           DB_USER          = ${DB_USER}"
-log "           DB_PASSWORD      = (your password)"
-log "           DB_ROOT_PASSWORD = (your root password)"
-log "  4. Apply DB schema:    docker exec -i cronmanager-db mariadb -u ${DB_USER} -p${DB_PASSWORD} ${DB_NAME} < ${AGENT_TARGET}/sql/schema.sql"
-log "  5. Test agent health:  docker exec cronmanager-agent curl -s http://localhost:8865/health"
-else
 log "  3. Deploy Docker stack via Portainer:"
 log "       - Paste the contents of docker/docker-compose.yml into a new Portainer stack"
 log "       - Add the following environment variables in Portainer:"
@@ -848,7 +717,6 @@ log "           DB_USER          = ${DB_USER}"
 log "           DB_PASSWORD      = (your password)"
 log "           DB_ROOT_PASSWORD = (your root password)"
 log "  4. Apply DB schema:    docker exec -i cronmanager-db mariadb -u ${DB_USER} -p${DB_PASSWORD} ${DB_NAME} < ${AGENT_TARGET}/sql/schema.sql"
-log "  5. Test agent health:  curl http://localhost:8865/health"
-fi
+log "  5. Test agent health:  curl https://localhost:8865/health"
 log "  6. Open web UI:        http://<host>:8880/ (first visit creates the admin account)"
 fi

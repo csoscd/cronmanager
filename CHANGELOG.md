@@ -25,6 +25,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Dashboard – Ausgabe-Vorschau in der Fehler-Tabelle:** Die letzte Spalte zeigt die letzten 120 Zeichen des Job-Outputs als `font-mono`-Vorschau mit `title`-Tooltip (vollständiger Text). Lässt sich per `$showOutputPreview = false` am Anfang von `dashboard.php` sofort ausblenden.
 - **Dashboard – Ausführungsstatistik-Widget:** Neues `GET /stats`-Endpoint auf dem Agent liefert via zwei INDEX-Range-Scans (`idx_el_started_at`) vier Zähler: ausgeführte und fehlerhafte Ausführungen jeweils für „heute" (seit Mitternacht) und „letzte 24 Stunden". Der Widget-Call wird in denselben `getMultiple()`-Batch wie die übrigen Dashboard-Requests eingebettet (kein Extra-Round-Trip). Lässt sich per `SHOW_EXECUTION_STATS = false` in `DashboardController` ausschalten — deaktiviert sowohl den API-Call als auch die Anzeige.
 
+### Fixed (nachträglich)
+
+- **Dashboard – fehlende Tailwind-Klassen:** `lg:col-span-3` und `lg:col-span-1` fehlten in der vorgenerierten `tailwind.css`; die Fehler-Tabelle belegte deshalb nur eine statt drei Kachel-Breiten. Die fehlenden Media-Query-Regeln wurden in `assets/css/tailwind.css` ergänzt.
+
+### Documentation
+
+- **HOST-AGENT.md** – neues separates Dokument für die Host-Agent-Installation (systemd-Service direkt auf dem Docker-Host): Architektur-Diagramm, Voraussetzungen, `deploy.sh`-Deployment, Schritte 1–7 (manuell), Konfigurationsreferenz, Crontab lesen, Aktualisieren, Migration zu Docker-Modus.
+- **README.md** – auf Docker-Hub-Installation fokussiert; Quick-Start, Prerequisites, Guided Setup und Detailed-Installation-Kapitel entfernt; Host-Agent-Themen zu HOST-AGENT.md verlagert.
+- **deploy.sh** – `--docker`-Modus und alle docker-spezifischen Branches entfernt; das Skript dient ausschließlich der Host-Agent-Installation.
+- **simple_debian_setup.sh** entfernt (nicht mehr gewartet).
+
 ---
 
 ## [5.1.0] – branch: `feature/user-management-v2`

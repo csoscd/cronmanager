@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased] – branch: `fix/execute-now-cleanup-retry`
+
+### Fixed
+
+- **cron-wrapper.sh – Retry-Logik für alle Agent-Calls:** `GET /crons/{id}` und `POST /crons/{id}/execute/cleanup` werden bei Transport-Fehler oder HTTP 5xx jetzt bis zu 3-mal mit 5 Sekunden Pause wiederholt (`QUICK_MAX_ATTEMPTS=3`, `QUICK_RETRY_INTERVAL=5`). `POST /execution/start` wird ausschließlich bei Transport-Fehler (curl exit ≠ 0) wiederholt — ein gesendeter Request darf nicht dupliziert werden, weil jeder Versuch einen neuen `execution_log`-Row anlegen würde.
+- **ExecuteNowEndpoint – Auto-Bereinigung veralteter once-Einträge:** Wenn `hasOnceEntry()` einen bestehenden Eintrag findet, der Zeitplan in der Vergangenheit liegt und kein `execution_log`-Row mit `finished_at IS NULL` (kein laufender Job) existiert, wird der veraltete Marker automatisch via `removeOnceEntries()` entfernt. Der neue Trigger-Request wird dann wie gewohnt verarbeitet. Hintergrund: schlägt der Cleanup-Aufruf des cron-wrappers fehl (Agent kurzzeitig nicht erreichbar), blieb der once-Marker bisher dauerhaft im Crontab — die erneute manuelle Ausführung wurde mit 409 abgewiesen.
+- **CrontabManager – `getOnceEntrySchedule()`:** Neue Methode liest den Zeitplan-String (`{min} {hour} {dom} {month} *`) aus dem Crontab-Eintrag, der auf den once-Marker des angegebenen Jobs folgt. Wird von `ExecuteNowEndpoint::isScheduleInPast()` genutzt um veraltete Einträge zu erkennen.
+- **Tests – `tearDown()`-Guard:** `CronBulkDeleteEndpointTest` und `ExecuteNowEndpointTest` initialisierten `$crontabDir` nicht mit einem Default-Wert; wenn `parent::setUp()` wegen fehlender Test-DB via `markTestSkipped()` abbrach, führte `tearDown()` zu einem Typed-Property-Initialisierungsfehler. Beide Properties werden jetzt mit `= ''` initialisiert und `rmdirRecursive()` nur aufgerufen wenn der Wert nicht leer ist.
+- **ExecuteNowEndpointTest – Szenario 4:** Neuer Integrationstest deckt den Auto-Clean-Pfad ab: staler once-Eintrag mit Zeitplan 1 Stunde in der Vergangenheit + abgeschlossener `execution_log`-Row (exit code 126) → Endpoint gibt 200 zurück, schreibt einen neuen once-Eintrag, entfernt den alten.
+
+---
+
 ## [5.1.0] – branch: `feature/user-management-v2`
 
 ### Added (Security Tests – Maßnahmen A+B)

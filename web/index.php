@@ -56,6 +56,7 @@ use Cronmanager\Web\Http\Request;
 use Cronmanager\Web\Service\AgentIdentityPusher;
 use Cronmanager\Web\Http\Response;
 use Cronmanager\Web\Http\Router;
+use Cronmanager\Web\Http\UserRoutesRegistrar;
 use Cronmanager\Web\Session\SessionManager;
 
 try {
@@ -347,17 +348,7 @@ try {
     $router->addProtectedRoute('GET',  '/export',              [$exportCtrl, 'index']);
     $router->addProtectedRoute('GET',  '/export/download',     [$exportCtrl, 'download']);
 
-    $router->addProtectedRoute('GET',  '/users',                [$userCtrl, 'index'],       'admin');
-    // /users/new must be before /users/{id} to avoid matching 'new' as an ID
-    $router->addProtectedRoute('GET',  '/users/new',           [$userCtrl, 'create'],      'admin');
-    $router->addProtectedRoute('POST', '/users/new',           [$userCtrl, 'store'],       'admin');
-    $router->addProtectedRoute('GET',  '/users/{id}/edit',     [$userCtrl, 'edit'],        'admin');
-    $router->addProtectedRoute('POST', '/users/{id}/edit',     [$userCtrl, 'update'],      'admin');
-    $router->addProtectedRoute('POST', '/users/{id}/role',     [$userCtrl, 'updateRole'],  'admin');
-    $router->addProtectedRoute('POST', '/users/{id}/deactivate', [$userCtrl, 'deactivate'], 'admin');
-    $router->addProtectedRoute('POST', '/users/{id}/activate', [$userCtrl, 'activate'],   'admin');
-    $router->addProtectedRoute('POST', '/users/{id}/invite',   [$userCtrl, 'resendInvite'], 'admin');
-    $router->addProtectedRoute('POST', '/users/{id}/delete',   [$userCtrl, 'destroy'],    'admin');
+    UserRoutesRegistrar::register($router, $userCtrl);
 
     // Profile – available to every authenticated user
     $profileCtrl = new \Cronmanager\Web\Controller\ProfileController($config, $logger);

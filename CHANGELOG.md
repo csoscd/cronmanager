@@ -16,9 +16,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **ApiKeyMiddlewareTest – 3 neue Szenarien:** Scope-Enforcement gegen die reale Profil-Scope-Map: operator-Profil (jobs:read, jobs:execute, maintenance:read) → jobs:execute → 200; operator-Profil → jobs:write → 403; read-only-Profil → jobs:execute → 403 (Viewer-Negativfall).
 - **AuditIdentityExtractor:** Neue Klasse `agent/src/Security/AuditIdentityExtractor.php` kapselt die Extraktion der X-User-Id/X-User-Name-Header aus `$_SERVER`. `agent.php` verwendet sie statt der bisherigen Inline-Extraktion; HmacRejectionTest/Szenario 5 ruft dieselbe Klasse auf – ein Rückfall auf `'system'` als Default würde den Test sofort brechen (echter Regressionsschutz für den v4.4.4-Vorfall).
 
+### Added (Security Tests – Maßnahme H)
+
+- **UserRoutesRegistrar:** Neue Klasse `web/src/Http/UserRoutesRegistrar.php` kapselt die Registrierung aller `/users/*`-Routen in einer statischen `register()`-Methode. `index.php` ruft diese statt der bisherigen 10 inline-`addProtectedRoute`-Aufrufe auf. Beide Aufruforte (index.php und Tests) verwenden exakt dieselbe Code-Strecke; eine fehlende oder falsch konfigurierte Route bricht den Integritätstest sofort.
+- **Router::isAuthorized():** Neue public-Methode auf `Router` delegiert an `SessionManager::hasRole()`; ermöglicht Tests der Autorisierungslogik ohne dispatch() (das auch Redirects, CSRF und Output abwickelt).
+- **Router::getProtectedRoutes():** Neue public-Methode gibt die interne `$protectedRoutes`-Liste zurück; wird vom Registrierungs-Integritätstest genutzt um sicherzustellen, dass alle erwarteten Routen mit korrekter Rolle vorhanden sind.
+- **BaseController::requireAdmin():** Neue protected-Methode als Defense-in-Depth-Gate: setzt HTTP 403 und ruft `exit()` auf, wenn die aktuelle Session nicht die Rolle `admin` trägt. Schützt controller-seitig auch dann, wenn eine Route versehentlich ohne `requiredRole='admin'` registriert würde.
+- **UserControllerAuthTest (6 Szenarien):** Registrierungs-Integrität (alle 10 `/users/*`-Schreibrouten mit korrekter Rolle via echter `UserRoutesRegistrar::register()`), `viewer`/`operator` → `isAuthorized('admin')` → false, `admin` → true, Own-Role-Guard-Bedingung (admin ändert eigene Rolle → Guard-Kondition evaluiert zu `true` → DB-Assertion auf Condition-Level, da `Response::redirect()` → `exit()` den direkten Controller-Pfad sperrt), Existenz und Sichtbarkeit von `BaseController::requireAdmin()` via Reflection.
+- **ProfileControllerAuthTest (1 Szenario):** `POST /profile` mit `role=admin` und `active=0` im Body → `ProfileController::update()` schreibt weder `role` noch `active` in die DB (validiert über den Validierungsfehler-Pfad, der kein `exit()` auslöst; Success-Pfad verhält sich identisch, da `UPDATE`-Statements nur `email` und `password_hash` referenzieren).
+
 ### Known Gaps
 
 - **AuthController Success-Pfad nicht durch Controller testbar:** `Response::redirect()` ruft `exit()` auf. Der Pfad „gültiges Token → Passwort gesetzt → `consume()` → Redirect" lässt sich ohne Prozess-Isolation nicht vollständig durch die Controller-Action testen. Die Einmal-Nutzungs-Invariante ist durch `AuthControllerSecurityTest::resetTokenCannotBeReusedAfterConsumption` auf Repository-Ebene abgesichert. Follow-up: `Response::redirect()` injizierbar machen oder `@runInSeparateProcess` mit pre-committed Fixtures einsetzen.
+- **Own-Role-Guard nicht durch Controller-Action testbar:** `UserController::update()` ruft `Response::redirect()` → `exit()` auch im Guard-Pfad auf. Der Guard-Bedingungsnachweis erfolgt auf SessionManager-Ebene (`UserControllerAuthTest::ownRoleGuardPreventsAdminFromChangingTheirOwnRole`); die DB bleibt in beiden Testpfaden unberührt. Gleiche Lösung wie AuthController-Gap.
 
 ---
 

@@ -123,6 +123,40 @@ class Router
     }
 
     // -------------------------------------------------------------------------
+    // Authorisation helpers (used by tests and defense-in-depth guards)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Check whether the current session satisfies the required role.
+     *
+     * Delegates to SessionManager::hasRole().  Exposed as a public method so
+     * integration tests can assert the authorisation logic without going through
+     * dispatch() (which also handles redirects, CSRF, and output).
+     *
+     * @param string $requiredRole Role to test ('view'/'viewer', 'operator', 'admin').
+     *
+     * @return bool
+     */
+    public function isAuthorized(string $requiredRole): bool
+    {
+        return SessionManager::hasRole($requiredRole);
+    }
+
+    /**
+     * Return all registered protected routes.
+     *
+     * Intended for test introspection: verifies that route registration code
+     * (e.g. UserRoutesRegistrar) registers the expected routes with the correct
+     * required roles without having to dispatch a live HTTP request.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getProtectedRoutes(): array
+    {
+        return $this->protectedRoutes;
+    }
+
+    // -------------------------------------------------------------------------
     // Dispatch
     // -------------------------------------------------------------------------
 

@@ -256,7 +256,7 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
                                 <?php if ($showOutputPreview): ?>
                                 <td class="px-4 py-3 text-xs font-mono text-gray-500 dark:text-gray-400 max-w-xs">
                                     <?php if ($outputPreview !== ''): ?>
-                                        <span class="block truncate" title="<?= htmlspecialchars($outputRaw, ENT_QUOTES, 'UTF-8') ?>">
+                                        <span class="block whitespace-pre-wrap break-words" title="<?= htmlspecialchars($outputRaw, ENT_QUOTES, 'UTF-8') ?>">
                                             <?= htmlspecialchars($outputPreview, ENT_QUOTES, 'UTF-8') ?>
                                         </span>
                                     <?php else: ?>

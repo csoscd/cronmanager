@@ -28,6 +28,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed (nachträglich)
 
 - **Dashboard – fehlende Tailwind-Klassen:** `lg:col-span-3` und `lg:col-span-1` fehlten in der vorgenerierten `tailwind.css`; die Fehler-Tabelle belegte deshalb nur eine statt drei Kachel-Breiten. Die fehlenden Media-Query-Regeln wurden in `assets/css/tailwind.css` ergänzt.
+- **Dashboard – Ausgabe-Vorschau zeigte Anfang statt Ende:** CSS-Klasse `truncate` (`white-space: nowrap; text-overflow: ellipsis`) kollabierte Zeilenumbrüche und schnitt den Text von rechts ab. Die letzten 120 Zeichen wurden von PHP korrekt ermittelt, aber die CSS-Kürzung versteckte den Schluss des Ausschnitts — genau die Stelle, an der Fehlermeldungen stehen. Ersetzt durch `whitespace-pre-wrap break-words`; der vollständige Tooltip bleibt erhalten.
+- **„Läuft"-Badge – inkonsistente Farbe:** Status-Badge war auf der Job-Übersichtsseite blau, auf der Job-Detailseite und in der Monitor-Ansicht hingegen gelb. Alle drei Stellen verwenden jetzt einheitlich die blauen Klassen (`bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`).
 
 ### Documentation
 

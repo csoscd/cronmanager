@@ -436,7 +436,8 @@ class CronController extends BaseController
                 }
             }
 
-            $t          = $this->translator->t(...);
+            $translator = $this->translator();
+            $t          = fn(string $k, array $r = []): string => $translator->t($k, $r);
             $csrf_token = $csrfToken;
             $jobId      = $id;
 

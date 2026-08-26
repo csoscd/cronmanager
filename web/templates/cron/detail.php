@@ -565,12 +565,12 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                                     <span id="<?= htmlspecialchars($outputId . '-data', ENT_QUOTES, 'UTF-8') ?>"
                                           class="hidden"><?= htmlspecialchars($output, ENT_QUOTES, 'UTF-8') ?></span>
                                     <span id="<?= htmlspecialchars($outputId . '-short', ENT_QUOTES, 'UTF-8') ?>"
-                                          class="font-mono text-xs break-all">
+                                          class="font-mono text-xs whitespace-pre-wrap break-words">
                                         <?= htmlspecialchars($outputTrunc, ENT_QUOTES, 'UTF-8') ?>
                                     </span>
                                     <?php if (mb_strlen($output) > 200): ?>
                                         <span id="<?= htmlspecialchars($outputId . '-full', ENT_QUOTES, 'UTF-8') ?>"
-                                              class="font-mono text-xs break-all hidden">
+                                              class="font-mono text-xs whitespace-pre-wrap break-words hidden">
                                             <?= htmlspecialchars($output, ENT_QUOTES, 'UTF-8') ?>
                                         </span>
                                         <button type="button"

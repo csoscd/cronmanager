@@ -35,6 +35,7 @@ declare(strict_types=1);
 namespace Cronmanager\Agent\Endpoints;
 
 use Cronmanager\Agent\Ssh\SshConfigParser;
+use Cronmanager\Agent\Util\AnsiStripper;
 use Monolog\Logger;
 
 /**
@@ -124,7 +125,7 @@ final class SshTestEndpoint
         $exitCode = 0;
         exec($command, $output, $exitCode);
 
-        $outputText = implode("\n", $output);
+        $outputText = AnsiStripper::strip(implode("\n", $output));
         $success    = ($exitCode === 0 && trim($outputText) === 'ok');
 
         $this->logger->info('SshTestEndpoint: SSH probe completed', [

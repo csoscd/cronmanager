@@ -50,6 +50,7 @@ namespace Cronmanager\Agent\Endpoints;
 
 use Cronmanager\Agent\Cron\CrontabManager;
 use Cronmanager\Agent\Notification\MailNotifier;
+use Cronmanager\Agent\Util\AnsiStripper;
 use Cronmanager\Agent\Util\ExitCodeMatcher;
 use Cronmanager\Agent\Notification\TelegramNotifier;
 use Monolog\Logger;
@@ -146,7 +147,7 @@ final class ExecutionFinishEndpoint
         $executionId = (int) $body['execution_id'];
         $jobId       = (int) $body['job_id'];
         $exitCode    = (int) $body['exit_code'];
-        $output      = isset($body['output']) ? (string) $body['output'] : '';
+        $output      = AnsiStripper::strip(isset($body['output']) ? (string) $body['output'] : '');
         $target      = isset($body['target']) && is_string($body['target']) && $body['target'] !== ''
             ? $body['target']
             : null;

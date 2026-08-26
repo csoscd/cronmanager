@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [5.3.0] – branch: `feature/detail-reload-controls`
+
+### Added
+
+- **Job-Detail – AJAX-Reload der Ausführungshistorie:** Statt eines vollständigen `location.reload()` ruft die Seite `GET /crons/{id}?_json=1` ab und ersetzt ausschließlich den `<tbody>` der Ausführungshistorie-Tabelle. Kein Seitenflackern, Scroll-Position und aufgeklappte Output-Bereiche bleiben erhalten. `CronController::show()` rendert im JSON-Modus die Tabellenzeilen serverseitig über ein ausgelagertes Partial (`_detail_history_rows.php`) und gibt `{"has_running": bool, "rows_html": "..."}` zurück. Die Session wird vor dem Agent-I/O geschlossen (`writeClose()`).
+- **Job-Detail – Reload-Steuerung im Ausführungshistorie-Header:** Zwei Icon-Buttons in der Kopfzeile des Ausführungshistorie-Abschnitts:
+  - **Auto-Reload-Toggle** (Pause-/Play-Icon): schaltet das automatische 10-Sekunden-Polling ein und aus. Zustand wird per `sessionStorage` (Schlüssel `cm_autoreload_<jobId>`) über Seitenbesuche hinweg gespeichert. Standard: ON wenn beim Laden der Seite ein Job läuft, OFF sonst. Wenn ein laufender Job abschließt, stoppt Auto-Reload automatisch.
+  - **Manueller Reload** (Refresh-Icon): löst sofort einen AJAX-Fetch aus.
+- **`_detail_history_rows.php`:** Neues Partial-Template; enthält die gesamte `<tr>`-Rendering-Logik der Ausführungshistorie. Wird sowohl vom vollen Seitenrender als auch vom JSON-Endpoint eingebunden — keine Duplikation der Badge-/Output-Logik.
+
+### Changed
+
+- Gelber Countdown-Banner (`Job läuft – Seite aktualisiert sich in Xs`) entfernt; die Reload-Steuerung übernimmt diese Funktion.
+
+---
+
 ## [5.2.1] – branch: `fix/ansi-escape-in-ssh-output`
 
 ### Fixed

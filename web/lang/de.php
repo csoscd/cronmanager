@@ -358,6 +358,8 @@ return [
     'execute_now_already_pending' => 'Sofortausführung bereits geplant – bitte warten bis der Job gestartet wurde.',
     'live_running'            => 'live',
     'live_auto_refresh'       => 'Job läuft – Seite aktualisiert sich in',
+    'detail_auto_reload_toggle' => 'Automatischen Reload an/aus',
+    'detail_manual_reload'      => 'Jetzt neu laden',
 
     // -------------------------------------------------------------------------
     // Ersteinrichtung

@@ -358,6 +358,8 @@ return [
     'execute_now_already_pending' => 'Immediate execution already scheduled – please wait for the job to start.',
     'live_running'            => 'live',
     'live_auto_refresh'       => 'Job is running – page refreshes in',
+    'detail_auto_reload_toggle' => 'Toggle auto-reload',
+    'detail_manual_reload'      => 'Reload now',
 
     // -------------------------------------------------------------------------
     // Initial Setup page

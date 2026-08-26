@@ -436,12 +436,12 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect, $a
                                     <span id="tl-output-<?= $idx ?>-data"
                                           class="hidden"><?= htmlspecialchars($output, ENT_QUOTES, 'UTF-8') ?></span>
                                     <span id="tl-output-<?= $idx ?>-short"
-                                          class="font-mono text-xs break-all">
+                                          class="font-mono text-xs whitespace-pre-wrap break-words">
                                         <?= htmlspecialchars($outputTrunc, ENT_QUOTES, 'UTF-8') ?>
                                     </span>
                                     <?php if ($isTruncated): ?>
                                         <span id="tl-output-<?= $idx ?>-full"
-                                              class="font-mono text-xs break-all hidden">
+                                              class="font-mono text-xs whitespace-pre-wrap break-words hidden">
                                             <?= htmlspecialchars($output, ENT_QUOTES, 'UTF-8') ?>
                                         </span>
                                         <button type="button"

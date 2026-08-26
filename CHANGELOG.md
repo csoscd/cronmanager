@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [5.2.1] – branch: `fix/ansi-escape-in-ssh-output`
+
+### Fixed
+
+- **SSH-Verbindungstest – ANSI/OSC-Escape-Sequenzen:** Remote-Shells senden aus ihren Startup-Dateien (`.bashrc`/`.zshrc`) OSC-Sequenzen (z. B. `\e]11;#RRGGBB\a` zur Hintergrundfarbe) auch bei nicht-interaktiven SSH-Befehlen. Diese landeten bisher ungefiltert im `output`-Feld des SSH-Tests, ließen den Success-Check (`trim($output) === 'ok'`) fehlschlagen und zeigten dem Nutzer fälschlicherweise „Fehlgeschlagen" an — obwohl die Verbindung funktionierte. Neue Hilfsklasse `AnsiStripper` (CSI-, OSC- und Fe-Sequenzen) wird in `SshTestEndpoint` auf die SSH-Ausgabe angewendet.
+- **Job-Output – ANSI/OSC-Escape-Sequenzen:** Dieselben Sequenzen wurden via `cron-wrapper.sh` in `execution_log.output` gespeichert und in der UI als Zeichenmüll angezeigt. `ExecutionFinishEndpoint` wendet `AnsiStripper::strip()` beim Einlesen des Outputs an, bevor er in der DB gespeichert wird.
+- **Output-Anzeige – Zeilenumbrüche:** Span-Elemente in `detail.php` (Ausführungshistorie) und `timeline.php` verwendeten `break-all` ohne `whitespace-pre-wrap`; HTML kollabiert `\n` in Inline-Elementen zu Leerzeichen. Ersetzt durch `whitespace-pre-wrap break-words` — Zeilenumbrüche werden jetzt korrekt gerendert.
+
+---
+
 ## [5.2.0] – branch: `feature/minor-improvements`
 
 ### Fixed

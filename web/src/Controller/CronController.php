@@ -430,7 +430,9 @@ class CronController extends BaseController
 
             $hasRunning = false;
             foreach ($history as $_e) {
-                if (($_e['exit_code'] ?? 'x') === null && (string) ($_e['finished_at'] ?? '') === '') {
+                $ec = $_e['exit_code'] ?? null;
+                $fa = (string) ($_e['finished_at'] ?? '');
+                if ($ec === null && $fa === '') {
                     $hasRunning = true;
                     break;
                 }

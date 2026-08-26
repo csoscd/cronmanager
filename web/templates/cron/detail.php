@@ -413,12 +413,6 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
      Execution history section
      ====================================================================== -->
 <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-200">
-            <?= htmlspecialchars($t('cron_history'), ENT_QUOTES, 'UTF-8') ?>
-        </h2>
-    </div>
-
     <?php
         // Detect whether any execution is still running so auto-refresh can be armed.
         $hasRunning = false;
@@ -428,13 +422,46 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
             if ($ec === null && $fa === '') { $hasRunning = true; break; }
         }
     ?>
-    <?php if ($hasRunning): ?>
-        <div class="mx-6 mb-3 flex items-center gap-2 text-sm text-yellow-600 dark:text-yellow-400">
-            <span class="inline-block w-2 h-2 rounded-full bg-yellow-400 animate-pulse flex-shrink-0"></span>
-            <?= htmlspecialchars($t('live_auto_refresh'), ENT_QUOTES, 'UTF-8') ?>
-            <span id="cm-live-countdown" class="font-medium">15</span>s
+    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-200">
+            <?= htmlspecialchars($t('cron_history'), ENT_QUOTES, 'UTF-8') ?>
+        </h2>
+        <div class="flex items-center gap-1">
+            <!-- Auto-reload toggle -->
+            <button id="cm-reload-toggle"
+                    type="button"
+                    title="<?= htmlspecialchars($t('detail_auto_reload_toggle'), ENT_QUOTES, 'UTF-8') ?>"
+                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <!-- Icon is swapped by JS; initial state reflects $hasRunning -->
+                <?php if ($hasRunning): ?>
+                <!-- Pause icon (auto-reload is ON by default when job runs) -->
+                <svg id="cm-icon-pause" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5"/>
+                </svg>
+                <svg id="cm-icon-play" class="w-4 h-4 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/>
+                </svg>
+                <?php else: ?>
+                <!-- Play icon (auto-reload is OFF by default when no job runs) -->
+                <svg id="cm-icon-pause" class="w-4 h-4 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5"/>
+                </svg>
+                <svg id="cm-icon-play" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/>
+                </svg>
+                <?php endif; ?>
+            </button>
+            <!-- Manual reload -->
+            <button id="cm-reload-manual"
+                    type="button"
+                    title="<?= htmlspecialchars($t('detail_manual_reload'), ENT_QUOTES, 'UTF-8') ?>"
+                    class="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
+                </svg>
+            </button>
         </div>
-    <?php endif; ?>
+    </div>
     <?php if (empty($history)): ?>
         <div class="px-6 py-10 text-center text-gray-400 dark:text-gray-500 text-sm">
             <?= htmlspecialchars($t('no_results'), ENT_QUOTES, 'UTF-8') ?>
@@ -469,171 +496,8 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
                         <?php endif; ?>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                    <?php foreach ($history as $idx => $entry): ?>
-                        <?php
-                            $startedAt    = (string) ($entry['started_at']  ?? '');
-                            $finishedAt   = (string) ($entry['finished_at'] ?? '');
-                            $exitCode     = isset($entry['exit_code']) ? $entry['exit_code'] : null;
-                            $executionId  = (string) ($entry['execution_id'] ?? '');
-                            $isRunning    = $exitCode === null && $finishedAt === '';
-                            $duration     = isset($entry['duration_seconds'])
-                                ? round((float) $entry['duration_seconds'], 1) . 's'
-                                : '–';
-                            $entryTarget       = (string) ($entry['target'] ?? '');
-                            $output            = (string) ($entry['output'] ?? '');
-                            $outputId          = 'hist-output-' . $idx;
-                            $outputTrunc       = mb_strlen($output) > 200
-                                ? mb_substr($output, 0, 200) . '…'
-                                : $output;
-                            $duringMaintenance = !empty($entry['during_maintenance']);
-                            $retryAttempt = (int) ($entry['retry_attempt'] ?? 0);
-                            $retryTotal   = (int) ($job['retry_count'] ?? 0);
-
-                            // Exit code badge
-                            if ($isRunning) {
-                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">'
-                                    . htmlspecialchars($t('status_running'), ENT_QUOTES, 'UTF-8')
-                                    . '</span>';
-                            } elseif ($exitCode !== null && (int) $exitCode === -5) {
-                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">'
-                                    . htmlspecialchars($t('cron_interrupted_badge'), ENT_QUOTES, 'UTF-8')
-                                    . '</span>';
-                            } elseif ($exitCode !== null && (int) $exitCode === -4) {
-                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">'
-                                    . htmlspecialchars($t('cron_maintenance_skipped_badge'), ENT_QUOTES, 'UTF-8')
-                                    . '</span>';
-                            } elseif ($exitCode !== null && (int) $exitCode === 0) {
-                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">0</span>';
-                                if ($duringMaintenance) {
-                                    $exitBadge .= ' <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">'
-                                        . htmlspecialchars($t('cron_during_maintenance_badge'), ENT_QUOTES, 'UTF-8')
-                                        . '</span>';
-                                }
-                            } elseif ($exitCode !== null && (int) $exitCode === -2) {
-                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">'
-                                    . htmlspecialchars($t('cron_kill_running'), ENT_QUOTES, 'UTF-8')
-                                    . '</span>';
-                            } else {
-                                $safeCode  = htmlspecialchars((string) $exitCode, ENT_QUOTES, 'UTF-8');
-                                $exitBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">' . $safeCode . '</span>';
-                                if ($duringMaintenance) {
-                                    $exitBadge .= ' <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">'
-                                        . htmlspecialchars($t('cron_during_maintenance_badge'), ENT_QUOTES, 'UTF-8')
-                                        . '</span>';
-                                }
-                            }
-                        ?>
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 align-top">
-                            <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
-                                <?= htmlspecialchars($startedAt, ENT_QUOTES, 'UTF-8') ?>
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
-                                <?= htmlspecialchars($finishedAt !== '' ? $finishedAt : '—', ENT_QUOTES, 'UTF-8') ?>
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
-                                <?= htmlspecialchars($duration, ENT_QUOTES, 'UTF-8') ?>
-                            </td>
-                            <td class="px-4 py-3 text-sm whitespace-nowrap">
-                                <?php if ($entryTarget === '' || $entryTarget === 'local'): ?>
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                                        <?= htmlspecialchars($t('cron_local_badge'), ENT_QUOTES, 'UTF-8') ?>
-                                    </span>
-                                <?php else: ?>
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 font-mono">
-                                        <?= htmlspecialchars($entryTarget, ENT_QUOTES, 'UTF-8') ?>
-                                    </span>
-                                <?php endif; ?>
-                            </td>
-                            <td class="px-4 py-3 text-sm">
-                                <?= $exitBadge ?>
-                                <?php if ($retryAttempt > 0): ?>
-                                    <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                                        <?= htmlspecialchars($t('cron_retry_badge', ['attempt' => $retryAttempt, 'total' => $retryTotal]), ENT_QUOTES, 'UTF-8') ?>
-                                    </span>
-                                <?php endif; ?>
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-sm">
-                                <?php if ($isRunning): ?>
-                                    <div class="flex items-center gap-1.5 mb-1">
-                                        <span class="inline-block w-2 h-2 rounded-full bg-yellow-400 animate-pulse flex-shrink-0"></span>
-                                        <span class="text-xs text-yellow-600 dark:text-yellow-400 font-medium"><?= htmlspecialchars($t('live_running'), ENT_QUOTES, 'UTF-8') ?></span>
-                                    </div>
-                                <?php endif; ?>
-                                <?php if ($output !== ''): ?>
-                                    <!-- Full output stored for copy/download (hidden) -->
-                                    <span id="<?= htmlspecialchars($outputId . '-data', ENT_QUOTES, 'UTF-8') ?>"
-                                          class="hidden"><?= htmlspecialchars($output, ENT_QUOTES, 'UTF-8') ?></span>
-                                    <span id="<?= htmlspecialchars($outputId . '-short', ENT_QUOTES, 'UTF-8') ?>"
-                                          class="font-mono text-xs whitespace-pre-wrap break-words">
-                                        <?= htmlspecialchars($outputTrunc, ENT_QUOTES, 'UTF-8') ?>
-                                    </span>
-                                    <?php if (mb_strlen($output) > 200): ?>
-                                        <span id="<?= htmlspecialchars($outputId . '-full', ENT_QUOTES, 'UTF-8') ?>"
-                                              class="font-mono text-xs whitespace-pre-wrap break-words hidden">
-                                            <?= htmlspecialchars($output, ENT_QUOTES, 'UTF-8') ?>
-                                        </span>
-                                        <button type="button"
-                                                onclick="toggleOutput('<?= htmlspecialchars($outputId, ENT_QUOTES, 'UTF-8') ?>')"
-                                                class="ml-1 text-xs text-blue-600 hover:underline focus:outline-none">
-                                            show more
-                                        </button>
-                                    <?php endif; ?>
-                                    <!-- Copy / Download buttons -->
-                                    <div class="mt-1 flex items-center gap-1">
-                                        <button type="button"
-                                                onclick="copyOutput('<?= htmlspecialchars($outputId, ENT_QUOTES, 'UTF-8') ?>', this)"
-                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium
-                                                       bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700
-                                                       dark:hover:bg-gray-600 dark:text-gray-300 border border-gray-200
-                                                       dark:border-gray-600 transition focus:outline-none focus:ring-1 focus:ring-gray-400"
-                                                title="<?= htmlspecialchars($t('output_copy_title'), ENT_QUOTES, 'UTF-8') ?>">
-                                            <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                <path stroke-linecap="round" stroke-linejoin="round"
-                                                      d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
-                                            </svg>
-                                            <span><?= htmlspecialchars($t('output_copy'), ENT_QUOTES, 'UTF-8') ?></span>
-                                        </button>
-                                        <button type="button"
-                                                onclick="downloadOutput('<?= htmlspecialchars($outputId, ENT_QUOTES, 'UTF-8') ?>', <?= (int) $jobId ?>, '<?= htmlspecialchars(addslashes($startedAt), ENT_QUOTES, 'UTF-8') ?>')"
-                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium
-                                                       bg-gray-100 hover:bg-gray-200 text-gray-600 dark:bg-gray-700
-                                                       dark:hover:bg-gray-600 dark:text-gray-300 border border-gray-200
-                                                       dark:border-gray-600 transition focus:outline-none focus:ring-1 focus:ring-gray-400"
-                                                title="<?= htmlspecialchars($t('output_download_title'), ENT_QUOTES, 'UTF-8') ?>">
-                                            <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                                <path stroke-linecap="round" stroke-linejoin="round"
-                                                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                                            </svg>
-                                            <span><?= htmlspecialchars($t('output_download'), ENT_QUOTES, 'UTF-8') ?></span>
-                                        </button>
-                                    </div>
-                                <?php else: ?>
-                                    <span class="text-gray-300 dark:text-gray-600">—</span>
-                                <?php endif; ?>
-                            </td>
-                            <?php if ($isAdmin): ?>
-                            <td class="px-4 py-3 text-sm whitespace-nowrap">
-                                <?php if ($isRunning && $executionId !== ''): ?>
-                                    <form method="POST"
-                                          action="/execution/<?= htmlspecialchars(rawurlencode($executionId), ENT_QUOTES, 'UTF-8') ?>/kill"
-                                          onsubmit="return confirm('<?= htmlspecialchars($t('cron_kill_confirm'), ENT_QUOTES, 'UTF-8') ?>')">
-                                        <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                                        <input type="hidden" name="_return" value="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>">
-                                        <button type="submit"
-                                                class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
-                                                       bg-red-50 hover:bg-red-100 text-red-700 border border-red-200
-                                                       transition focus:outline-none focus:ring-2 focus:ring-red-400">
-                                            <?= htmlspecialchars($t('cron_kill_running'), ENT_QUOTES, 'UTF-8') ?>
-                                        </button>
-                                    </form>
-                                <?php else: ?>
-                                    <span class="text-gray-300 dark:text-gray-600">—</span>
-                                <?php endif; ?>
-                            </td>
-                            <?php endif; ?>
-                        </tr>
-                    <?php endforeach; ?>
+                <tbody id="cm-history-tbody" class="divide-y divide-gray-100 dark:divide-gray-700">
+                    <?php include __DIR__ . '/_detail_history_rows.php'; ?>
                 </tbody>
             </table>
         </div>
@@ -895,16 +759,77 @@ document.addEventListener('keydown', function (e) {
 })();
 </script>
 
-<?php if ($hasRunning): ?>
 <script>
 (function () {
-    var countdown = 15;
-    var el = document.getElementById('cm-live-countdown');
-    var tick = setInterval(function () {
-        countdown--;
-        if (el) { el.textContent = countdown; }
-        if (countdown <= 0) { clearInterval(tick); location.reload(); }
-    }, 1000);
+    var JOB_ID      = <?= (int) $jobId ?>;
+    var AGENT_ID    = <?= $agentId ?>;
+    var INTERVAL_MS = 10000;
+    var STORE_KEY   = 'cm_autoreload_' + JOB_ID;
+
+    // Default: ON when a job is currently running, OFF otherwise.
+    var hasRunning  = <?= $hasRunning ? 'true' : 'false' ?>;
+    var stored      = sessionStorage.getItem(STORE_KEY);
+    var autoEnabled = stored !== null ? stored === 'true' : hasRunning;
+
+    var timer       = null;
+    var btnToggle   = document.getElementById('cm-reload-toggle');
+    var btnManual   = document.getElementById('cm-reload-manual');
+    var tbody       = document.getElementById('cm-history-tbody');
+    var iconPause   = document.getElementById('cm-icon-pause');
+    var iconPlay    = document.getElementById('cm-icon-play');
+
+    function applyIcon(enabled) {
+        if (!iconPause || !iconPlay) { return; }
+        iconPause.classList.toggle('hidden', !enabled);
+        iconPlay.classList.toggle('hidden', enabled);
+    }
+
+    function startPolling() {
+        if (timer) { return; }
+        timer = setInterval(doFetch, INTERVAL_MS);
+    }
+
+    function stopPolling() {
+        if (timer) { clearInterval(timer); timer = null; }
+    }
+
+    function setAuto(enabled) {
+        autoEnabled = enabled;
+        sessionStorage.setItem(STORE_KEY, enabled ? 'true' : 'false');
+        applyIcon(enabled);
+        if (enabled) { startPolling(); } else { stopPolling(); }
+    }
+
+    function doFetch() {
+        var url = window.location.pathname + '?_json=1'
+                + (AGENT_ID ? '&agent_id=' + AGENT_ID : '');
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) {
+                if (!r.ok) { throw new Error('http ' + r.status); }
+                return r.json();
+            })
+            .then(function (data) {
+                if (tbody && typeof data.rows_html === 'string') {
+                    tbody.innerHTML = data.rows_html;
+                }
+                hasRunning = !!data.has_running;
+                // Auto-stop once the job finishes (but respect a manual re-enable).
+                if (!hasRunning && autoEnabled) {
+                    setAuto(false);
+                }
+            })
+            .catch(function () { /* network error – retry on next tick */ });
+    }
+
+    if (btnToggle) {
+        btnToggle.addEventListener('click', function () { setAuto(!autoEnabled); });
+    }
+    if (btnManual) {
+        btnManual.addEventListener('click', function () { doFetch(); });
+    }
+
+    // Apply initial icon and start polling if appropriate.
+    applyIcon(autoEnabled);
+    if (autoEnabled) { startPolling(); }
 }());
 </script>
-<?php endif; ?>

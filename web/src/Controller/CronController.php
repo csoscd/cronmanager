@@ -406,6 +406,51 @@ class CronController extends BaseController
         $id    = (string) ($params['id'] ?? '');
         $agent = $this->agentClient();
 
+        // JSON mode: AJAX history refresh from the detail page
+        if ($this->isJsonRequest()) {
+            $csrfToken = SessionManager::getCsrfToken();
+            $isAdmin   = SessionManager::hasRole('admin');
+            SessionManager::writeClose();
+
+            try {
+                $results = $agent->getMultiple([
+                    'job'     => ['path' => '/crons/' . rawurlencode($id)],
+                    'history' => ['path' => '/history', 'query' => ['job_id' => $id, 'limit' => 20]],
+                ]);
+                $job     = $results['job'];
+                $history = $results['history']['data'] ?? [];
+            } catch (\RuntimeException $e) {
+                $this->logger->error('CronController::show (json): agent request failed', [
+                    'id'      => $id,
+                    'message' => $e->getMessage(),
+                ]);
+                $this->jsonResponse(['error' => 'agent_unavailable'], 503);
+                return;
+            }
+
+            $hasRunning = false;
+            foreach ($history as $_e) {
+                if (($_e['exit_code'] ?? 'x') === null && (string) ($_e['finished_at'] ?? '') === '') {
+                    $hasRunning = true;
+                    break;
+                }
+            }
+
+            $t          = $this->translator->t(...);
+            $csrf_token = $csrfToken;
+            $jobId      = $id;
+
+            ob_start();
+            include __DIR__ . '/../../templates/cron/_detail_history_rows.php';
+            $rowsHtml = (string) ob_get_clean();
+
+            $this->jsonResponse([
+                'has_running' => $hasRunning,
+                'rows_html'   => $rowsHtml,
+            ]);
+            return;
+        }
+
         try {
             // One parallel batch instead of two sequential roundtrips
             $results = $agent->getMultiple([

@@ -42,6 +42,7 @@ $tagsCount     = (int) ($stats['tagsCount']     ?? 0);
 $failedLast24h = (int) ($stats['failedLast24h'] ?? 0);
 $byUser        = (array) ($stats['byUser']      ?? []);
 $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
+$isOperator    = isset($isOperator) ? (bool) $isOperator : false;
 ?>
 
 <!-- ======================================================================
@@ -183,12 +184,16 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
                                 <?= htmlspecialchars($t('dashboard_output_preview'), ENT_QUOTES, 'UTF-8') ?>
                             </th>
                             <?php endif; ?>
+                            <?php if ($isOperator): ?>
+                            <th class="px-4 py-3"></th>
+                            <?php endif; ?>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                         <?php foreach ($recentFailures as $entry): ?>
                             <?php
-                                $jobId       = (string) ($entry['job_id']     ?? '');
+                                $jobId       = (string) ($entry['job_id']      ?? '');
+                                $executionId = (string) ($entry['execution_id'] ?? '');
                                 $descRaw     = (string) ($entry['job_description'] ?? $entry['description'] ?? '');
                                 $desc        = $descRaw !== '' ? $descRaw : "Job #{$jobId}";
                                 $user        = (string) ($entry['linux_user'] ?? '');
@@ -263,6 +268,24 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
                                         <span class="text-gray-300 dark:text-gray-600">—</span>
                                     <?php endif; ?>
                                 </td>
+                                <?php endif; ?>
+                                <?php if ($isOperator && $executionId !== ''): ?>
+                                <td class="px-4 py-3 text-sm whitespace-nowrap">
+                                    <form method="POST"
+                                          action="/execution/<?= htmlspecialchars(rawurlencode($executionId), ENT_QUOTES, 'UTF-8') ?>/acknowledge">
+                                        <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                        <input type="hidden" name="_return" value="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>">
+                                        <button type="submit"
+                                                class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
+                                                       bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600
+                                                       dark:text-gray-300 border border-gray-200 dark:border-gray-600
+                                                       transition focus:outline-none focus:ring-2 focus:ring-gray-400">
+                                            <?= htmlspecialchars($t('execution_acknowledge'), ENT_QUOTES, 'UTF-8') ?>
+                                        </button>
+                                    </form>
+                                </td>
+                                <?php elseif ($isOperator): ?>
+                                <td class="px-4 py-3"></td>
                                 <?php endif; ?>
                             </tr>
                         <?php endforeach; ?>

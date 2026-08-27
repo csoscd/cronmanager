@@ -166,6 +166,7 @@ class DashboardController extends BaseController
             'multiUser'           => count($byUser) > 1,
             'executionStats'      => $executionStats,
             'showExecutionStats'  => self::SHOW_EXECUTION_STATS,
+            'isOperator'          => SessionManager::hasRole('operator'),
         ], '/dashboard');
     }
 }

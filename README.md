@@ -45,9 +45,11 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Execution tracking** | Every job run is recorded: start time, end time, exit code, and captured stdout/stderr output |
 | **Execution limits** | Optional maximum runtime per job; alert and/or auto-kill when the limit is exceeded |
 | **Kill running execution** | Admins can terminate a running job mid-flight from the detail page (local: SIGTERM; SSH: remote kill) |
+| **Acknowledge failed executions** | Operators (and above) can mark a failed execution as acknowledged; acknowledged failures are suppressed from the dashboard error tile and badge counter. The action is reversible and fully audit-logged. Available from the job detail history table and the dashboard recent-failures tile — both via AJAX without a page reload |
 | **Singleton mode** | Flag a job so that new executions are silently skipped while a previous instance is still running |
 | **Job monitor** | Per-job statistics page with KPI cards (success rate, avg/min/max duration, alerts), an execution duration line chart, and a stacked bar chart – selectable time window from 1 hour to 1 year; period and target switching updates in-place via AJAX with auto-refresh for short windows |
 | **Dashboard** | At-a-glance view of total jobs, active/inactive counts, recent failures, and execution statistics; KPI cards refresh every 60 s via AJAX |
+| **Job actions menu** | Each row in the job list has a ⋮ dropdown menu with _Open_, _Edit_ (admin), _Copy_ (admin), and _Delete_ (admin); the delete action shows a confirmation dialog before proceeding |
 | **Bulk operations** | Select multiple jobs on the list page to activate, deactivate, delete, or re-tag them in a single action; running executions block bulk delete with a clear error message |
 | **Timeline** | Filterable, paginated history of all executions across all jobs |
 | **Swimlane** | Visual schedule overview: planned fire times per job across a time-of-day axis, filterable by hour range, day of week, tag, and target |

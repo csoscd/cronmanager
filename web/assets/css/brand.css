@@ -40,16 +40,18 @@
 ══════════════════════════════════════════════════════════════════════════ */
 :root,
 .theme-dark {
-    --cm-bg-deep:      #080812;
-    --cm-bg-dark:      #0d0d1f;
-    --cm-bg-card:      #12122a;
-    --cm-bg-elevated:  #17173a;
-    --cm-border:       #1e1e40;
+    --cm-bg-deep:      #08091a;
+    --cm-bg-dark:      #0e0f26;
+    --cm-bg-card:      #131428;
+    --cm-bg-elevated:  #161832;
+    --cm-border:       #1f2148;
     --cm-border-focus: #818cf8;
 
-    --cm-text:   #f0f0ff;
-    --cm-muted:  #8888bb;
-    --cm-faint:  #44446a;
+    --cm-text:       #f0f0ff;
+    --cm-muted:      #b4b4e0;   /* war #8888bb – 2,2:1 zu dunkel */
+    --cm-faint:      #9898c8;   /* war #44446a – 2,2:1, WCAG-Verstoß */
+    --cm-text-muted: #b4b4e0;   /* Alias für Template-Inline-Styles */
+    --cm-input-bg:   #0e0f26;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -64,9 +66,11 @@
         --cm-border:       #ddddf0;
         --cm-border-focus: #818cf8;
 
-        --cm-text:  #1a1a2e;
-        --cm-muted: #5a5a80;
-        --cm-faint: #9090b8;
+        --cm-text:       #1a1a2e;
+        --cm-muted:      #5a5a80;
+        --cm-faint:      #9090b8;
+        --cm-text-muted: #5a5a80;
+        --cm-input-bg:   #ffffff;
     }
 }
 
@@ -81,9 +85,11 @@
     --cm-border:       #ddddf0;
     --cm-border-focus: #818cf8;
 
-    --cm-text:  #1a1a2e;
-    --cm-muted: #5a5a80;
-    --cm-faint: #9090b8;
+    --cm-text:       #1a1a2e;
+    --cm-muted:      #5a5a80;
+    --cm-faint:      #9090b8;
+    --cm-text-muted: #5a5a80;
+    --cm-input-bg:   #ffffff;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -135,6 +141,13 @@ body.bg-gray-100  { background-color: var(--cm-bg-deep) !important; }
 .bg-blue-100   { background-color: rgba(129,140,248,.12) !important; }
 .bg-blue-50    { background-color: rgba(129,140,248,.08) !important; }
 .bg-indigo-50  { background-color: rgba(129,140,248,.08) !important; }
+
+/* Fehlende Overrides – im Dark Mode sonst helle Tailwind-Defaults */
+.bg-gray-200   { background-color: var(--cm-bg-elevated)            !important; }
+.bg-green-50   { background-color: rgba(52,211,153,.08)             !important; }
+.bg-amber-50   { background-color: rgba(251,191,36,.08)             !important; }
+.bg-orange-100 { background-color: rgba(251,146,60,.08)             !important; }
+.bg-purple-50  { background-color: rgba(192,132,252,.08)            !important; }
 
 /* Primary-Button-Hintergrund */
 .bg-blue-600               { background: var(--cm-grad) !important; border: none !important; }

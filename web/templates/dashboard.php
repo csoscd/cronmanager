@@ -19,7 +19,7 @@ declare(strict_types=1);
 
 $agentId  = isset($agentId) ? (int) $agentId : 0;
 $agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
-$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&' : '';
+$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&amp;' : '';
 
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
@@ -42,6 +42,7 @@ $tagsCount     = (int) ($stats['tagsCount']     ?? 0);
 $failedLast24h = (int) ($stats['failedLast24h'] ?? 0);
 $byUser        = (array) ($stats['byUser']      ?? []);
 $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
+$isOperator    = isset($isOperator) ? (bool) $isOperator : false;
 ?>
 
 <!-- ======================================================================
@@ -183,12 +184,16 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
                                 <?= htmlspecialchars($t('dashboard_output_preview'), ENT_QUOTES, 'UTF-8') ?>
                             </th>
                             <?php endif; ?>
+                            <?php if ($isOperator): ?>
+                            <th class="px-4 py-3"></th>
+                            <?php endif; ?>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                    <tbody id="cm-dash-fail-tbody" class="divide-y divide-gray-100 dark:divide-gray-700">
                         <?php foreach ($recentFailures as $entry): ?>
                             <?php
-                                $jobId       = (string) ($entry['job_id']     ?? '');
+                                $jobId       = (string) ($entry['job_id']      ?? '');
+                                $executionId = (string) ($entry['execution_id'] ?? '');
                                 $descRaw     = (string) ($entry['job_description'] ?? $entry['description'] ?? '');
                                 $desc        = $descRaw !== '' ? $descRaw : "Job #{$jobId}";
                                 $user        = (string) ($entry['linux_user'] ?? '');
@@ -263,6 +268,20 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
                                         <span class="text-gray-300 dark:text-gray-600">—</span>
                                     <?php endif; ?>
                                 </td>
+                                <?php endif; ?>
+                                <?php if ($isOperator && $executionId !== ''): ?>
+                                <td class="px-4 py-3 text-sm whitespace-nowrap">
+                                    <button type="button"
+                                            data-ack-id="<?= htmlspecialchars($executionId, ENT_QUOTES, 'UTF-8') ?>"
+                                            class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
+                                                   bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600
+                                                   dark:text-gray-300 border border-gray-200 dark:border-gray-600
+                                                   transition focus:outline-none focus:ring-2 focus:ring-gray-400">
+                                        <?= htmlspecialchars($t('execution_acknowledge'), ENT_QUOTES, 'UTF-8') ?>
+                                    </button>
+                                </td>
+                                <?php elseif ($isOperator): ?>
+                                <td class="px-4 py-3"></td>
                                 <?php endif; ?>
                             </tr>
                         <?php endforeach; ?>
@@ -421,3 +440,65 @@ $multiUser     = isset($multiUser) ? (bool) $multiUser : true;
     cmPoll(refresh, 60000);
 }());
 </script>
+
+<?php if ($isOperator): ?>
+<script>
+// AJAX acknowledge via event delegation on the recent-failures tbody.
+// On success the row is removed immediately; badge counter is decremented.
+(function () {
+    'use strict';
+    var CSRF  = <?= json_encode($csrf_token ?? '') ?>;
+    var tbody = document.getElementById('cm-dash-fail-tbody');
+    if (!tbody) { return; }
+
+    tbody.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-ack-id]');
+        if (!btn || btn.disabled) { return; }
+
+        var id = btn.dataset.ackId;
+        if (!id) { return; }
+
+        btn.disabled = true;
+
+        var url  = '/execution/' + encodeURIComponent(id) + '/acknowledge?_json=1';
+        var body = new URLSearchParams({ _csrf: CSRF });
+
+        fetch(url, {
+            method:      'POST',
+            headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body:        body.toString(),
+            credentials: 'same-origin',
+        })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (data) {
+            if (!data.success) { btn.disabled = false; return; }
+
+            // Remove the row from the DOM.
+            var row = btn.closest('tr');
+            if (row) { row.remove(); }
+
+            // Decrement the 24h-failure badge.
+            var countEl = document.getElementById('cm-dash-fail-count');
+            var badge   = document.getElementById('cm-dash-fail-badge');
+            if (countEl) {
+                var n = Math.max(0, parseInt(countEl.textContent, 10) - 1);
+                countEl.textContent = String(n);
+                if (badge) { badge.classList.toggle('hidden', n === 0); }
+            }
+
+            // If the tbody is now empty, show the "no results" message.
+            if (tbody.querySelectorAll('tr').length === 0) {
+                var wrap = tbody.closest('.overflow-x-auto');
+                if (wrap) {
+                    wrap.innerHTML = '<div class="px-6 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">'
+                        + <?= json_encode($t('no_results')) ?> + '</div>';
+                }
+            }
+        })
+        .catch(function () {
+            btn.disabled = false;
+        });
+    });
+}());
+</script>
+<?php endif; ?>

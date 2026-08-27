@@ -347,6 +347,8 @@ final class HistoryEndpoint
                 el.during_maintenance,
                 el.retry_attempt,
                 el.retry_root_execution_id,
+                el.acknowledged_at,
+                el.acknowledged_by_user_id,
                 TIMESTAMPDIFF(SECOND, el.started_at, el.finished_at) AS duration_seconds
             FROM (
                 SELECT el.id
@@ -416,7 +418,9 @@ final class HistoryEndpoint
             'retry_root_execution_id'  => isset($row['retry_root_execution_id']) && $row['retry_root_execution_id'] !== null
                 ? (int) $row['retry_root_execution_id']
                 : null,
-            'duration_seconds'   => isset($row['duration_seconds']) ? (int) $row['duration_seconds'] : null,
+            'duration_seconds'         => isset($row['duration_seconds']) ? (int) $row['duration_seconds'] : null,
+            'acknowledged_at'          => isset($row['acknowledged_at']) ? (string) $row['acknowledged_at'] : null,
+            'acknowledged_by_user_id'  => isset($row['acknowledged_by_user_id']) ? (int) $row['acknowledged_by_user_id'] : null,
         ];
     }
 

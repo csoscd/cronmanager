@@ -139,6 +139,8 @@ CREATE TABLE IF NOT EXISTS execution_log (
     finished_at DATETIME                            COMMENT 'Timestamp when the job finished (NULL if still running)',
     exit_code                INT                     COMMENT 'Process exit code (0 = success)',
     output                   TEXT                    COMMENT 'Combined stdout/stderr output',
+    acknowledged_at          DATETIME     NULL        COMMENT 'When the failure was acknowledged; NULL = unacknowledged',
+    acknowledged_by_user_id  INT          NULL        COMMENT 'User ID who acknowledged the execution',
     target                   VARCHAR(255)            COMMENT '"local" or SSH host alias from ~/.ssh/config',
     pid                      INT UNSIGNED NULL       COMMENT 'OS PID of the running job process; NULL when not tracked',
     pid_file                 VARCHAR(255) NULL       COMMENT 'Path to PID file on remote host (SSH targets); NULL for local jobs',

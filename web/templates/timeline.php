@@ -54,7 +54,7 @@ $isDirect = isset($isDirect) && (bool) $isDirect;
 
 $agentId  = isset($agentId) ? (int) $agentId : 0;
 $agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
-$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&' : '';
+$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&amp;' : '';
 
 // Pagination helpers
 $prevOffset  = max(0, $offset - $limit);
@@ -429,6 +429,16 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect, $a
                             </td>
                             <td class="px-4 py-3 text-sm">
                                 <?= $statusBadge ?>
+                                <?php
+                                    $tlAckAt = isset($entry['acknowledged_at']) && $entry['acknowledged_at'] !== null;
+                                    if ($tlAckAt && $exitCode !== null && (int) $exitCode !== 0 && (int) $exitCode !== -4 && (int) $exitCode !== -5):
+                                ?>
+                                    <div class="mt-1">
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                                            <?= htmlspecialchars($t('execution_acknowledged_badge'), ENT_QUOTES, 'UTF-8') ?>
+                                        </span>
+                                    </div>
+                                <?php endif; ?>
                             </td>
                             <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-xs">
                                 <?php if ($output !== ''): ?>

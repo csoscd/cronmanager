@@ -39,6 +39,11 @@ foreach ($history as $idx => $entry):
     $duringMaintenance = !empty($entry['during_maintenance']);
     $retryAttempt      = (int) ($entry['retry_attempt'] ?? 0);
     $retryTotal        = (int) ($job['retry_count'] ?? 0);
+    $acknowledgedAt    = isset($entry['acknowledged_at']) && $entry['acknowledged_at'] !== null
+        ? (string) $entry['acknowledged_at']
+        : null;
+    $isAcknowledgeable = !$isRunning && $exitCode !== null
+        && !in_array((int) $exitCode, [0, -4, -5], true);
 
     // Exit code badge
     if ($isRunning) {
@@ -101,6 +106,13 @@ foreach ($history as $idx => $entry):
                 <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
                     <?= htmlspecialchars($t('cron_retry_badge', ['attempt' => $retryAttempt, 'total' => $retryTotal]), ENT_QUOTES, 'UTF-8') ?>
                 </span>
+            <?php endif; ?>
+            <?php if ($acknowledgedAt !== null): ?>
+                <div class="mt-1">
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                        <?= htmlspecialchars($t('execution_acknowledged_badge'), ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                </div>
             <?php endif; ?>
         </td>
         <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-sm">
@@ -177,6 +189,28 @@ foreach ($history as $idx => $entry):
                         <?= htmlspecialchars($t('cron_kill_running'), ENT_QUOTES, 'UTF-8') ?>
                     </button>
                 </form>
+            <?php elseif ($isAcknowledgeable && $executionId !== ''): ?>
+                <?php if ($acknowledgedAt === null): ?>
+                    <button type="button"
+                            data-ack-action="acknowledge"
+                            data-ack-id="<?= htmlspecialchars($executionId, ENT_QUOTES, 'UTF-8') ?>"
+                            class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
+                                   bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600
+                                   dark:text-gray-300 border border-gray-200 dark:border-gray-600
+                                   transition focus:outline-none focus:ring-2 focus:ring-gray-400">
+                        <?= htmlspecialchars($t('execution_acknowledge'), ENT_QUOTES, 'UTF-8') ?>
+                    </button>
+                <?php else: ?>
+                    <button type="button"
+                            data-ack-action="unacknowledge"
+                            data-ack-id="<?= htmlspecialchars($executionId, ENT_QUOTES, 'UTF-8') ?>"
+                            class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
+                                   bg-yellow-50 hover:bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30
+                                   dark:hover:bg-yellow-900/50 dark:text-yellow-300 border border-yellow-200
+                                   dark:border-yellow-700 transition focus:outline-none focus:ring-2 focus:ring-yellow-400">
+                        <?= htmlspecialchars($t('execution_unacknowledge'), ENT_QUOTES, 'UTF-8') ?>
+                    </button>
+                <?php endif; ?>
             <?php else: ?>
                 <span class="text-gray-300 dark:text-gray-600">—</span>
             <?php endif; ?>

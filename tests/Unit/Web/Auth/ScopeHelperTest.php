@@ -27,9 +27,9 @@ final class ScopeHelperTest extends TestCase
     // =========================================================================
 
     #[Test]
-    public function allScopesContainsNineEntries(): void
+    public function allScopesContainsTenEntries(): void
     {
-        $this->assertCount(9, ScopeHelper::ALL_SCOPES);
+        $this->assertCount(10, ScopeHelper::ALL_SCOPES);
     }
 
     #[Test]
@@ -45,6 +45,7 @@ final class ScopeHelperTest extends TestCase
             'settings:read',
             'settings:write',
             'audit:read',
+            'executions:acknowledge',
         ];
 
         foreach ($expected as $scope) {
@@ -170,6 +171,31 @@ final class ScopeHelperTest extends TestCase
     public function adminRoleGrantsAuditRead(): void
     {
         $this->assertContains('audit:read', ScopeHelper::allowedScopesForRole('admin'));
+    }
+
+    #[Test]
+    public function operatorProfileIncludesAcknowledgeScope(): void
+    {
+        $this->assertContains('executions:acknowledge', ScopeHelper::PROFILES['operator']);
+    }
+
+    #[Test]
+    public function viewRoleDoesNotGrantAcknowledgeScope(): void
+    {
+        $this->assertNotContains('executions:acknowledge', ScopeHelper::allowedScopesForRole('view'));
+    }
+
+    #[Test]
+    public function adminRoleGrantsAcknowledgeScope(): void
+    {
+        $this->assertContains('executions:acknowledge', ScopeHelper::allowedScopesForRole('admin'));
+    }
+
+    #[Test]
+    public function acknowledgeScopeHasCorrectBadgeColor(): void
+    {
+        $color = ScopeHelper::badgeColor(ScopeHelper::SCOPE_EXECUTIONS_ACKNOWLEDGE);
+        $this->assertNotEmpty($color);
     }
 
     #[Test]

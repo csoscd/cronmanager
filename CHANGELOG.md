@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [6.0.0] – branch: `feature/v6.0.0`
+
+### Added
+
+- **Acknowledge failed executions (closes #121):** Operator-Users (und höher) können fehlgeschlagene Ausführungen in der Job-Detail-Ansicht und im Dashboard (Kachel „Aktuelle Fehler") als „Bestätigt" markieren oder die Bestätigung wieder aufheben. Bestätigte Fehler werden im Dashboard (Fehlerzähler, Fehler-Liste) unterdrückt und erscheinen in der Job-Liste sowie in der Timeline mit einem gedämpften „Bestätigt"-Badge. Die Aktion ist vollständig im Audit-Log protokolliert (`execution.acknowledged` / `execution.unacknowledged`). REST-API: `POST /api/v1/executions/{id}/acknowledge` und `DELETE /api/v1/executions/{id}/acknowledge` mit neuem Scope `executions:acknowledge`. DB-Migration `020_acknowledge.sql` fügt `acknowledged_at` und `acknowledged_by_user_id` zur `execution_log`-Tabelle hinzu. Auf der Job-Detail-Seite und im Dashboard erfolgen Bestätigen/Zurücknehmen per AJAX (kein Seitenneuladen): im Detail wird die History-Tabelle sofort aktualisiert, im Dashboard verschwindet die Zeile direkt und der Fehlerzähler wird dekrementiert.
+
+### Fixed
+
+- **Dashboard-Statistik: Bestätigte Fehler fälschlicherweise nicht mehr gezählt:** `StatsEndpoint` filterte `acknowledged_at IS NULL` aus den `failed_today`- und `failed_24h`-Zählern heraus. Bestätigte Ausführungen bleiben Fehler und werden weiterhin gezählt; nur die Anzeige-Liste (Kachel „Aktuelle Fehler") blendet sie aus.
+
+- **Kebab-Dropdown – Löschen-Button ohne Funktion:** Der `onclick`-Handler verwendete `json_encode($jobId)` für eine PHP-String-Variable, was `"3"` (mit echten Anführungszeichen) erzeugte und das HTML-Attribut zerbrach. Fix: `(int) $jobId` im Template.
+- **Kebab-Dropdown – Kopieren öffnet leeres Formular:** `$agParam` enthielt `&` als Trennzeichen vor `copy_from=`. Browser parsten `&copy` als HTML-Entity `&copy;` (©), wodurch `copy_from` nie in `$_GET` ankam und `$sourceJob = null` blieb. Fix: `&amp;` statt `&` in allen vier Templates, die `$agParam` definieren (`list.php`, `detail.php`, `dashboard.php`, `timeline.php`).
+- **Dark-Mode-Kontrast (closes #114):** Mehrere CSS-Custom-Properties in `brand.css` hatten im Dark Mode unzureichendes Kontrastverhältnis (WCAG-Verstoß):
+  - `--cm-faint: #44446a` → `#9898c8` (war 2,2:1 auf `--cm-bg-deep`; neu 7,1:1)
+  - `--cm-muted: #8888bb` → `#b4b4e0` (neu 9,5:1 auf Surface)
+- **Dark-Mode-Hintergründe – helle Tailwind-Klassen:** Fehlende `brand.css`-Overrides für `bg-gray-200`, `bg-green-50`, `bg-amber-50`, `bg-orange-100` und `bg-purple-50` verursachten im Dark Mode helle Inseln mit kontrastarmem Text. Alle fünf Klassen werden nun mit semitransparenten dunklen Varianten überschrieben (analog zu den vorhandenen `bg-green-100`, `bg-red-100` etc.).
+- **Undefinierte CSS-Variablen:** `--cm-text-muted` (50+ Template-Stellen) und `--cm-input-bg` (Formulare, Agent-Select) waren in `brand.css` nicht definiert und führten zu unkontrolliertem Farb-Fallback. Beide Variablen sind nun in allen drei Modus-Blöcken (Dark, Light-Media-Query, Light-Class) hinterlegt.
+
+- **Benutzeranlage – Agent-Auswahl ohne URL-Anzeige:** Die Checkbox-Liste im Formular „Benutzer anlegen/bearbeiten" zeigte nur den Agent-Namen ohne URL. Optik und Markup wurden an das API-Key-Formular angeglichen (URL in kleinerem gedämpftem Text, einheitliche Checkbox-Größe `w-4 h-4`, Gap `gap-3`).
+
+### Added
+
+- **Kebab-Dropdown in der Job-Liste (closes #115):** Der „Öffnen"-Button in der Aktionsspalte wird durch ein ⋮-Dropdown-Menü ersetzt. Einträge: _Öffnen_ (alle Nutzer), _Bearbeiten_ (Admin, verlinkt auf `/crons/{id}/edit`), _Kopieren_ (Admin, verlinkt auf `/crons/new?copy_from=…`), _Löschen_ (Admin, rot, öffnet Bestätigungsdialog). Das Dropdown positioniert sich via `position:fixed`, damit es nicht durch `overflow:hidden` des Tabellen-Containers abgeschnitten wird. Das Einzellöschen nutzt das vorhandene Bulk-Formular mit einer temporär injizierten ID; die Bulk-Selektion bleibt dabei unberührt.
+
+### Changed
+
+- **Dark-Mode-Hintergrundfarben:** Leichte Anpassung der Basis-Tokens für konsistentere Blau-Tendenz:
+  - `--cm-bg-deep`: `#080812` → `#08091a`
+  - `--cm-bg-dark`: `#0d0d1f` → `#0e0f26`
+  - `--cm-bg-card`: `#12122a` → `#131428`
+  - `--cm-bg-elevated`: `#17173a` → `#161832`
+  - `--cm-border`: `#1e1e40` → `#1f2148`
+
+---
+
 ## [5.3.0] – branch: `feature/detail-reload-controls`
 
 ### Added

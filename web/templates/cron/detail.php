@@ -19,7 +19,7 @@ declare(strict_types=1);
 /** @var int $agentId */
 $agentId  = isset($agentId) ? (int) $agentId : 0;
 $agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
-$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&' : '';
+$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&amp;' : '';
 
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);
@@ -58,9 +58,11 @@ $runInMaintenance  = !empty($job['run_in_maintenance']);
 </div>
 
 <?php
-// Flash messages from kill action
+// Flash messages from kill and acknowledge actions
 $killNoticeKey = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_notice');
 $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_error');
+$ackNoticeKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_ack_notice');
+$ackErrorKey   = \Cronmanager\Web\Session\SessionManager::flash('_flash_ack_error');
 ?>
 <?php if ($killNoticeKey !== null): ?>
 <div class="mb-4 flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300">
@@ -76,6 +78,22 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
     </svg>
     <?= htmlspecialchars($t($killErrorKey), ENT_QUOTES, 'UTF-8') ?>
+</div>
+<?php endif; ?>
+<?php if ($ackNoticeKey !== null): ?>
+<div class="mb-4 flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300">
+    <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+    </svg>
+    <?= htmlspecialchars($t($ackNoticeKey), ENT_QUOTES, 'UTF-8') ?>
+</div>
+<?php endif; ?>
+<?php if ($ackErrorKey !== null): ?>
+<div class="mb-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+    <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <?= htmlspecialchars($t($ackErrorKey), ENT_QUOTES, 'UTF-8') ?>
 </div>
 <?php endif; ?>
 
@@ -831,5 +849,51 @@ document.addEventListener('keydown', function (e) {
     // Apply initial icon and start polling if appropriate.
     applyIcon(autoEnabled);
     if (autoEnabled) { startPolling(); }
+
+    // Allow external triggers (e.g. acknowledge AJAX) to reload the history rows.
+    document.addEventListener('cm:reload-detail', doFetch);
+}());
+</script>
+
+<script>
+// AJAX acknowledge / unacknowledge via event delegation on the history tbody.
+// Buttons in _detail_history_rows.php carry data-ack-action and data-ack-id.
+(function () {
+    'use strict';
+    var CSRF  = <?= json_encode($csrf_token ?? '') ?>;
+    var tbody = document.getElementById('cm-history-tbody');
+    if (!tbody) { return; }
+
+    tbody.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-ack-action]');
+        if (!btn || btn.disabled) { return; }
+
+        var action = btn.dataset.ackAction;   // 'acknowledge' | 'unacknowledge'
+        var id     = btn.dataset.ackId;
+        if (!id) { return; }
+
+        btn.disabled = true;
+
+        var url  = '/execution/' + encodeURIComponent(id) + '/' + action + '?_json=1';
+        var body = new URLSearchParams({ _csrf: CSRF });
+
+        fetch(url, {
+            method:      'POST',
+            headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body:        body.toString(),
+            credentials: 'same-origin',
+        })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (data) {
+            if (data.success) {
+                document.dispatchEvent(new CustomEvent('cm:reload-detail'));
+            } else {
+                btn.disabled = false;
+            }
+        })
+        .catch(function () {
+            btn.disabled = false;
+        });
+    });
 }());
 </script>

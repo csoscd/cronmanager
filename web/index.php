@@ -210,7 +210,9 @@ try {
         $apiRouter->addPublicRoute('DELETE', '/api/v1/jobs/{id}',              [$jobsApi, 'destroy']);
         // Jobs – execute
         $apiRouter->addPublicRoute('POST',   '/api/v1/jobs/{id}/execute',      [$jobsApi, 'execute']);
-        $apiRouter->addPublicRoute('POST',   '/api/v1/executions/{id}/kill',   [$jobsApi, 'kill']);
+        $apiRouter->addPublicRoute('POST',   '/api/v1/executions/{id}/kill',          [$jobsApi, 'kill']);
+        $apiRouter->addPublicRoute('POST',   '/api/v1/executions/{id}/acknowledge',   [$jobsApi, 'acknowledge']);
+        $apiRouter->addPublicRoute('DELETE', '/api/v1/executions/{id}/acknowledge',   [$jobsApi, 'unacknowledge']);
 
         // Export
         $apiRouter->addPublicRoute('GET',    '/api/v1/export',                 [$exportApi, 'download']);
@@ -340,7 +342,9 @@ try {
     $router->addProtectedRoute('POST', '/crons/{id}/edit',     [$cronCtrl, 'update'],  'admin');
     $router->addProtectedRoute('POST', '/crons/{id}/delete',   [$cronCtrl, 'destroy'],    'admin');
     $router->addProtectedRoute('POST', '/crons/{id}/execute',  [$cronCtrl, 'executeNow'],    'admin');
-    $router->addProtectedRoute('POST', '/execution/{id}/kill', [$cronCtrl, 'killExecution'], 'admin');
+    $router->addProtectedRoute('POST', '/execution/{id}/kill',           [$cronCtrl, 'killExecution'],          'admin');
+    $router->addProtectedRoute('POST', '/execution/{id}/acknowledge',    [$cronCtrl, 'acknowledgeExecution'],   'operator');
+    $router->addProtectedRoute('POST', '/execution/{id}/unacknowledge',  [$cronCtrl, 'unacknowledgeExecution'], 'operator');
 
     $router->addProtectedRoute('GET',  '/timeline',            [$timelineCtrl,  'index']);
     $router->addProtectedRoute('GET',  '/swimlane',            [$swimlaneCtrl,  'index']);

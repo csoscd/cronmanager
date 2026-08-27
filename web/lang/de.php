@@ -171,6 +171,7 @@ return [
     'cron_copy_notice'        => 'Felder aus einem bestehenden Job vorausgefüllt. Anpassen und speichern, um einen neuen eigenständigen Job zu erstellen.',
     'cron_delete_confirm'     => 'Möchten Sie diesen Job wirklich löschen?',
     'cron_open'                    => 'Öffnen',
+    'cron_actions'                 => 'Aktionen',
     'cron_run_now'                 => 'Jetzt ausführen',
     'cron_run_confirm'             => 'Möchten Sie diesen Job jetzt ausführen? Er wird für die nächste Minute eingeplant.',
     'cron_run_select_targets'      => 'Wählen Sie die Ziele, auf denen dieser Job sofort ausgeführt werden soll.',
@@ -217,6 +218,11 @@ return [
     'cron_retry_badge'              => 'Versuch {attempt}/{total}',
     'cron_singleton'                => 'Singleton',
     'cron_singleton_hint'           => 'Neue Ausführungen überspringen, solange eine vorherige Instanz noch läuft.',
+    'execution_acknowledge'         => 'Bestätigen',
+    'execution_unacknowledge'       => 'Bestätigung aufheben',
+    'execution_acknowledged_badge'  => 'Bestätigt',
+    'execution_acknowledged'        => 'Ausführung als bestätigt markiert.',
+    'execution_unacknowledged'      => 'Bestätigung der Ausführung aufgehoben.',
     'cron_kill_running'             => 'Job beenden',
     'cron_kill_confirm'             => 'Möchten Sie diese laufende Ausführung wirklich beenden?',
     'cron_kill_success'             => 'Beendigungssignal gesendet.',
@@ -743,7 +749,8 @@ return [
     'scope_maintenance_write'  => 'Wartungsfenster schreiben',
     'scope_settings_read'      => 'Einstellungen lesen',
     'scope_settings_write'     => 'Einstellungen schreiben',
-    'scope_audit_read'         => 'Audit-Log lesen',
+    'scope_audit_read'                => 'Audit-Log lesen',
+    'scope_executions_acknowledge'    => 'Ausführungen bestätigen',
 
     // -------------------------------------------------------------------------
     // Performance Monitor

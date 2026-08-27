@@ -293,13 +293,17 @@ try {
     $execProgress = new \Cronmanager\Agent\Endpoints\ExecutionProgressEndpoint($pdo, $logger);
     $execUpdatePid = new \Cronmanager\Agent\Endpoints\ExecutionUpdatePidEndpoint($pdo, $logger);
     $execKill      = new \Cronmanager\Agent\Endpoints\ExecutionKillEndpoint($pdo, $logger, $auditLogger);
+    $execAcknowledge = new \Cronmanager\Agent\Endpoints\AcknowledgeEndpoint($pdo, $logger, $auditLogger, $auditUserId);
 
-    $router->addRoute('POST', '/execution/start',          [$execStart,    'handle']);
-    $router->addRoute('POST', '/execution/finish',         [$execFinish,   'handle']);
+    $router->addRoute('POST', '/execution/start',              [$execStart,       'handle']);
+    $router->addRoute('POST', '/execution/finish',             [$execFinish,      'handle']);
     // /execution/{id}/* routes – more specific than /execution/start|finish
-    $router->addRoute('POST', '/execution/{id}/progress',  [$execProgress, 'handle']);
-    $router->addRoute('POST', '/execution/{id}/pid',       [$execUpdatePid, 'handle']);
-    $router->addRoute('POST', '/execution/{id}/kill',      [$execKill,      'handle']);
+    $router->addRoute('POST',   '/execution/{id}/progress',   [$execProgress,    'handle']);
+    $router->addRoute('POST',   '/execution/{id}/pid',        [$execUpdatePid,   'handle']);
+    $router->addRoute('POST',   '/execution/{id}/kill',       [$execKill,        'handle']);
+    // Acknowledge routes must be registered before the generic /execution/{id}
+    $router->addRoute('POST',   '/execution/{id}/acknowledge', [$execAcknowledge, 'handle']);
+    $router->addRoute('DELETE', '/execution/{id}/acknowledge', [$execAcknowledge, 'handle']);
 
     // -- Tags -----------------------------------------------------------------
 

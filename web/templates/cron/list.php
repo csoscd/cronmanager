@@ -53,7 +53,7 @@ $showTo   = $pageSize > 0 ? min($currentPage * $pageSize, $totalJobs) : $totalJo
  */
 $agentId = isset($agentId) ? (int) $agentId : 0;
 $agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
-$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&' : '';
+$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&amp;' : '';
 
 $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filterTarget, $filterSearch, $filterResult, $filterActive, $pageSize, $agentId): string {
     $params = array_filter([
@@ -482,6 +482,7 @@ $allTagNames = array_map(
                             $lastRun       = (string) ($job['last_run'] ?? '');
                             $exitCode      = isset($job['last_exit_code']) ? (int) $job['last_exit_code'] : null;
                             $isRunning     = !empty($job['is_running']);
+                            $lastAckAt     = isset($job['last_acknowledged_at']) ? (string) $job['last_acknowledged_at'] : null;
                             $limitSeconds  = isset($job['execution_limit_seconds']) && $job['execution_limit_seconds'] !== null
                                 ? (int) $job['execution_limit_seconds'] : null;
 
@@ -629,16 +630,55 @@ $allTagNames = array_map(
                                         </span>
                                     <?php endif; ?>
                                 </div>
+                                <?php if ($lastAckAt !== null && $exitCode !== null && $exitCode !== 0 && $exitCode !== -4 && $exitCode !== -5): ?>
+                                    <div class="mt-1">
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                                            <?= htmlspecialchars($t('execution_acknowledged_badge'), ENT_QUOTES, 'UTF-8') ?>
+                                        </span>
+                                    </div>
+                                <?php endif; ?>
                             </td>
 
-                            <!-- Open button (all users) -->
-                            <td class="px-4 py-3 whitespace-nowrap">
+                            <!-- Kebab action dropdown -->
+                            <td class="px-4 py-3 whitespace-nowrap text-right">
                                 <?php if ($jobId !== ''): ?>
-                                    <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
-                                       class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold transition"
-                                       style="background:rgba(59,130,246,.1);color:var(--cm-primary);border:1px solid rgba(59,130,246,.2)">
-                                        <?= htmlspecialchars($t('cron_open'), ENT_QUOTES, 'UTF-8') ?>
-                                    </a>
+                                <div class="cm-kebab-wrap relative inline-block">
+                                    <button type="button"
+                                            class="cm-kebab-btn inline-flex items-center justify-center w-8 h-8 rounded-md
+                                                   text-gray-400 hover:text-gray-700 dark:hover:text-gray-200
+                                                   hover:bg-gray-100 dark:hover:bg-gray-700 transition
+                                                   focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            aria-label="<?= htmlspecialchars($t('cron_actions'), ENT_QUOTES, 'UTF-8') ?>">
+                                        &#8942;
+                                    </button>
+                                    <div class="cm-kebab-menu hidden bg-white dark:bg-gray-800
+                                                border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-50"
+                                         style="min-width:9rem">
+                                        <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
+                                           class="flex items-center px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200
+                                                  hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                                            <?= htmlspecialchars($t('cron_open'), ENT_QUOTES, 'UTF-8') ?>
+                                        </a>
+                                        <?php if ($isAdmin): ?>
+                                        <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/edit<?= $agSuffix ?>"
+                                           class="flex items-center px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200
+                                                  hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                                            <?= htmlspecialchars($t('cron_edit'), ENT_QUOTES, 'UTF-8') ?>
+                                        </a>
+                                        <a href="/crons/new?<?= $agParam ?>copy_from=<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>"
+                                           class="flex items-center px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200
+                                                  hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                                            <?= htmlspecialchars($t('cron_copy'), ENT_QUOTES, 'UTF-8') ?>
+                                        </a>
+                                        <button type="button"
+                                                onclick="cmKebabDelete(<?= (int) $jobId ?>)"
+                                                class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 dark:text-red-400
+                                                       hover:bg-red-100 dark:hover:bg-red-900 text-left transition">
+                                            <?= htmlspecialchars($t('cron_delete'), ENT_QUOTES, 'UTF-8') ?>
+                                        </button>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
                                 <?php endif; ?>
                             </td>
 
@@ -760,10 +800,12 @@ $allTagNames = array_map(
     var selectAll  = document.getElementById('cm-select-all');
     var modal      = document.getElementById('cm-bulk-modal');
     var modalText  = document.getElementById('cm-bulk-modal-text');
-    var pendingAction = null;
+    var pendingAction  = null;
+    var singleDeleteId = null;
 
     var LABEL_SELECTED     = <?= json_encode($t('bulk_selected')) ?>;
     var LABEL_CONFIRM_DEL  = <?= json_encode($t('bulk_confirm_delete')) ?>;
+    var LABEL_SINGLE_DEL   = <?= json_encode($t('cron_delete_confirm')) ?>;
     var LABEL_NO_TAG       = <?= json_encode($t('bulk_error_no_tag')) ?>;
 
     function updateBar() {
@@ -846,12 +888,27 @@ $allTagNames = array_map(
 
     window.cmBulkModalConfirm = function () {
         modal.classList.add('hidden');
+        if (singleDeleteId !== null) {
+            var sid = singleDeleteId;
+            singleDeleteId = null;
+            actionEl.value = 'delete';
+            tagValEl.value = '';
+            idsEl.innerHTML = '';
+            var inp = document.createElement('input');
+            inp.type  = 'hidden';
+            inp.name  = 'ids[]';
+            inp.value = sid;
+            idsEl.appendChild(inp);
+            document.getElementById('cm-bulk-form').submit();
+            return;
+        }
         if (pendingAction) { populateForm(pendingAction, ''); }
     };
 
     window.cmBulkModalCancel = function () {
         modal.classList.add('hidden');
-        pendingAction = null;
+        pendingAction  = null;
+        singleDeleteId = null;
     };
 
     window.cmBulkDeselectAll = function () {
@@ -882,8 +939,60 @@ $allTagNames = array_map(
             cmBulkModalCancel();
         }
     });
+
+    window.cmKebabDelete = function (jobId) {
+        if (window.cmKebabCloseAll) { window.cmKebabCloseAll(); }
+        singleDeleteId = jobId;
+        modalText.textContent = LABEL_SINGLE_DEL;
+        modal.classList.remove('hidden');
+    };
 }());
 <?php endif; ?>
+
+/**
+ * Kebab dropdown: open / close behaviour.
+ * Uses position:fixed so the menu is never clipped by the table's overflow:hidden.
+ */
+(function () {
+    'use strict';
+
+    function closeAll() {
+        document.querySelectorAll('.cm-kebab-menu').forEach(function (m) {
+            m.classList.add('hidden');
+            m.style.top      = '';
+            m.style.left     = '';
+            m.style.right    = '';
+            m.style.position = '';
+        });
+    }
+    window.cmKebabCloseAll = closeAll;
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest && e.target.closest('.cm-kebab-btn');
+        if (btn) {
+            var menu = btn.nextElementSibling;
+            var isOpen = !menu.classList.contains('hidden');
+            closeAll();
+            if (!isOpen) {
+                var rect = btn.getBoundingClientRect();
+                menu.style.position = 'fixed';
+                menu.style.top      = (rect.bottom + 4) + 'px';
+                menu.style.left     = 'auto';
+                menu.style.right    = (window.innerWidth - rect.right) + 'px';
+                menu.classList.remove('hidden');
+            }
+            e.stopPropagation();
+            return;
+        }
+        if (e.target.closest && !e.target.closest('.cm-kebab-menu')) {
+            closeAll();
+        }
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { closeAll(); }
+    });
+}());
 
 /**
  * Async maintenance-conflict severity check for per-target badges.

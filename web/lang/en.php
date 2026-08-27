@@ -171,6 +171,7 @@ return [
     'cron_copy_notice'        => 'Pre-filled from an existing job. Adjust as needed and save to create a new independent job.',
     'cron_delete_confirm'     => 'Are you sure you want to delete this job?',
     'cron_open'               => 'Open',
+    'cron_actions'            => 'Actions',
     'cron_run_now'                => 'Run Now',
     'cron_run_confirm'            => 'Are you sure you want to execute this job now? It will be scheduled for the next minute.',
     'cron_run_select_targets'     => 'Select the targets on which this job should be executed immediately.',
@@ -217,6 +218,11 @@ return [
     'cron_retry_badge'              => 'Retry {attempt}/{total}',
     'cron_singleton'                => 'Singleton',
     'cron_singleton_hint'           => 'Skip new executions while a previous instance is still running.',
+    'execution_acknowledge'         => 'Acknowledge',
+    'execution_unacknowledge'       => 'Unacknowledge',
+    'execution_acknowledged_badge'  => 'Acknowledged',
+    'execution_acknowledged'        => 'Execution marked as acknowledged.',
+    'execution_unacknowledged'      => 'Acknowledgement cleared.',
     'cron_kill_running'             => 'Kill Job',
     'cron_kill_confirm'             => 'Are you sure you want to kill this running execution?',
     'cron_kill_success'             => 'Kill signal sent.',
@@ -743,7 +749,8 @@ return [
     'scope_maintenance_write'  => 'Write maintenance windows',
     'scope_settings_read'      => 'Read settings',
     'scope_settings_write'     => 'Write settings',
-    'scope_audit_read'         => 'Read audit log',
+    'scope_audit_read'                => 'Read audit log',
+    'scope_executions_acknowledge'    => 'Acknowledge executions',
 
     // -------------------------------------------------------------------------
     // Performance Monitor

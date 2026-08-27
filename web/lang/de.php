@@ -171,6 +171,7 @@ return [
     'cron_copy_notice'        => 'Felder aus einem bestehenden Job vorausgefüllt. Anpassen und speichern, um einen neuen eigenständigen Job zu erstellen.',
     'cron_delete_confirm'     => 'Möchten Sie diesen Job wirklich löschen?',
     'cron_open'                    => 'Öffnen',
+    'cron_actions'                 => 'Aktionen',
     'cron_run_now'                 => 'Jetzt ausführen',
     'cron_run_confirm'             => 'Möchten Sie diesen Job jetzt ausführen? Er wird für die nächste Minute eingeplant.',
     'cron_run_select_targets'      => 'Wählen Sie die Ziele, auf denen dieser Job sofort ausgeführt werden soll.',

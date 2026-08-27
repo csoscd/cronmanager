@@ -171,6 +171,7 @@ return [
     'cron_copy_notice'        => 'Pre-filled from an existing job. Adjust as needed and save to create a new independent job.',
     'cron_delete_confirm'     => 'Are you sure you want to delete this job?',
     'cron_open'               => 'Open',
+    'cron_actions'            => 'Actions',
     'cron_run_now'                => 'Run Now',
     'cron_run_confirm'            => 'Are you sure you want to execute this job now? It will be scheduled for the next minute.',
     'cron_run_select_targets'     => 'Select the targets on which this job should be executed immediately.',

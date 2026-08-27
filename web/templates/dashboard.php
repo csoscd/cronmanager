@@ -19,7 +19,7 @@ declare(strict_types=1);
 
 $agentId  = isset($agentId) ? (int) $agentId : 0;
 $agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
-$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&' : '';
+$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&amp;' : '';
 
 /** @var \Cronmanager\Web\I18n\Translator $translator */
 $t = fn(string $k, array $r = []): string => $translator->t($k, $r);

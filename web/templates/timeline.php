@@ -54,7 +54,7 @@ $isDirect = isset($isDirect) && (bool) $isDirect;
 
 $agentId  = isset($agentId) ? (int) $agentId : 0;
 $agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
-$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&' : '';
+$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&amp;' : '';
 
 // Pagination helpers
 $prevOffset  = max(0, $offset - $limit);

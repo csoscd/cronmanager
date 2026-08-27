@@ -53,7 +53,7 @@ $showTo   = $pageSize > 0 ? min($currentPage * $pageSize, $totalJobs) : $totalJo
  */
 $agentId = isset($agentId) ? (int) $agentId : 0;
 $agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
-$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&' : '';
+$agParam  = $agentId > 0 ? 'agent_id=' . $agentId . '&amp;' : '';
 
 $pageUrl = static function (int $targetPage) use ($filterTag, $filterUser, $filterTarget, $filterSearch, $filterResult, $filterActive, $pageSize, $agentId): string {
     $params = array_filter([
@@ -652,13 +652,18 @@ $allTagNames = array_map(
                                             <?= htmlspecialchars($t('cron_open'), ENT_QUOTES, 'UTF-8') ?>
                                         </a>
                                         <?php if ($isAdmin): ?>
+                                        <a href="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>/edit<?= $agSuffix ?>"
+                                           class="flex items-center px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200
+                                                  hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                                            <?= htmlspecialchars($t('cron_edit'), ENT_QUOTES, 'UTF-8') ?>
+                                        </a>
                                         <a href="/crons/new?<?= $agParam ?>copy_from=<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>"
                                            class="flex items-center px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200
                                                   hover:bg-gray-50 dark:hover:bg-gray-700 transition">
                                             <?= htmlspecialchars($t('cron_copy'), ENT_QUOTES, 'UTF-8') ?>
                                         </a>
                                         <button type="button"
-                                                onclick="cmKebabDelete(<?= json_encode($jobId, JSON_HEX_QUOT | JSON_HEX_TAG) ?>)"
+                                                onclick="cmKebabDelete(<?= (int) $jobId ?>)"
                                                 class="flex items-center w-full px-4 py-2.5 text-sm text-red-600 dark:text-red-400
                                                        hover:bg-red-100 dark:hover:bg-red-900 text-left transition">
                                             <?= htmlspecialchars($t('cron_delete'), ENT_QUOTES, 'UTF-8') ?>

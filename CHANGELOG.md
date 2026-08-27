@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Kebab-Dropdown – Löschen-Button ohne Funktion:** Der `onclick`-Handler verwendete `json_encode($jobId)` für eine PHP-String-Variable, was `"3"` (mit echten Anführungszeichen) erzeugte und das HTML-Attribut zerbrach. Fix: `(int) $jobId` im Template.
+- **Kebab-Dropdown – Kopieren öffnet leeres Formular:** `$agParam` enthielt `&` als Trennzeichen vor `copy_from=`. Browser parsten `&copy` als HTML-Entity `&copy;` (©), wodurch `copy_from` nie in `$_GET` ankam und `$sourceJob = null` blieb. Fix: `&amp;` statt `&` in allen vier Templates, die `$agParam` definieren (`list.php`, `detail.php`, `dashboard.php`, `timeline.php`).
 - **Dark-Mode-Kontrast (closes #114):** Mehrere CSS-Custom-Properties in `brand.css` hatten im Dark Mode unzureichendes Kontrastverhältnis (WCAG-Verstoß):
   - `--cm-faint: #44446a` → `#9898c8` (war 2,2:1 auf `--cm-bg-deep`; neu 7,1:1)
   - `--cm-muted: #8888bb` → `#b4b4e0` (neu 9,5:1 auf Surface)
@@ -18,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Kebab-Dropdown in der Job-Liste (closes #115):** Der „Öffnen"-Button in der Aktionsspalte wird durch ein ⋮-Dropdown-Menü ersetzt. Einträge: _Öffnen_ (alle Nutzer), _Kopieren_ (Admin, verlinkt auf `/crons/new?copy_from=…`), _Löschen_ (Admin, rot, öffnet Bestätigungsdialog). Das Dropdown positioniert sich via `position:fixed`, damit es nicht durch `overflow:hidden` des Tabellen-Containers abgeschnitten wird. Das Einzellöschen nutzt das vorhandene Bulk-Formular mit einer temporär injizierten ID; die Bulk-Selektion bleibt dabei unberührt.
+- **Kebab-Dropdown in der Job-Liste (closes #115):** Der „Öffnen"-Button in der Aktionsspalte wird durch ein ⋮-Dropdown-Menü ersetzt. Einträge: _Öffnen_ (alle Nutzer), _Bearbeiten_ (Admin, verlinkt auf `/crons/{id}/edit`), _Kopieren_ (Admin, verlinkt auf `/crons/new?copy_from=…`), _Löschen_ (Admin, rot, öffnet Bestätigungsdialog). Das Dropdown positioniert sich via `position:fixed`, damit es nicht durch `overflow:hidden` des Tabellen-Containers abgeschnitten wird. Das Einzellöschen nutzt das vorhandene Bulk-Formular mit einer temporär injizierten ID; die Bulk-Selektion bleibt dabei unberührt.
 
 ### Changed
 

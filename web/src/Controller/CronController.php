@@ -1114,23 +1114,34 @@ class CronController extends BaseController
         try {
             if ($isAcknowledge) {
                 $this->agentClient()->post("/execution/{$executionId}/acknowledge", []);
-                SessionManager::set('_flash_ack_notice', 'execution_acknowledged');
             } else {
                 $this->agentClient()->delete("/execution/{$executionId}/acknowledge");
-                SessionManager::set('_flash_ack_notice', 'execution_unacknowledged');
             }
+            if ($this->isJsonRequest()) {
+                $this->jsonResponse(['success' => true]);
+                return;
+            }
+            SessionManager::set('_flash_ack_notice', $isAcknowledge ? 'execution_acknowledged' : 'execution_unacknowledged');
         } catch (AgentHttpException $e) {
             $this->logger->warning('CronController::acknowledgeExecution: agent returned error', [
                 'execution_id' => $executionId,
                 'status'       => $e->getStatusCode(),
                 'error'        => $e->getMessage(),
             ]);
+            if ($this->isJsonRequest()) {
+                $this->jsonResponse(['success' => false, 'error' => $this->translator()->t('error_agent_unavailable')]);
+                return;
+            }
             SessionManager::set('_flash_ack_error', 'error_agent_unavailable');
         } catch (\RuntimeException $e) {
             $this->logger->error('CronController::acknowledgeExecution: agent unreachable', [
                 'execution_id' => $executionId,
                 'error'        => $e->getMessage(),
             ]);
+            if ($this->isJsonRequest()) {
+                $this->jsonResponse(['success' => false, 'error' => $this->translator()->t('error_agent_unavailable')]);
+                return;
+            }
             SessionManager::set('_flash_ack_error', 'error_agent_unavailable');
         }
 

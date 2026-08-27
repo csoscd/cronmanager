@@ -849,5 +849,51 @@ document.addEventListener('keydown', function (e) {
     // Apply initial icon and start polling if appropriate.
     applyIcon(autoEnabled);
     if (autoEnabled) { startPolling(); }
+
+    // Allow external triggers (e.g. acknowledge AJAX) to reload the history rows.
+    document.addEventListener('cm:reload-detail', doFetch);
+}());
+</script>
+
+<script>
+// AJAX acknowledge / unacknowledge via event delegation on the history tbody.
+// Buttons in _detail_history_rows.php carry data-ack-action and data-ack-id.
+(function () {
+    'use strict';
+    var CSRF  = <?= json_encode($csrf_token ?? '') ?>;
+    var tbody = document.getElementById('cm-history-tbody');
+    if (!tbody) { return; }
+
+    tbody.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-ack-action]');
+        if (!btn || btn.disabled) { return; }
+
+        var action = btn.dataset.ackAction;   // 'acknowledge' | 'unacknowledge'
+        var id     = btn.dataset.ackId;
+        if (!id) { return; }
+
+        btn.disabled = true;
+
+        var url  = '/execution/' + encodeURIComponent(id) + '/' + action + '?_json=1';
+        var body = new URLSearchParams({ _csrf: CSRF });
+
+        fetch(url, {
+            method:      'POST',
+            headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body:        body.toString(),
+            credentials: 'same-origin',
+        })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (data) {
+            if (data.success) {
+                document.dispatchEvent(new CustomEvent('cm:reload-detail'));
+            } else {
+                btn.disabled = false;
+            }
+        })
+        .catch(function () {
+            btn.disabled = false;
+        });
+    });
 }());
 </script>

@@ -191,31 +191,25 @@ foreach ($history as $idx => $entry):
                 </form>
             <?php elseif ($isAcknowledgeable && $executionId !== ''): ?>
                 <?php if ($acknowledgedAt === null): ?>
-                    <form method="POST"
-                          action="/execution/<?= htmlspecialchars(rawurlencode($executionId), ENT_QUOTES, 'UTF-8') ?>/acknowledge">
-                        <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                        <input type="hidden" name="_return" value="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>">
-                        <button type="submit"
-                                class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
-                                       bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600
-                                       dark:text-gray-300 border border-gray-200 dark:border-gray-600
-                                       transition focus:outline-none focus:ring-2 focus:ring-gray-400">
-                            <?= htmlspecialchars($t('execution_acknowledge'), ENT_QUOTES, 'UTF-8') ?>
-                        </button>
-                    </form>
+                    <button type="button"
+                            data-ack-action="acknowledge"
+                            data-ack-id="<?= htmlspecialchars($executionId, ENT_QUOTES, 'UTF-8') ?>"
+                            class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
+                                   bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600
+                                   dark:text-gray-300 border border-gray-200 dark:border-gray-600
+                                   transition focus:outline-none focus:ring-2 focus:ring-gray-400">
+                        <?= htmlspecialchars($t('execution_acknowledge'), ENT_QUOTES, 'UTF-8') ?>
+                    </button>
                 <?php else: ?>
-                    <form method="POST"
-                          action="/execution/<?= htmlspecialchars(rawurlencode($executionId), ENT_QUOTES, 'UTF-8') ?>/unacknowledge">
-                        <input type="hidden" name="_csrf" value="<?= htmlspecialchars($csrf_token ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                        <input type="hidden" name="_return" value="/crons/<?= htmlspecialchars(rawurlencode($jobId), ENT_QUOTES, 'UTF-8') ?>">
-                        <button type="submit"
-                                class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
-                                       bg-yellow-50 hover:bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30
-                                       dark:hover:bg-yellow-900/50 dark:text-yellow-300 border border-yellow-200
-                                       dark:border-yellow-700 transition focus:outline-none focus:ring-2 focus:ring-yellow-400">
-                            <?= htmlspecialchars($t('execution_unacknowledge'), ENT_QUOTES, 'UTF-8') ?>
-                        </button>
-                    </form>
+                    <button type="button"
+                            data-ack-action="unacknowledge"
+                            data-ack-id="<?= htmlspecialchars($executionId, ENT_QUOTES, 'UTF-8') ?>"
+                            class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
+                                   bg-yellow-50 hover:bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30
+                                   dark:hover:bg-yellow-900/50 dark:text-yellow-300 border border-yellow-200
+                                   dark:border-yellow-700 transition focus:outline-none focus:ring-2 focus:ring-yellow-400">
+                        <?= htmlspecialchars($t('execution_unacknowledge'), ENT_QUOTES, 'UTF-8') ?>
+                    </button>
                 <?php endif; ?>
             <?php else: ?>
                 <span class="text-gray-300 dark:text-gray-600">—</span>

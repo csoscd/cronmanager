@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [6.0.0] – branch: `feature/v6.0.0`
+
+### Fixed
+
+- **Dark-Mode-Kontrast (closes #114):** Mehrere CSS-Custom-Properties in `brand.css` hatten im Dark Mode unzureichendes Kontrastverhältnis (WCAG-Verstoß):
+  - `--cm-faint: #44446a` → `#9898c8` (war 2,2:1 auf `--cm-bg-deep`; neu 7,1:1)
+  - `--cm-muted: #8888bb` → `#b4b4e0` (neu 9,5:1 auf Surface)
+- **Dark-Mode-Hintergründe – helle Tailwind-Klassen:** Fehlende `brand.css`-Overrides für `bg-gray-200`, `bg-green-50`, `bg-amber-50`, `bg-orange-100` und `bg-purple-50` verursachten im Dark Mode helle Inseln mit kontrastarmem Text. Alle fünf Klassen werden nun mit semitransparenten dunklen Varianten überschrieben (analog zu den vorhandenen `bg-green-100`, `bg-red-100` etc.).
+- **Undefinierte CSS-Variablen:** `--cm-text-muted` (50+ Template-Stellen) und `--cm-input-bg` (Formulare, Agent-Select) waren in `brand.css` nicht definiert und führten zu unkontrolliertem Farb-Fallback. Beide Variablen sind nun in allen drei Modus-Blöcken (Dark, Light-Media-Query, Light-Class) hinterlegt.
+
+### Changed
+
+- **Dark-Mode-Hintergrundfarben:** Leichte Anpassung der Basis-Tokens für konsistentere Blau-Tendenz:
+  - `--cm-bg-deep`: `#080812` → `#08091a`
+  - `--cm-bg-dark`: `#0d0d1f` → `#0e0f26`
+  - `--cm-bg-card`: `#12122a` → `#131428`
+  - `--cm-bg-elevated`: `#17173a` → `#161832`
+  - `--cm-border`: `#1e1e40` → `#1f2148`
+
+---
+
 ## [5.3.0] – branch: `feature/detail-reload-controls`
 
 ### Added

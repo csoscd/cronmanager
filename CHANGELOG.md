@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [6.0.0] – branch: `feature/v6.0.0`
 
+### Added
+
+- **Acknowledge failed executions (closes #121):** Operator-Users (und höher) können fehlgeschlagene Ausführungen in der Job-Detail-Ansicht als „Bestätigt" markieren oder die Bestätigung wieder aufheben. Bestätigte Fehler werden im Dashboard (Fehlerzähler, Fehler-Liste) unterdrückt und erscheinen in der Job-Liste sowie in der Timeline mit einem gedämpften „Bestätigt"-Badge. Die Aktion ist vollständig im Audit-Log protokolliert (`execution.acknowledged` / `execution.unacknowledged`). REST-API: `POST /api/v1/executions/{id}/acknowledge` und `DELETE /api/v1/executions/{id}/acknowledge` mit neuem Scope `executions:acknowledge`. DB-Migration `020_acknowledge.sql` fügt `acknowledged_at` und `acknowledged_by_user_id` zur `execution_log`-Tabelle hinzu.
+
 ### Fixed
 
 - **Kebab-Dropdown – Löschen-Button ohne Funktion:** Der `onclick`-Handler verwendete `json_encode($jobId)` für eine PHP-String-Variable, was `"3"` (mit echten Anführungszeichen) erzeugte und das HTML-Attribut zerbrach. Fix: `(int) $jobId` im Template.

@@ -111,15 +111,16 @@ A user can only grant scopes they are allowed to use themselves:
 | `settings:read` | Read agent settings (mail, Telegram, InfluxDB, notifications) |
 | `settings:write` | Update agent settings; resync crontab; cleanup operations |
 | `audit:read` | Read the audit log — who changed what and when (admin-only scope) |
+| `executions:acknowledge` | Acknowledge / unacknowledge failed executions |
 
 ### Pre-defined profiles
 
 | Profile | Included scopes |
 |---|---|
 | `read-only` | `jobs:read`, `maintenance:read`, `export:read` |
-| `operator` | `jobs:read`, `jobs:execute`, `maintenance:read` |
+| `operator` | `jobs:read`, `jobs:execute`, `maintenance:read`, `executions:acknowledge` |
 | `developer` | `jobs:read`, `jobs:write`, `jobs:execute`, `export:read` |
-| `full-admin` | all 9 scopes |
+| `full-admin` | all 10 scopes |
 
 ---
 
@@ -453,6 +454,32 @@ Kill a running execution by its execution log ID.  Scope: **`jobs:execute`**
 
 ---
 
+### POST /api/v1/executions/{id}/acknowledge
+
+Mark a finished execution as acknowledged. Acknowledged failures are suppressed from
+the dashboard's error indicators while the historical record stays intact.
+Scope: **`executions:acknowledge`**
+
+**Response 200:**
+
+```json
+{ "agent_id": 1, "acknowledged": true }
+```
+
+---
+
+### DELETE /api/v1/executions/{id}/acknowledge
+
+Clear the acknowledgement on a previously acknowledged execution. Scope: **`executions:acknowledge`**
+
+**Response 200:**
+
+```json
+{ "agent_id": 1, "acknowledged": false }
+```
+
+---
+
 ### GET /api/v1/jobs/{id}/history
 
 Execution history for a specific job.
@@ -485,7 +512,9 @@ Execution history for a specific job.
       "during_maintenance": false,
       "retry_attempt": 0,
       "retry_root_execution_id": null,
-      "duration_seconds": 46
+      "duration_seconds": 46,
+      "acknowledged_at": null,
+      "acknowledged_by_user_id": null
     }
   ],
   "count": 1,
@@ -1038,6 +1067,8 @@ Return a paginated list of audit log entries with optional filters.
 | `cron.bulk_tag` | Bulk re-tag |
 | `cron.execute_now` | "Run Now" triggered |
 | `cron.kill` | Running execution killed |
+| `execution.acknowledged` | Execution marked as acknowledged |
+| `execution.unacknowledged` | Acknowledgement cleared |
 | `maintenance_window.create` | Maintenance window created (snapshot) |
 | `maintenance_window.update` | Maintenance window settings changed (diff) |
 | `maintenance_window.delete` | Maintenance window deleted (snapshot) |

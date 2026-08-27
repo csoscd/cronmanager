@@ -61,7 +61,7 @@ final class StatsEndpoint
             $stmtToday = $this->pdo->query(
                 "SELECT
                      COUNT(*)                                                        AS total,
-                     COALESCE(SUM(CASE WHEN exit_code NOT IN (0, -4) THEN 1 END), 0) AS failed
+                     COALESCE(SUM(CASE WHEN exit_code NOT IN (0, -4) AND acknowledged_at IS NULL THEN 1 END), 0) AS failed
                  FROM execution_log
                  WHERE started_at >= CURDATE()"
             );
@@ -72,7 +72,7 @@ final class StatsEndpoint
             $stmt24h = $this->pdo->query(
                 "SELECT
                      COUNT(*)                                                        AS total,
-                     COALESCE(SUM(CASE WHEN exit_code NOT IN (0, -4) THEN 1 END), 0) AS failed
+                     COALESCE(SUM(CASE WHEN exit_code NOT IN (0, -4) AND acknowledged_at IS NULL THEN 1 END), 0) AS failed
                  FROM execution_log
                  WHERE started_at >= NOW() - INTERVAL 24 HOUR"
             );

@@ -25,15 +25,16 @@ final class ScopeHelper
     // Scope constants
     // -------------------------------------------------------------------------
 
-    public const SCOPE_JOBS_READ         = 'jobs:read';
-    public const SCOPE_JOBS_WRITE        = 'jobs:write';
-    public const SCOPE_JOBS_EXECUTE      = 'jobs:execute';
-    public const SCOPE_EXPORT_READ       = 'export:read';
-    public const SCOPE_MAINTENANCE_READ  = 'maintenance:read';
-    public const SCOPE_MAINTENANCE_WRITE = 'maintenance:write';
-    public const SCOPE_SETTINGS_READ     = 'settings:read';
-    public const SCOPE_SETTINGS_WRITE    = 'settings:write';
-    public const SCOPE_AUDIT_READ        = 'audit:read';
+    public const SCOPE_JOBS_READ               = 'jobs:read';
+    public const SCOPE_JOBS_WRITE              = 'jobs:write';
+    public const SCOPE_JOBS_EXECUTE            = 'jobs:execute';
+    public const SCOPE_EXPORT_READ             = 'export:read';
+    public const SCOPE_MAINTENANCE_READ        = 'maintenance:read';
+    public const SCOPE_MAINTENANCE_WRITE       = 'maintenance:write';
+    public const SCOPE_SETTINGS_READ           = 'settings:read';
+    public const SCOPE_SETTINGS_WRITE          = 'settings:write';
+    public const SCOPE_AUDIT_READ              = 'audit:read';
+    public const SCOPE_EXECUTIONS_ACKNOWLEDGE  = 'executions:acknowledge';
 
     /** @var string[] All defined scopes in display order */
     public const ALL_SCOPES = [
@@ -46,6 +47,7 @@ final class ScopeHelper
         self::SCOPE_SETTINGS_READ,
         self::SCOPE_SETTINGS_WRITE,
         self::SCOPE_AUDIT_READ,
+        self::SCOPE_EXECUTIONS_ACKNOWLEDGE,
     ];
 
     // -------------------------------------------------------------------------
@@ -68,6 +70,7 @@ final class ScopeHelper
             self::SCOPE_JOBS_READ,
             self::SCOPE_JOBS_EXECUTE,
             self::SCOPE_MAINTENANCE_READ,
+            self::SCOPE_EXECUTIONS_ACKNOWLEDGE,
         ],
         'developer'  => [
             self::SCOPE_JOBS_READ,

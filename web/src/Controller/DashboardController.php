@@ -117,10 +117,12 @@ class DashboardController extends BaseController
 
         $inactiveJobs = $totalJobs - $activeJobs;
 
-        // Exclude maintenance-skipped executions (exit_code -4) – these are not real failures.
+        // Exclude maintenance-skipped executions (exit_code -4) and acknowledged failures.
         $recentFailures = array_values(array_filter(
             $recentFailures,
-            static fn(array $e): bool => (int) ($e['exit_code'] ?? 0) !== -4
+            static fn(array $e): bool =>
+                (int) ($e['exit_code'] ?? 0) !== -4
+                && ($e['acknowledged_at'] ?? null) === null
         ));
 
         // Cap list at 10 after filtering and count failures within last 24 hours

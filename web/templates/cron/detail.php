@@ -58,9 +58,11 @@ $runInMaintenance  = !empty($job['run_in_maintenance']);
 </div>
 
 <?php
-// Flash messages from kill action
+// Flash messages from kill and acknowledge actions
 $killNoticeKey = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_notice');
 $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_error');
+$ackNoticeKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_ack_notice');
+$ackErrorKey   = \Cronmanager\Web\Session\SessionManager::flash('_flash_ack_error');
 ?>
 <?php if ($killNoticeKey !== null): ?>
 <div class="mb-4 flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300">
@@ -76,6 +78,22 @@ $killErrorKey  = \Cronmanager\Web\Session\SessionManager::flash('_flash_kill_err
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
     </svg>
     <?= htmlspecialchars($t($killErrorKey), ENT_QUOTES, 'UTF-8') ?>
+</div>
+<?php endif; ?>
+<?php if ($ackNoticeKey !== null): ?>
+<div class="mb-4 flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300">
+    <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+    </svg>
+    <?= htmlspecialchars($t($ackNoticeKey), ENT_QUOTES, 'UTF-8') ?>
+</div>
+<?php endif; ?>
+<?php if ($ackErrorKey !== null): ?>
+<div class="mb-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+    <svg class="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <?= htmlspecialchars($t($ackErrorKey), ENT_QUOTES, 'UTF-8') ?>
 </div>
 <?php endif; ?>
 

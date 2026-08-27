@@ -257,9 +257,10 @@ final class CronListEndpoint
                 j.created_at,
                 GROUP_CONCAT(DISTINCT t.name    ORDER BY t.name    SEPARATOR ',') AS tags,
                 GROUP_CONCAT(DISTINCT jt.target ORDER BY jt.target SEPARATOR ',') AS targets,
-                el_last.started_at     AS last_run,
-                el_last.finished_at    AS last_finished_at,
-                el_last_fin.exit_code  AS last_exit_code
+                el_last.started_at             AS last_run,
+                el_last.finished_at            AS last_finished_at,
+                el_last_fin.exit_code          AS last_exit_code,
+                el_last_fin.acknowledged_at    AS last_acknowledged_at
             FROM cronjobs j
             LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
             LEFT JOIN tags t          ON t.id = ct.tag_id
@@ -371,6 +372,7 @@ final class CronListEndpoint
                 : null,
             'last_run'                 => isset($row['last_run'])       && $row['last_run']       !== null ? (string) $row['last_run']       : null,
             'last_exit_code'           => isset($row['last_exit_code']) && $row['last_exit_code'] !== null ? (int)    $row['last_exit_code'] : null,
+            'last_acknowledged_at'     => isset($row['last_acknowledged_at']) && $row['last_acknowledged_at'] !== null ? (string) $row['last_acknowledged_at'] : null,
             'is_running'               => isset($row['last_run']) && $row['last_run'] !== null
                 && (!isset($row['last_finished_at']) || $row['last_finished_at'] === null),
         ];

@@ -482,6 +482,7 @@ $allTagNames = array_map(
                             $lastRun       = (string) ($job['last_run'] ?? '');
                             $exitCode      = isset($job['last_exit_code']) ? (int) $job['last_exit_code'] : null;
                             $isRunning     = !empty($job['is_running']);
+                            $lastAckAt     = isset($job['last_acknowledged_at']) ? (string) $job['last_acknowledged_at'] : null;
                             $limitSeconds  = isset($job['execution_limit_seconds']) && $job['execution_limit_seconds'] !== null
                                 ? (int) $job['execution_limit_seconds'] : null;
 
@@ -629,6 +630,13 @@ $allTagNames = array_map(
                                         </span>
                                     <?php endif; ?>
                                 </div>
+                                <?php if ($lastAckAt !== null && $exitCode !== null && $exitCode !== 0 && $exitCode !== -4 && $exitCode !== -5): ?>
+                                    <div class="mt-1">
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                                            <?= htmlspecialchars($t('execution_acknowledged_badge'), ENT_QUOTES, 'UTF-8') ?>
+                                        </span>
+                                    </div>
+                                <?php endif; ?>
                             </td>
 
                             <!-- Kebab action dropdown -->

@@ -1091,6 +1091,63 @@ class CronController extends BaseController
      *
      * @return void
      */
+    /**
+     * POST /execution/{id}/acknowledge  – mark execution as acknowledged
+     * POST /execution/{id}/unacknowledge – clear acknowledgement
+     *
+     * @param array<string, string> $params Path parameters: id (execution log ID).
+     * @param bool $isAcknowledge True for acknowledge, false for unacknowledge.
+     *
+     * @return void
+     */
+    public function acknowledgeExecution(array $params, bool $isAcknowledge = true): void
+    {
+        $executionId = isset($params['id']) ? (int) $params['id'] : 0;
+        $returnUrl   = trim((string) ($_POST['_return'] ?? ''));
+        $safe        = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons';
+
+        $this->logger->info('CronController::acknowledgeExecution: request', [
+            'execution_id' => $executionId,
+            'action'       => $isAcknowledge ? 'acknowledge' : 'unacknowledge',
+        ]);
+
+        try {
+            if ($isAcknowledge) {
+                $this->agentClient()->post("/execution/{$executionId}/acknowledge", []);
+                SessionManager::set('_flash_ack_notice', 'execution_acknowledged');
+            } else {
+                $this->agentClient()->delete("/execution/{$executionId}/acknowledge");
+                SessionManager::set('_flash_ack_notice', 'execution_unacknowledged');
+            }
+        } catch (AgentHttpException $e) {
+            $this->logger->warning('CronController::acknowledgeExecution: agent returned error', [
+                'execution_id' => $executionId,
+                'status'       => $e->getStatusCode(),
+                'error'        => $e->getMessage(),
+            ]);
+            SessionManager::set('_flash_ack_error', 'error_agent_unavailable');
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::acknowledgeExecution: agent unreachable', [
+                'execution_id' => $executionId,
+                'error'        => $e->getMessage(),
+            ]);
+            SessionManager::set('_flash_ack_error', 'error_agent_unavailable');
+        }
+
+        (new Response())->redirect($safe);
+    }
+
+    /**
+     * POST /execution/{id}/unacknowledge
+     *
+     * @param array<string, string> $params
+     * @return void
+     */
+    public function unacknowledgeExecution(array $params): void
+    {
+        $this->acknowledgeExecution($params, false);
+    }
+
     public function killExecution(array $params): void
     {
         $executionId = isset($params['id']) ? (int) $params['id'] : 0;

@@ -14,8 +14,10 @@ declare(strict_types=1);
  *   PUT    /api/v1/jobs/{id}             jobs:write
  *   DELETE /api/v1/jobs/{id}             jobs:write
  *   POST   /api/v1/jobs/{id}/execute     jobs:execute
- *   POST   /api/v1/executions/{id}/kill  jobs:execute
- *   GET    /api/v1/jobs/{id}/history     jobs:read
+ *   POST   /api/v1/executions/{id}/kill             jobs:execute
+ *   POST   /api/v1/executions/{id}/acknowledge     executions:acknowledge
+ *   DELETE /api/v1/executions/{id}/acknowledge     executions:acknowledge
+ *   GET    /api/v1/jobs/{id}/history               jobs:read
  *   GET    /api/v1/tags                  jobs:read
  *   GET    /api/v1/targets               jobs:read
  *   GET    /api/v1/linux-users           jobs:read
@@ -301,6 +303,76 @@ final class JobsApiController extends BaseApiController
         }
 
         $this->jsonOk(['agent_id' => $this->resolvedAgentId, 'success' => true]);
+    }
+
+    /**
+     * POST /api/v1/executions/{id}/acknowledge
+     *
+     * @param array<string, string> $params Path parameters: id (execution log ID).
+     * @return void
+     */
+    public function acknowledge(array $params): void
+    {
+        $pdo    = Connection::getInstance()->getPdo();
+        $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_EXECUTIONS_ACKNOWLEDGE);
+
+        if ($apiKey === null) {
+            return;
+        }
+
+        $id = (int) ($params['id'] ?? 0);
+
+        if ($id <= 0) {
+            $this->jsonError(400, 'Bad Request', 'Execution ID must be a positive integer.');
+            return;
+        }
+
+        $agent = $this->agentClient($apiKey);
+        if ($agent === null) {
+            return;
+        }
+
+        $response = $this->agentPost($agent, "/execution/{$id}/acknowledge");
+        if ($response === null) {
+            return;
+        }
+
+        $this->jsonOk(['agent_id' => $this->resolvedAgentId, 'acknowledged' => true]);
+    }
+
+    /**
+     * DELETE /api/v1/executions/{id}/acknowledge
+     *
+     * @param array<string, string> $params Path parameters: id (execution log ID).
+     * @return void
+     */
+    public function unacknowledge(array $params): void
+    {
+        $pdo    = Connection::getInstance()->getPdo();
+        $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_EXECUTIONS_ACKNOWLEDGE);
+
+        if ($apiKey === null) {
+            return;
+        }
+
+        $id = (int) ($params['id'] ?? 0);
+
+        if ($id <= 0) {
+            $this->jsonError(400, 'Bad Request', 'Execution ID must be a positive integer.');
+            return;
+        }
+
+        $agent = $this->agentClient($apiKey);
+        if ($agent === null) {
+            return;
+        }
+
+        $response = $this->agentDelete($agent, "/execution/{$id}/acknowledge");
+        if ($response === null) {
+            return;
+        }
+
+        $this->jsonOk(['agent_id' => $this->resolvedAgentId, 'acknowledged' => false]);
     }
 
     /**

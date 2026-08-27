@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Dashboard-Statistik: Bestätigte Fehler fälschlicherweise nicht mehr gezählt:** `StatsEndpoint` filterte `acknowledged_at IS NULL` aus den `failed_today`- und `failed_24h`-Zählern heraus. Bestätigte Ausführungen bleiben Fehler und werden weiterhin gezählt; nur die Anzeige-Liste (Kachel „Aktuelle Fehler") blendet sie aus.
+
 - **Kebab-Dropdown – Löschen-Button ohne Funktion:** Der `onclick`-Handler verwendete `json_encode($jobId)` für eine PHP-String-Variable, was `"3"` (mit echten Anführungszeichen) erzeugte und das HTML-Attribut zerbrach. Fix: `(int) $jobId` im Template.
 - **Kebab-Dropdown – Kopieren öffnet leeres Formular:** `$agParam` enthielt `&` als Trennzeichen vor `copy_from=`. Browser parsten `&copy` als HTML-Entity `&copy;` (©), wodurch `copy_from` nie in `$_GET` ankam und `$sourceJob = null` blieb. Fix: `&amp;` statt `&` in allen vier Templates, die `$agParam` definieren (`list.php`, `detail.php`, `dashboard.php`, `timeline.php`).
 - **Dark-Mode-Kontrast (closes #114):** Mehrere CSS-Custom-Properties in `brand.css` hatten im Dark Mode unzureichendes Kontrastverhältnis (WCAG-Verstoß):

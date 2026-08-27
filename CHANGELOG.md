@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Dark-Mode-Hintergründe – helle Tailwind-Klassen:** Fehlende `brand.css`-Overrides für `bg-gray-200`, `bg-green-50`, `bg-amber-50`, `bg-orange-100` und `bg-purple-50` verursachten im Dark Mode helle Inseln mit kontrastarmem Text. Alle fünf Klassen werden nun mit semitransparenten dunklen Varianten überschrieben (analog zu den vorhandenen `bg-green-100`, `bg-red-100` etc.).
 - **Undefinierte CSS-Variablen:** `--cm-text-muted` (50+ Template-Stellen) und `--cm-input-bg` (Formulare, Agent-Select) waren in `brand.css` nicht definiert und führten zu unkontrolliertem Farb-Fallback. Beide Variablen sind nun in allen drei Modus-Blöcken (Dark, Light-Media-Query, Light-Class) hinterlegt.
 
+- **Benutzeranlage – Agent-Auswahl ohne URL-Anzeige:** Die Checkbox-Liste im Formular „Benutzer anlegen/bearbeiten" zeigte nur den Agent-Namen ohne URL. Optik und Markup wurden an das API-Key-Formular angeglichen (URL in kleinerem gedämpftem Text, einheitliche Checkbox-Größe `w-4 h-4`, Gap `gap-3`).
+
 ### Added
 
 - **Kebab-Dropdown in der Job-Liste (closes #115):** Der „Öffnen"-Button in der Aktionsspalte wird durch ein ⋮-Dropdown-Menü ersetzt. Einträge: _Öffnen_ (alle Nutzer), _Bearbeiten_ (Admin, verlinkt auf `/crons/{id}/edit`), _Kopieren_ (Admin, verlinkt auf `/crons/new?copy_from=…`), _Löschen_ (Admin, rot, öffnet Bestätigungsdialog). Das Dropdown positioniert sich via `position:fixed`, damit es nicht durch `overflow:hidden` des Tabellen-Containers abgeschnitten wird. Das Einzellöschen nutzt das vorhandene Bulk-Formular mit einer temporär injizierten ID; die Bulk-Selektion bleibt dabei unberührt.

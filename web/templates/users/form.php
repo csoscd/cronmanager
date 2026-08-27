@@ -177,14 +177,19 @@ $title  = $isEdit ? $t('user_edit') : $t('user_create');
                         <?= $h($t('user_agent_restriction')) ?>
                     </label>
                     <p class="text-xs text-gray-400 mb-2"><?= $h($t('user_agent_restriction_hint')) ?></p>
-                    <div class="space-y-1 max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2">
+                    <div class="space-y-2">
                         <?php foreach ($agents as $ag): ?>
                             <?php $agId = (int) $ag['id']; ?>
-                            <label class="flex items-center gap-2 cursor-pointer">
+                            <label class="flex items-center gap-3 cursor-pointer">
                                 <input type="checkbox" name="agent_ids[]" value="<?= $agId ?>"
                                        <?= in_array($agId, array_map('intval', $selAgentIds), strict: true) ? 'checked' : '' ?>
-                                       class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
-                                <span class="text-sm text-gray-700 dark:text-gray-300"><?= $h((string) $ag['name']) ?></span>
+                                       class="w-4 h-4 text-blue-600 rounded border-gray-300 dark:border-gray-600 focus:ring-blue-500">
+                                <span class="text-sm text-gray-800 dark:text-gray-200">
+                                    <?= $h((string) $ag['name']) ?>
+                                    <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">
+                                        (<?= $h((string) $ag['url']) ?>)
+                                    </span>
+                                </span>
                             </label>
                         <?php endforeach; ?>
                     </div>

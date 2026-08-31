@@ -187,9 +187,10 @@ final class ExecutionStartEndpoint
                 return;
             }
 
-            if ($this->isSingleton($jobId) && ($this->hasRunningExecution($jobId) || (!$isRetryExecution && $this->hasPendingRetry($jobId)))) {
+            if ($this->isSingleton($jobId) && ($this->hasRunningExecutionForTarget($jobId, $effectiveTargetForRetry) || (!$isRetryExecution && $this->hasPendingRetryForTarget($jobId, $effectiveTargetForRetry)))) {
                 $this->logger->info('ExecutionStartEndpoint: singleton job is busy (running or retry pending) – skipping', [
                     'job_id' => $jobId,
+                    'target' => $effectiveTargetForRetry,
                 ]);
                 jsonResponse(409, [
                     'error'   => 'Conflict',
@@ -506,6 +507,30 @@ final class ExecutionStartEndpoint
             'SELECT 1 FROM execution_log WHERE cronjob_id = :id AND finished_at IS NULL LIMIT 1'
         );
         $stmt->execute([':id' => $jobId]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * Return true when an execution for the given (job, target) pair is still running.
+     *
+     * Unlike hasRunningExecution(), this method matches the exact target so the
+     * singleton guard allows multiple independent targets of the same job to run
+     * concurrently — only the same target is blocked from overlapping itself.
+     *
+     * @param int    $jobId  The job ID to check.
+     * @param string $target Effective execution target (e.g. "local", SSH alias).
+     *
+     * @return bool
+     *
+     * @throws \PDOException On database errors.
+     */
+    private function hasRunningExecutionForTarget(int $jobId, string $target): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT 1 FROM execution_log WHERE cronjob_id = :id AND target = :target AND finished_at IS NULL LIMIT 1'
+        );
+        $stmt->execute([':id' => $jobId, ':target' => $target]);
 
         return $stmt->fetchColumn() !== false;
     }

@@ -267,6 +267,7 @@ key rotation, troubleshooting), see **[MULTI-HOST.md](MULTI-HOST.md)**.
 
 | Variable | Default | Description |
 |---|---|---|
+| `TZ` | `Europe/Berlin` | Container timezone — controls how incoming ISO-8601 timestamps are stored in MariaDB. Must match the timezone of the host that runs the cron jobs to keep displayed times consistent. |
 | `AGENT_BIND_ADDRESS` | `0.0.0.0` | Bind address for the PHP HTTP server |
 | `AGENT_PORT` | `8865` | Listening port (used by nginx TLS terminator) |
 | `AGENT_TLS_ENABLED` | `true` | Enable nginx TLS reverse proxy (set `false` only for trusted internal networks) |

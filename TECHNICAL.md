@@ -828,11 +828,12 @@ Paginated execution history.
 | `job_id` | int | Filter by specific job |
 | `tag` | string | Filter by tag name |
 | `user` | string | Filter by Linux user |
-| `status` | string | `success`, `failed`, or `running` |
+| `status` | string | `success`, `failed`, `running`, or `skipped`. `failed` excludes maintenance-skipped entries (exit_code -4); use `skipped` to retrieve those. |
 | `from` | string | Start date (`YYYY-MM-DD`) |
 | `to` | string | End date (`YYYY-MM-DD`) |
-| `limit` | int | Page size (default: 25) |
+| `limit` | int | Page size (default: 50, max: 500) |
 | `offset` | int | Pagination offset (default: 0) |
+| `unacknowledged_only` | `0\|1` | `1` = only return executions where `acknowledged_at IS NULL` |
 
 **Response:**
 ```json

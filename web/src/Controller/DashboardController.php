@@ -43,9 +43,9 @@ class DashboardController extends BaseController
      * Display the main dashboard with aggregated statistics.
      *
      * Fetches:
-     *   GET /crons              – all configured jobs
-     *   GET /history?limit=10&status=failed – recent failures
-     *   GET /tags               – all known tags
+     *   GET /crons                                                      – all configured jobs
+     *   GET /history?limit=10&status=failed&unacknowledged_only=1       – recent unacknowledged failures
+     *   GET /tags                                                        – all known tags
      *
      * Computes locally:
      *   - Total job count
@@ -76,18 +76,23 @@ class DashboardController extends BaseController
             // reducing wall-clock time from ~sum(latencies) to ~max(latency).
             $batch = [
                 'crons'   => ['path' => '/crons'],
-                // Fetch more than needed so that filtering maintenance skips
-                // still leaves enough entries after the -4 exit-code filter.
-                'history' => ['path' => '/history', 'query' => ['limit' => 50, 'status' => 'failed']],
+                // The agent filters acknowledged and applies the limit server-side;
+                // the response total reflects all unacknowledged failures.
+                'history' => ['path' => '/history', 'query' => [
+                    'limit'              => 10,
+                    'status'             => 'failed',
+                    'unacknowledged_only' => 1,
+                ]],
                 'tags'    => ['path' => '/tags'],
             ];
             if (self::SHOW_EXECUTION_STATS) {
                 $batch['execstats'] = ['path' => '/stats'];
             }
             $results = $agent->getMultiple($batch);
-            $jobs           = $results['crons']['data']   ?? [];
-            $recentFailures = $results['history']['data'] ?? [];
-            $tags           = $results['tags']['data']    ?? [];
+            $jobs                       = $results['crons']['data']   ?? [];
+            $recentFailures             = $results['history']['data'] ?? [];
+            $totalUnacknowledgedFailures = (int) ($results['history']['total'] ?? 0);
+            $tags                       = $results['tags']['data']    ?? [];
             $executionStats = self::SHOW_EXECUTION_STATS ? ($results['execstats'] ?? []) : [];
         } catch (\RuntimeException $e) {
             $this->logger->error('DashboardController: agent request failed', [
@@ -117,17 +122,11 @@ class DashboardController extends BaseController
 
         $inactiveJobs = $totalJobs - $activeJobs;
 
-        // Exclude maintenance-skipped executions (exit_code -4) and acknowledged failures.
-        $recentFailures = array_values(array_filter(
-            $recentFailures,
-            static fn(array $e): bool =>
-                (int) ($e['exit_code'] ?? 0) !== -4
-                && ($e['acknowledged_at'] ?? null) === null
-        ));
+        // The agent already excludes maintenance-skipped (exit_code -4) and
+        // acknowledged failures via status=failed&unacknowledged_only=1.
 
-        // Cap list at 10 after filtering and count failures within last 24 hours
-        $recentFailures = array_slice($recentFailures, 0, 10);
-        $failedLast24h  = 0;
+        // Count failures within last 24 hours (from the displayed entries)
+        $failedLast24h = 0;
         foreach ($recentFailures as $entry) {
             $startedAt = strtotime((string) ($entry['started_at'] ?? '')) ?: 0;
             if ($startedAt >= $oneDayAgo) {
@@ -136,12 +135,13 @@ class DashboardController extends BaseController
         }
 
         $stats = [
-            'total'        => $totalJobs,
-            'active'       => $activeJobs,
-            'inactive'     => $inactiveJobs,
-            'byUser'       => $byUser,
-            'failedLast24h'=> $failedLast24h,
-            'tagsCount'    => count($tags),
+            'total'               => $totalJobs,
+            'active'              => $activeJobs,
+            'inactive'            => $inactiveJobs,
+            'byUser'              => $byUser,
+            'failedLast24h'       => $failedLast24h,
+            'tagsCount'           => count($tags),
+            'totalUnacknowledged' => $totalUnacknowledgedFailures,
         ];
 
         // ------------------------------------------------------------------
@@ -159,14 +159,15 @@ class DashboardController extends BaseController
         // Render
         // ------------------------------------------------------------------
         $this->render('dashboard.php', $this->translator()->t('dashboard_title'), [
-            'jobs'                => $jobs,
-            'recentFailures'      => $recentFailures,
-            'tags'                => $tags,
-            'stats'               => $stats,
-            'multiUser'           => count($byUser) > 1,
-            'executionStats'      => $executionStats,
-            'showExecutionStats'  => self::SHOW_EXECUTION_STATS,
-            'isOperator'          => SessionManager::hasRole('operator'),
+            'jobs'                       => $jobs,
+            'recentFailures'             => $recentFailures,
+            'totalUnacknowledgedFailures' => $totalUnacknowledgedFailures,
+            'tags'                       => $tags,
+            'stats'                      => $stats,
+            'multiUser'                  => count($byUser) > 1,
+            'executionStats'             => $executionStats,
+            'showExecutionStats'         => self::SHOW_EXECUTION_STATS,
+            'isOperator'                 => SessionManager::hasRole('operator'),
         ], '/dashboard');
     }
 }

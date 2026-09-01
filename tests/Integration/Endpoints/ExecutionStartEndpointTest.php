@@ -90,11 +90,11 @@ final class ExecutionStartEndpointTest extends AgentEndpointTestCase
     }
 
     #[Test]
-    public function iso8601TimestampWithOffsetIsConvertedToUtc(): void
+    public function iso8601TimestampWithOffsetIsConvertedToSystemTimezone(): void
     {
         $jobId = $this->seedJob();
 
-        // +01:00 offset → UTC is one hour earlier
+        // +01:00 offset; test environment uses UTC → stored as 10:00:00
         $this->callHandle($this->makeEndpoint(), [
             'job_id'     => $jobId,
             'started_at' => '2026-01-15T11:00:00+01:00',

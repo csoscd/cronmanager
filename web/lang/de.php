@@ -157,7 +157,12 @@ return [
     'dashboard_exec_last_24h'   => 'Letzte 24 Stunden',
     'dashboard_exec_executed'   => 'Ausgeführt',
     'dashboard_exec_failed'     => 'Fehlerhaft',
-    'dashboard_output_preview'  => 'Ausgabe',
+    'dashboard_output_preview'        => 'Ausgabe',
+    'dashboard_failures_open'         => 'offen',
+    'dashboard_failures_showing'      => 'Zeige',
+    'dashboard_failures_of'           => 'von',
+    'dashboard_failures_unack'        => 'unbestätigten Fehlern',
+    'dashboard_failures_history_link' => 'Alle in History →',
 
     // -------------------------------------------------------------------------
     // Cron-Jobs
@@ -333,6 +338,7 @@ return [
     'filter_status_success'     => 'Erfolgreich',
     'filter_status_failed'      => 'Fehlgeschlagen',
     'filter_status_running'     => 'Läuft',
+    'filter_status_skipped'     => 'Übersprungen (Wartung)',
     'filter_result'             => 'Letztes Ergebnis',
     'filter_result_all'         => 'Alle',
     'filter_result_ok'          => 'Ok',

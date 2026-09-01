@@ -157,7 +157,12 @@ return [
     'dashboard_exec_last_24h'   => 'Last 24 Hours',
     'dashboard_exec_executed'   => 'Executed',
     'dashboard_exec_failed'     => 'Failed',
-    'dashboard_output_preview'  => 'Output',
+    'dashboard_output_preview'        => 'Output',
+    'dashboard_failures_open'         => 'open',
+    'dashboard_failures_showing'      => 'Showing',
+    'dashboard_failures_of'           => 'of',
+    'dashboard_failures_unack'        => 'unacknowledged failures',
+    'dashboard_failures_history_link' => 'View all in History →',
 
     // -------------------------------------------------------------------------
     // Cron jobs
@@ -333,6 +338,7 @@ return [
     'filter_status_success'     => 'Success',
     'filter_status_failed'      => 'Failed',
     'filter_status_running'     => 'Running',
+    'filter_status_skipped'     => 'Skipped (maintenance)',
     'filter_result'             => 'Last Result',
     'filter_result_all'         => 'All',
     'filter_result_ok'          => 'Ok',

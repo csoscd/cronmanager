@@ -125,10 +125,11 @@ final class ExecutionStartEndpoint
 
         // Normalise the timestamp to the format MariaDB DATETIME expects.
         // The wrapper script may send ISO 8601 with a timezone offset
-        // (e.g. "2026-03-17T22:35:01+01:00"); convert to "Y-m-d H:i:s" in UTC.
+        // (e.g. "2026-03-17T22:35:01+01:00"); convert to "Y-m-d H:i:s" in the
+        // configured system timezone (set via TZ env var in Docker).
         try {
             $dt        = new \DateTimeImmutable((string) $body['started_at']);
-            $startedAt = $dt->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+            $startedAt = $dt->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i:s');
         } catch (\Exception) {
             $startedAt = date('Y-m-d H:i:s');
         }
@@ -210,7 +211,7 @@ final class ExecutionStartEndpoint
             // ------------------------------------------------------------------
 
             if ($this->maintenanceRepo->isAgentInMaintenance()) {
-                $nowUtc = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s');
+                $nowUtc = (new \DateTimeImmutable('now'))->format('Y-m-d H:i:s');
 
                 $stmt = $this->pdo->prepare(
                     'INSERT INTO execution_log
@@ -263,7 +264,7 @@ final class ExecutionStartEndpoint
             if ($inMaintenance && !$runInMaintenance) {
                 // Record a skipped execution so the history is complete, then
                 // return HTTP 423 (Locked) so cron-wrapper knows to exit cleanly.
-                $nowUtc = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s');
+                $nowUtc = (new \DateTimeImmutable('now'))->format('Y-m-d H:i:s');
 
                 $stmt = $this->pdo->prepare(
                     'INSERT INTO execution_log

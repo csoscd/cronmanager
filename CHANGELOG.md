@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [6.2.0] – branch: `feature/dashboard-acknowledge-ux`
 
+### Fixed
+
+- **Zeitstempel-Konsistenz bei Docker-Deployment:** `ExecutionStartEndpoint` und `ExecutionFinishEndpoint` konvertierten empfangene ISO-8601-Zeitstempel hart-kodiert nach UTC (`new \DateTimeZone('UTC')`). Auf Hosts, bei denen die PHP-Zeitzone im Container von der System-Zeitzone abwich (z.B. `date.timezone=UTC` in `php.ini` bei `/etc/localtime → Europe/Berlin`), wurden Zeitstempel in der falschen Zeitzone gespeichert. Fix: Konvertierung auf `date_default_timezone_get()` umgestellt; zusätzlich wird in allen Agent-Compose-Dateien (`docker-compose-full.yml`, `docker-compose-agent.yml`) die Umgebungsvariable `TZ=${TZ:-Europe/Berlin}` gesetzt, sodass PHP-Timezone und System-Timezone konsistent sind. Das Fallback `date('Y-m-d H:i:s')` war bereits korrekt (nutzt implizit die PHP-Standardtimezone).
+
 ### Changed
 
 - **Dashboard: Fehlerzähler zeigt echte Gesamtzahl unbestätigter Fehler:** Das Badge in der Kachel „Aktuelle Fehler" zeigte bisher `failedLast24h` – eine unvollständige Annäherung, die nur die bis zu 10 angezeigten Einträge der letzten 24 h berücksichtigte. Neu: Das Badge zeigt die tatsächliche Gesamtzahl aller unbestätigten Fehler (alle Zeiträume), mit der Beschriftung „offen" statt „(24h)". Dafür wurde im `HistoryEndpoint` des Agenten der neue optionale Parameter `unacknowledged_only=1` eingeführt (`AND el.acknowledged_at IS NULL` im WHERE). Der `DashboardController` nutzt diesen Parameter und fordert genau `limit=10` an; das server-seitige `total`-Feld liefert die Gesamtzahl. Der bisherige Web-seitige `array_slice`-Cap und der Web-seitige `acknowledged_at`-Filter entfallen.

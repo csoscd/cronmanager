@@ -116,12 +116,12 @@ final class ExecutionFinishEndpointTest extends AgentEndpointTestCase
     }
 
     #[Test]
-    public function iso8601TimestampWithPositiveOffsetIsConvertedToUtc(): void
+    public function iso8601TimestampWithPositiveOffsetIsConvertedToSystemTimezone(): void
     {
         $jobId       = $this->seedJob();
         $executionId = $this->seedRunningExecution($jobId);
 
-        // +02:00 → UTC is two hours earlier
+        // +02:00 offset; test environment uses UTC → stored as 10:00:00
         $this->callHandle($this->makeEndpoint(), [
             'execution_id' => $executionId,
             'job_id'       => $jobId,

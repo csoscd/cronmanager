@@ -51,6 +51,8 @@ services:
       # Container entrypoint script
       - /opt/cronmanager/agent/docker/agent/entrypoint.sh:/entrypoint.sh:ro
     environment:
+      # Timezone – must match the host to keep timestamps consistent
+      TZ: "${TZ:-Europe/Berlin}"
       # Optional: InfluxDB 2.x metrics (set in Portainer stack env or .env)
       INFLUXDB_ENABLED: "${INFLUXDB_ENABLED:-false}"
       INFLUXDB_URL:     "${INFLUXDB_URL:-http://influxdb:8086}"

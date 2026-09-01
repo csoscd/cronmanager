@@ -68,6 +68,8 @@ services:
       AGENT_BIND_ADDRESS:  "0.0.0.0"
       AGENT_PORT:          "8865"
       AGENT_TLS_ENABLED:   "true"
+      # Timezone – must match the host to keep timestamps consistent
+      TZ: "${TZ:-Europe/Berlin}"
       # Concurrency: worker processes of the PHP built-in server (v4.7.0)
       PHP_CLI_SERVER_WORKERS: "${PHP_CLI_SERVER_WORKERS:-8}"
       # TLS_CERT_FILE:     "/opt/cronmanager/agent/tls/cert.pem"   # auto-generated if omitted

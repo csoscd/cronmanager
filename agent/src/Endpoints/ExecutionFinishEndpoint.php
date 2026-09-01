@@ -152,10 +152,11 @@ final class ExecutionFinishEndpoint
             ? $body['target']
             : null;
 
-        // Normalise finished_at to the format MariaDB DATETIME expects (UTC).
+        // Normalise finished_at to the format MariaDB DATETIME expects in the
+        // configured system timezone (set via TZ env var in Docker).
         try {
             $dt         = new \DateTimeImmutable((string) $body['finished_at']);
-            $finishedAt = $dt->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+            $finishedAt = $dt->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('Y-m-d H:i:s');
         } catch (\Exception) {
             $finishedAt = date('Y-m-d H:i:s');
         }

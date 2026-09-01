@@ -152,7 +152,7 @@ If omitted, the default agent is used.
 
 - All request bodies must be `application/json`.
 - All responses are `application/json` with `charset=utf-8`.
-- Timestamps are **ISO-8601** strings in UTC: `"2026-06-22T14:30:00Z"`.
+- Timestamps in **request bodies** should be ISO-8601 strings (e.g. `"2026-06-22T14:30:00Z"`); the agent converts them to the configured system timezone before storing. Timestamps in **responses** are MySQL `DATETIME` strings in the agent's configured timezone (default: `Europe/Berlin`, controlled by the `TZ` environment variable).
 - Boolean values are JSON booleans (`true` / `false`), not `0`/`1`.
 
 ### Pagination

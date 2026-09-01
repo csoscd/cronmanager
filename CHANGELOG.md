@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [6.1.0] – branch: `fix/singleton-multi-target`
+
+### Fixed
+
+- **Singleton-Guard bei Multi-Target-Jobs zielspezifisch (closes #147):** `ExecutionStartEndpoint` prüfte beim Singleton-Guard mit `hasRunningExecution()` job-weit (`WHERE cronjob_id = :id AND finished_at IS NULL`), ohne den `target`-Wert zu berücksichtigen. Bei Jobs mit mehreren Targets (z.B. di, dm, dv, dvme) blockierte der erste gestartete Target alle weiteren, obwohl jeder Target eine unabhängige Ausführung auf einem anderen System darstellt. Folge: Pro Scheduler-Tick (und pro „Jetzt ausführen"-Aufruf) erschien in der Ausführungshistorie nur ein einziger Eintrag, obwohl alle Targets laufen sollten. Fix: Neue Methode `hasRunningExecutionForTarget()` (`WHERE cronjob_id = :id AND target = :target AND finished_at IS NULL`). Der Singleton-Guard und der Retry-Pending-Check verwenden nun `hasPendingRetryForTarget()` statt `hasPendingRetry()`, sodass der Guard ausschließlich dann greift, wenn **dasselbe Target** bereits läuft oder auf einen Retry wartet.
+
+---
+
 ## [6.0.0] – branch: `feature/v6.0.0`
 
 ### Added

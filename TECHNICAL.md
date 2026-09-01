@@ -249,12 +249,17 @@ runs regardless and a best-effort finish report is sent.
 
 **Singleton mode:**
 
-When a job has the `singleton` flag set, the `ExecutionStartEndpoint` queries
-`execution_log` for any row with the same `cronjob_id` that has `finished_at IS NULL`
-(i.e. still running). If one is found, the agent returns `409 Conflict` instead of
-inserting a new log row. The wrapper detects the `409` HTTP status code and exits 0
-immediately — no execution record is created and no failure is reported. This is
-transparent to the user unless they inspect the agent log.
+When a job has the `singleton` flag set, the `ExecutionStartEndpoint` checks
+`execution_log` for any row with the same `cronjob_id` **and the same `target`** that has
+`finished_at IS NULL` (i.e. still running for that specific target). If one is found, the
+agent returns `409 Conflict` instead of inserting a new log row. The wrapper detects the
+`409` HTTP status code and exits 0 immediately — no execution record is created and no
+failure is reported. This is transparent to the user unless they inspect the agent log.
+
+The check is **target-specific**: for jobs with multiple targets (e.g. di, dm, dv, dvme),
+each target is treated as an independent execution. A running instance on target A does not
+block a new instance on target B. The singleton guard only fires when the same target would
+overlap itself.
 
 **Dependencies:** `bash 4+`, `curl`, `openssl`, `php`
 

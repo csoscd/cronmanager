@@ -236,24 +236,62 @@ final class ExecutionStartEndpointTest extends AgentEndpointTestCase
     }
 
     #[Test]
-    public function singletonJobWithPendingRetryReturns409(): void
+    public function singletonJobWithPendingRetryOnSameTargetReturns409(): void
     {
         $jobId       = $this->seedJob(['singleton' => 1]);
-        $executionId = $this->seedRunningExecution($jobId);
-        // Mark it as finished so singleton's running-check passes
+        $executionId = $this->seedRunningExecution($jobId, ['target' => 'local']);
+        // Mark it as finished so the running-check passes
         $this->pdo->prepare('UPDATE execution_log SET finished_at = NOW(), exit_code = 1 WHERE id = :id')
                   ->execute([':id' => $executionId]);
-        // Plant a retry state on a DIFFERENT target so hasPendingRetryForTarget() won't flag this as a retry invocation
-        $this->seedRetryState($jobId, $executionId, ['target' => 'other-target']);
+        // Retry is pending on the SAME target ('local') → must block
+        $this->seedRetryState($jobId, $executionId, ['target' => 'local']);
 
         $this->callHandle($this->makeEndpoint(), [
-            'job_id'                => $jobId,
-            'started_at'            => '2026-01-15T10:00:00Z',
-            'target'                => 'local',
-            'is_retry_invocation'   => false,
+            'job_id'              => $jobId,
+            'started_at'          => '2026-01-15T10:00:00Z',
+            'target'              => 'local',
+            'is_retry_invocation' => false,
         ]);
 
         $this->assertStatus(409);
+    }
+
+    #[Test]
+    public function singletonJobWithRunningExecutionOnDifferentTargetAllowsStart(): void
+    {
+        // target A (ssh-server-1) is running; target B (local) must not be blocked
+        $jobId = $this->seedJob(['singleton' => 1]);
+        $this->seedRunningExecution($jobId, ['target' => 'ssh-server-1']);
+
+        $this->callHandle($this->makeEndpoint(), [
+            'job_id'     => $jobId,
+            'started_at' => '2026-01-15T10:00:00Z',
+            'target'     => 'local',
+        ]);
+
+        $this->assertStatus(201);
+        // Two rows: the seeded running one + the newly created one
+        $this->assertSame(2, $this->countExecutions($jobId));
+    }
+
+    #[Test]
+    public function singletonJobWithPendingRetryOnDifferentTargetAllowsStart(): void
+    {
+        // Retry pending on ssh-server-1 must not block a new run on local
+        $jobId       = $this->seedJob(['singleton' => 1]);
+        $executionId = $this->seedRunningExecution($jobId, ['target' => 'ssh-server-1']);
+        $this->pdo->prepare('UPDATE execution_log SET finished_at = NOW(), exit_code = 1 WHERE id = :id')
+                  ->execute([':id' => $executionId]);
+        $this->seedRetryState($jobId, $executionId, ['target' => 'ssh-server-1']);
+
+        $this->callHandle($this->makeEndpoint(), [
+            'job_id'              => $jobId,
+            'started_at'          => '2026-01-15T10:00:00Z',
+            'target'              => 'local',
+            'is_retry_invocation' => false,
+        ]);
+
+        $this->assertStatus(201);
     }
 
     // =========================================================================

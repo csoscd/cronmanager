@@ -122,12 +122,8 @@ class DashboardController extends BaseController
 
         $inactiveJobs = $totalJobs - $activeJobs;
 
-        // Exclude maintenance-skipped executions (exit_code -4); acknowledged
-        // failures are already filtered by the agent (unacknowledged_only=1).
-        $recentFailures = array_values(array_filter(
-            $recentFailures,
-            static fn(array $e): bool => (int) ($e['exit_code'] ?? 0) !== -4
-        ));
+        // The agent already excludes maintenance-skipped (exit_code -4) and
+        // acknowledged failures via status=failed&unacknowledged_only=1.
 
         // Count failures within last 24 hours (from the displayed entries)
         $failedLast24h = 0;

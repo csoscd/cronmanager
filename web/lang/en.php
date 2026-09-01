@@ -338,6 +338,7 @@ return [
     'filter_status_success'     => 'Success',
     'filter_status_failed'      => 'Failed',
     'filter_status_running'     => 'Running',
+    'filter_status_skipped'     => 'Skipped (maintenance)',
     'filter_result'             => 'Last Result',
     'filter_result_all'         => 'All',
     'filter_result_ok'          => 'Ok',

@@ -8,7 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [6.2.0] – branch: `feature/dashboard-acknowledge-ux`
 
+### Added
+
+- **Timeline: neuer Status-Filter „Übersprungen (Wartung)":** Der Filter `status=skipped` im Timeline-Dropdown zeigt ausschließlich Ausführungen mit exit_code -4 (Maintenance-Sentinel). Agent: `VALID_STATUSES` um `skipped` erweitert, neue Bedingung `el.exit_code = -4`.
+
 ### Fixed
+
+- **`status=failed`-Filter schließt Maintenance-Sentinels (exit_code -4) aus:** Bisher zählte `status=failed` alle Einträge mit `exit_code != 0`, also auch die exit_code-(-4)-Sentinels, die beim Überspringen eines Jobs während einer Wartungszeit gesetzt werden. Folge: Das Dashboard zeigte „Zeige 3 von 3632 unbestätigten Fehlern", obwohl 3629 davon eigentlich Wartungs-Skips waren. Fix: `el.exit_code != -4` zusätzlich in die `failed`-Bedingung aufgenommen. Der clientseitige `-4`-Filter im `DashboardController` entfällt dadurch.
+
+- **Dashboard-Link „Alle in History →" zeigt auf `/timeline` statt `/history`:** `/history` ist kein Web-Route, sondern ein Agent-Endpunkt — der Link führte zu einem 404. Korrigiert auf `/timeline?agent_id=X&status=failed`.
 
 - **Zeitstempel-Konsistenz bei Docker-Deployment:** `ExecutionStartEndpoint` und `ExecutionFinishEndpoint` konvertierten empfangene ISO-8601-Zeitstempel hart-kodiert nach UTC (`new \DateTimeZone('UTC')`). Auf Hosts, bei denen die PHP-Zeitzone im Container von der System-Zeitzone abwich (z.B. `date.timezone=UTC` in `php.ini` bei `/etc/localtime → Europe/Berlin`), wurden Zeitstempel in der falschen Zeitzone gespeichert. Fix: Konvertierung auf `date_default_timezone_get()` umgestellt; zusätzlich wird in allen Agent-Compose-Dateien (`docker-compose-full.yml`, `docker-compose-agent.yml`) die Umgebungsvariable `TZ=${TZ:-Europe/Berlin}` gesetzt, sodass PHP-Timezone und System-Timezone konsistent sind. Das Fallback `date('Y-m-d H:i:s')` war bereits korrekt (nutzt implizit die PHP-Standardtimezone).
 

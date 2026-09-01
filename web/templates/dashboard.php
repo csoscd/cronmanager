@@ -300,7 +300,7 @@ $shownFailures       = count($recentFailures);
             <?= htmlspecialchars($t('dashboard_failures_of'), ENT_QUOTES, 'UTF-8') ?>
             <span id="cm-dash-hint-total" class="font-medium"><?= $totalUnacknowledged ?></span>
             <?= htmlspecialchars($t('dashboard_failures_unack'), ENT_QUOTES, 'UTF-8') ?>
-            &ndash; <a href="/history<?= htmlspecialchars($agSuffix ? $agSuffix . '&status=failed' : '?status=failed', ENT_QUOTES, 'UTF-8') ?>"
+            &ndash; <a href="/timeline<?= htmlspecialchars($agSuffix ? $agSuffix . '&amp;status=failed' : '?status=failed', ENT_QUOTES, 'UTF-8') ?>"
                        class="text-blue-600 dark:text-blue-400 hover:underline">
                 <?= htmlspecialchars($t('dashboard_failures_history_link'), ENT_QUOTES, 'UTF-8') ?>
             </a>
@@ -441,7 +441,7 @@ $shownFailures       = count($recentFailures);
         hintOf:     <?= json_encode($t('dashboard_failures_of')) ?>,
         hintUnack:  <?= json_encode($t('dashboard_failures_unack')) ?>,
         hintLink:   <?= json_encode($t('dashboard_failures_history_link')) ?>,
-        historyUrl: <?= json_encode('/history' . ($agSuffix ? $agSuffix . '&status=failed' : '?status=failed')) ?>,
+        historyUrl: <?= json_encode('/timeline' . ($agSuffix ? $agSuffix . '&status=failed' : '?status=failed')) ?>,
     };
 
     function set(id, text) {

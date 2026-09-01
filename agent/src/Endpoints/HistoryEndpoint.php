@@ -76,7 +76,7 @@ final class HistoryEndpoint
     private const MAX_LIMIT = 500;
 
     /** Allowed values for the ?status query parameter. */
-    private const VALID_STATUSES = ['failed', 'success', 'running'];
+    private const VALID_STATUSES = ['failed', 'success', 'running', 'skipped'];
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -201,7 +201,11 @@ final class HistoryEndpoint
         } elseif ($status === 'success') {
             $conditions[] = 'el.finished_at IS NOT NULL AND el.exit_code = 0';
         } elseif ($status === 'failed') {
-            $conditions[] = 'el.finished_at IS NOT NULL AND el.exit_code != 0';
+            // Maintenance-skipped executions (exit_code -4) are a separate status;
+            // exclude them from "failed" so the count and list are accurate.
+            $conditions[] = 'el.finished_at IS NOT NULL AND el.exit_code != 0 AND el.exit_code != -4';
+        } elseif ($status === 'skipped') {
+            $conditions[] = 'el.finished_at IS NOT NULL AND el.exit_code = -4';
         }
 
         if ($search !== null) {

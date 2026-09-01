@@ -490,7 +490,7 @@ Execution history for a specific job.
 |---|---|
 | `limit` | Page size (default: 50, max: 500) |
 | `offset` | Pagination offset |
-| `status` | Filter: `success`, `failed`, `running` |
+| `status` | Filter: `success`, `failed`, `running`, `skipped`. `failed` excludes maintenance-skipped entries (exit_code -4); use `skipped` to retrieve those. |
 | `unacknowledged_only` | `1` = only return executions where `acknowledged_at` is null |
 
 **Response 200:**
@@ -927,7 +927,7 @@ Execution history across all jobs.
 |---|---|
 | `limit` | Page size (default: 100) |
 | `offset` | Pagination offset |
-| `status` | Filter: `success`, `failed`, `running` |
+| `status` | Filter: `success`, `failed`, `running`, `skipped`. `failed` excludes maintenance-skipped entries (exit_code -4); use `skipped` to retrieve those. |
 | `tag` | Filter by job tag |
 
 **Response 200:**

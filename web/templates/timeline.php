@@ -222,6 +222,9 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect, $a
                 <option value="running"<?= $activeStatus === 'running' ? ' selected' : '' ?>>
                     <?= htmlspecialchars($t('filter_status_running'), ENT_QUOTES, 'UTF-8') ?>
                 </option>
+                <option value="skipped"<?= $activeStatus === 'skipped' ? ' selected' : '' ?>>
+                    <?= htmlspecialchars($t('filter_status_skipped'), ENT_QUOTES, 'UTF-8') ?>
+                </option>
             </select>
         </div>
 

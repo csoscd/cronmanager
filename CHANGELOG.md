@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [6.2.0] – branch: `feature/dashboard-acknowledge-ux`
+
+### Changed
+
+- **Dashboard: Fehlerzähler zeigt echte Gesamtzahl unbestätigter Fehler:** Das Badge in der Kachel „Aktuelle Fehler" zeigte bisher `failedLast24h` – eine unvollständige Annäherung, die nur die bis zu 10 angezeigten Einträge der letzten 24 h berücksichtigte. Neu: Das Badge zeigt die tatsächliche Gesamtzahl aller unbestätigten Fehler (alle Zeiträume), mit der Beschriftung „offen" statt „(24h)". Dafür wurde im `HistoryEndpoint` des Agenten der neue optionale Parameter `unacknowledged_only=1` eingeführt (`AND el.acknowledged_at IS NULL` im WHERE). Der `DashboardController` nutzt diesen Parameter und fordert genau `limit=10` an; das server-seitige `total`-Feld liefert die Gesamtzahl. Der bisherige Web-seitige `array_slice`-Cap und der Web-seitige `acknowledged_at`-Filter entfallen.
+
+- **Dashboard: „Zeige N von M" Hinweis wenn weitere Fehler vorhanden:** Wenn die Gesamtzahl unbestätigter Fehler die angezeigte Listenlänge (10) übersteigt, erscheint unter der Fehler-Tabelle ein Hinweis „Zeige N von M unbestätigten Fehlern – Alle in History →". Der Hinweis wird im 60-s-AJAX-Poll aktualisiert und zeigt dem Nutzer sofort, dass noch weitere Einträge warten – die bisherige Verwirrung (leeres Dashboard nach Bestätigen von 10 Einträgen, dann nach Reload wieder 10 neue) entfällt.
+
+- **Dashboard: AJAX-Reload der Fehler-Sektion nach Bestätigen:** Nach jedem erfolgreichen AJAX-Acknowledge wird die Fehler-Sektion sofort vom Server neu geladen (`GET /dashboard?_json=1`). Der nächste unbestätigte Fehler füllt automatisch die Liste auf, Badge und Hinweis werden aktualisiert. Technisch: Der Acknowledge-Script feuert das Custom-Event `cm:ack-success`; der Haupt-Script hört darauf und führt `refresh()` aus – keine Code-Duplizierung, keine DOM-Manipulation außer dem sofortigen Entfernen der bestätigten Zeile.
+
+---
+
 ## [6.1.0] – branch: `fix/singleton-multi-target`
 
 ### Fixed

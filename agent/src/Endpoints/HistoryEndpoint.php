@@ -12,16 +12,17 @@ declare(strict_types=1);
  * freely to narrow the result set.
  *
  * Supported query parameters:
- *   - job_id  (int)            Filter by a specific cron job ID.
- *   - tag     (string)         Filter by tag name – only jobs carrying this tag.
- *   - user    (string)         Filter by linux_user of the owning job.
- *   - status  (string)         One of: "failed", "success", "running".
- *   - search  (string)         Full-text LIKE filter on job description and command.
- *   - limit   (int, 1–500)     Max number of rows to return (default 50).
- *   - offset  (int, ≥ 0)       Pagination offset (default 0).
- *   - from    (YYYY-MM-DD)     Only executions started on or after this date.
- *   - to      (YYYY-MM-DD)     Only executions started on or before this date.
- *   - target  (string)         Filter by execution target (e.g. "local" or SSH host alias).
+ *   - job_id             (int)    Filter by a specific cron job ID.
+ *   - tag                (string) Filter by tag name – only jobs carrying this tag.
+ *   - user               (string) Filter by linux_user of the owning job.
+ *   - status             (string) One of: "failed", "success", "running".
+ *   - search             (string) Full-text LIKE filter on job description and command.
+ *   - limit              (int, 1–500) Max number of rows to return (default 50).
+ *   - offset             (int, ≥ 0)  Pagination offset (default 0).
+ *   - from               (YYYY-MM-DD) Only executions started on or after this date.
+ *   - to                 (YYYY-MM-DD) Only executions started on or before this date.
+ *   - target             (string) Filter by execution target (e.g. "local" or SSH host alias).
+ *   - unacknowledged_only (0|1)   When "1", only return executions where acknowledged_at IS NULL.
  *
  * This class relies on the global `jsonResponse()` function being available
  * in the calling scope (defined in agent.php).
@@ -115,16 +116,17 @@ final class HistoryEndpoint
         // 1. Parse and validate query parameters
         // ------------------------------------------------------------------
 
-        $jobId  = $this->parsePositiveInt($_GET['job_id'] ?? null);
-        $tag    = isset($_GET['tag'])    && $_GET['tag']    !== '' ? (string) $_GET['tag']    : null;
-        $user   = isset($_GET['user'])   && $_GET['user']   !== '' ? (string) $_GET['user']   : null;
-        $target = isset($_GET['target']) && $_GET['target'] !== '' ? (string) $_GET['target'] : null;
-        $status = isset($_GET['status']) && $_GET['status'] !== '' ? (string) $_GET['status'] : null;
-        $search = isset($_GET['search']) && $_GET['search'] !== '' ? (string) $_GET['search'] : null;
-        $limit  = $this->parseLimit($_GET['limit']   ?? null);
-        $offset = $this->parseOffset($_GET['offset'] ?? null);
-        $from   = $this->parseDate($_GET['from'] ?? null);
-        $to     = $this->parseDate($_GET['to']   ?? null);
+        $jobId             = $this->parsePositiveInt($_GET['job_id'] ?? null);
+        $tag               = isset($_GET['tag'])    && $_GET['tag']    !== '' ? (string) $_GET['tag']    : null;
+        $user              = isset($_GET['user'])   && $_GET['user']   !== '' ? (string) $_GET['user']   : null;
+        $target            = isset($_GET['target']) && $_GET['target'] !== '' ? (string) $_GET['target'] : null;
+        $status            = isset($_GET['status']) && $_GET['status'] !== '' ? (string) $_GET['status'] : null;
+        $search            = isset($_GET['search']) && $_GET['search'] !== '' ? (string) $_GET['search'] : null;
+        $limit             = $this->parseLimit($_GET['limit']   ?? null);
+        $offset            = $this->parseOffset($_GET['offset'] ?? null);
+        $from              = $this->parseDate($_GET['from'] ?? null);
+        $to                = $this->parseDate($_GET['to']   ?? null);
+        $unacknowledgedOnly = isset($_GET['unacknowledged_only']) && $_GET['unacknowledged_only'] === '1';
 
         // Validate status value
         if ($status !== null && !in_array($status, self::VALID_STATUSES, true)) {
@@ -218,6 +220,10 @@ final class HistoryEndpoint
         if ($to !== null) {
             $conditions[]       = 'el.started_at <= :to';
             $queryParams[':to'] = $to . ' 23:59:59';
+        }
+
+        if ($unacknowledgedOnly) {
+            $conditions[] = 'el.acknowledged_at IS NULL';
         }
 
         $whereClause = $conditions !== []

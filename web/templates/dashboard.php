@@ -35,14 +35,16 @@ $stats              = isset($stats)          && is_array($stats)          ? $sta
 $executionStats     = isset($executionStats) && is_array($executionStats) ? $executionStats : [];
 $showExecutionStats = isset($showExecutionStats) ? (bool) $showExecutionStats : false;
 
-$total         = (int) ($stats['total']         ?? 0);
-$active        = (int) ($stats['active']        ?? 0);
-$inactive      = (int) ($stats['inactive']      ?? 0);
-$tagsCount     = (int) ($stats['tagsCount']     ?? 0);
-$failedLast24h = (int) ($stats['failedLast24h'] ?? 0);
-$byUser        = (array) ($stats['byUser']      ?? []);
-$multiUser     = isset($multiUser) ? (bool) $multiUser : true;
-$isOperator    = isset($isOperator) ? (bool) $isOperator : false;
+$total               = (int) ($stats['total']               ?? 0);
+$active              = (int) ($stats['active']              ?? 0);
+$inactive            = (int) ($stats['inactive']            ?? 0);
+$tagsCount           = (int) ($stats['tagsCount']           ?? 0);
+$failedLast24h       = (int) ($stats['failedLast24h']       ?? 0);
+$totalUnacknowledged = (int) ($stats['totalUnacknowledged'] ?? isset($totalUnacknowledgedFailures) ? (int) $totalUnacknowledgedFailures : 0);
+$byUser              = (array) ($stats['byUser']            ?? []);
+$multiUser           = isset($multiUser) ? (bool) $multiUser : true;
+$isOperator          = isset($isOperator) ? (bool) $isOperator : false;
+$shownFailures       = count($recentFailures);
 ?>
 
 <!-- ======================================================================
@@ -145,8 +147,8 @@ $isOperator    = isset($isOperator) ? (bool) $isOperator : false;
             <h2 class="text-base font-semibold text-gray-800 dark:text-gray-200">
                 <?= htmlspecialchars($t('dashboard_recent_failures'), ENT_QUOTES, 'UTF-8') ?>
             </h2>
-            <span id="cm-dash-fail-badge" class="<?= $failedLast24h > 0 ? '' : 'hidden' ?> inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                <span id="cm-dash-fail-count"><?= $failedLast24h ?></span>&nbsp;<?= htmlspecialchars($t('filter_status_failed'), ENT_QUOTES, 'UTF-8') ?> (24h)
+            <span id="cm-dash-fail-badge" class="<?= $totalUnacknowledged > 0 ? '' : 'hidden' ?> inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                <span id="cm-dash-fail-count"><?= $totalUnacknowledged ?></span>&nbsp;<?= htmlspecialchars($t('dashboard_failures_open'), ENT_QUOTES, 'UTF-8') ?>
             </span>
         </div>
 
@@ -289,6 +291,23 @@ $isOperator    = isset($isOperator) ? (bool) $isOperator : false;
                 </table>
             </div>
         <?php endif; ?>
+
+        <?php if ($shownFailures > 0): ?>
+        <div id="cm-dash-fail-hint"
+             class="<?= $totalUnacknowledged > $shownFailures ? '' : 'hidden' ?> px-4 py-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-700">
+            <?= htmlspecialchars($t('dashboard_failures_showing'), ENT_QUOTES, 'UTF-8') ?>
+            <span id="cm-dash-hint-shown"><?= $shownFailures ?></span>
+            <?= htmlspecialchars($t('dashboard_failures_of'), ENT_QUOTES, 'UTF-8') ?>
+            <span id="cm-dash-hint-total" class="font-medium"><?= $totalUnacknowledged ?></span>
+            <?= htmlspecialchars($t('dashboard_failures_unack'), ENT_QUOTES, 'UTF-8') ?>
+            &ndash; <a href="/history<?= htmlspecialchars($agSuffix ? $agSuffix . '&status=failed' : '?status=failed', ENT_QUOTES, 'UTF-8') ?>"
+                       class="text-blue-600 dark:text-blue-400 hover:underline">
+                <?= htmlspecialchars($t('dashboard_failures_history_link'), ENT_QUOTES, 'UTF-8') ?>
+            </a>
+        </div>
+        <?php else: ?>
+        <div id="cm-dash-fail-hint" class="hidden"></div>
+        <?php endif; ?>
     </div>
 
     <!-- Execution stats widget (1 of 4 columns, under 4th tile) ----------- -->
@@ -411,32 +430,167 @@ $isOperator    = isset($isOperator) ? (bool) $isOperator : false;
 (function () {
     'use strict';
 
+    var CM_DASH = {
+        agentId:    <?= json_encode((int) ($agentId ?? 0)) ?>,
+        multiUser:  <?= json_encode($multiUser) ?>,
+        isOperator: <?= json_encode($isOperator) ?>,
+        showOutput: <?= json_encode($showOutputPreview) ?>,
+        noResults:  <?= json_encode($t('no_results')) ?>,
+        ackLabel:   <?= json_encode($t('execution_acknowledge')) ?>,
+        hintShow:   <?= json_encode($t('dashboard_failures_showing')) ?>,
+        hintOf:     <?= json_encode($t('dashboard_failures_of')) ?>,
+        hintUnack:  <?= json_encode($t('dashboard_failures_unack')) ?>,
+        hintLink:   <?= json_encode($t('dashboard_failures_history_link')) ?>,
+        historyUrl: <?= json_encode('/history' . ($agSuffix ? $agSuffix . '&status=failed' : '?status=failed')) ?>,
+    };
+
     function set(id, text) {
         var el = document.getElementById(id);
         if (el) { el.textContent = String(text); }
+    }
+
+    function updateBadge(total) {
+        var badge   = document.getElementById('cm-dash-fail-badge');
+        var countEl = document.getElementById('cm-dash-fail-count');
+        if (badge)   { badge.classList.toggle('hidden', total === 0); }
+        if (countEl) { countEl.textContent = String(total); }
+    }
+
+    function updateHint(shown, total) {
+        var hint = document.getElementById('cm-dash-fail-hint');
+        if (!hint) { return; }
+        if (total > shown && shown > 0) {
+            set('cm-dash-hint-shown', shown);
+            set('cm-dash-hint-total', total);
+            hint.classList.remove('hidden');
+        } else {
+            hint.classList.add('hidden');
+        }
+    }
+
+    function esc(s) {
+        return String(s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function buildRow(e) {
+        var agId = CM_DASH.agentId;
+        var q = 'job_id=' + encodeURIComponent(e.job_id || '')
+              + '&target=' + encodeURIComponent(e.target || '')
+              + '&status=failed&_direct=1';
+        if (agId > 0) { q = 'agent_id=' + agId + '&' + q; }
+        var url  = '/timeline?' + q;
+        var desc = e.description || ('Job #' + e.job_id);
+
+        var html = '<td class="px-4 py-3 text-sm">'
+                 + (e.job_id
+                     ? '<a href="' + esc(url) + '" class="text-blue-600 hover:underline font-medium">' + esc(desc) + '</a>'
+                     : esc(desc))
+                 + '</td>';
+
+        if (CM_DASH.multiUser) {
+            html += '<td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">' + esc(e.linux_user || '') + '</td>';
+        }
+
+        var tgt = e.target || '';
+        html += '<td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">'
+              + (tgt
+                  ? '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">' + esc(tgt) + '</span>'
+                  : '<span class="text-gray-300 dark:text-gray-600">—</span>')
+              + '</td>';
+
+        var code = (e.exit_code !== null && e.exit_code !== undefined) ? e.exit_code : '?';
+        html += '<td class="px-4 py-3 text-sm">'
+              + '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">'
+              + esc(code) + '</span></td>';
+
+        html += '<td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">' + esc(e.started_at || '') + '</td>';
+
+        var dur = (e.duration_seconds !== null && e.duration_seconds !== undefined)
+                ? (Math.round(e.duration_seconds * 10) / 10) + 's' : '–';
+        html += '<td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">' + esc(dur) + '</td>';
+
+        if (CM_DASH.showOutput) {
+            var out = ((e.output || '').trim());
+            if (out.length > 120) { out = '…' + out.slice(-120); }
+            html += '<td class="px-4 py-3 text-xs font-mono text-gray-500 dark:text-gray-400 max-w-xs">'
+                  + (out
+                      ? '<span class="block whitespace-pre-wrap break-words">' + esc(out) + '</span>'
+                      : '<span class="text-gray-300 dark:text-gray-600">—</span>')
+                  + '</td>';
+        }
+
+        if (CM_DASH.isOperator && e.execution_id) {
+            html += '<td class="px-4 py-3 text-sm whitespace-nowrap">'
+                  + '<button type="button" data-ack-id="' + esc(e.execution_id) + '"'
+                  + ' class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium'
+                  + ' bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600'
+                  + ' dark:text-gray-300 border border-gray-200 dark:border-gray-600'
+                  + ' transition focus:outline-none focus:ring-2 focus:ring-gray-400">'
+                  + esc(CM_DASH.ackLabel) + '</button></td>';
+        }
+
+        var tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-50 dark:hover:bg-gray-700';
+        tr.innerHTML = html;
+        return tr;
+    }
+
+    function updateFailureRows(entries) {
+        var tbody = document.getElementById('cm-dash-fail-tbody');
+
+        if (entries.length === 0) {
+            if (tbody) {
+                var wrap = tbody.closest('.overflow-x-auto');
+                if (wrap) {
+                    wrap.innerHTML = '<div class="px-6 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">'
+                                   + CM_DASH.noResults + '</div>';
+                }
+            }
+            return;
+        }
+
+        if (!tbody) {
+            // Empty-state placeholder is showing but server has new entries.
+            location.reload();
+            return;
+        }
+
+        var currentIds = new Set();
+        tbody.querySelectorAll('[data-ack-id]').forEach(function (b) {
+            currentIds.add(String(b.dataset.ackId));
+        });
+        entries.forEach(function (e) {
+            if (!currentIds.has(String(e.execution_id))) {
+                tbody.appendChild(buildRow(e));
+            }
+        });
     }
 
     function refresh() {
         cmFetch('/dashboard?_json=1')
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                var s = data.stats || {};
-                set('cm-dash-total',   s.total    || 0);
-                set('cm-dash-active',  s.active   || 0);
-                set('cm-dash-inactive',s.inactive || 0);
-                set('cm-dash-tags',    s.tagsCount || 0);
+                var s       = data.stats        || {};
+                var entries = data.recentFailures || [];
+                var total   = parseInt(s.totalUnacknowledged || 0, 10);
 
-                var badge     = document.getElementById('cm-dash-fail-badge');
-                var failCount = document.getElementById('cm-dash-fail-count');
-                var n         = parseInt(s.failedLast24h || 0, 10);
-                if (badge) { badge.classList.toggle('hidden', n === 0); }
-                if (failCount) { failCount.textContent = String(n); }
+                set('cm-dash-total',    s.total    || 0);
+                set('cm-dash-active',   s.active   || 0);
+                set('cm-dash-inactive', s.inactive || 0);
+                set('cm-dash-tags',     s.tagsCount || 0);
+
+                updateBadge(total);
+                updateHint(entries.length, total);
+                updateFailureRows(entries);
             })
             .catch(function () {
                 /* silent — stale data is acceptable on transient errors */
             });
     }
 
+    document.addEventListener('cm:ack-success', refresh);
     cmPoll(refresh, 60000);
 }());
 </script>
@@ -444,7 +598,8 @@ $isOperator    = isset($isOperator) ? (bool) $isOperator : false;
 <?php if ($isOperator): ?>
 <script>
 // AJAX acknowledge via event delegation on the recent-failures tbody.
-// On success the row is removed immediately; badge counter is decremented.
+// On success the row is removed immediately; the failures section is then
+// refreshed from the server so the next unacknowledged failure fills in.
 (function () {
     'use strict';
     var CSRF  = <?= json_encode($csrf_token ?? '') ?>;
@@ -473,27 +628,13 @@ $isOperator    = isset($isOperator) ? (bool) $isOperator : false;
         .then(function (data) {
             if (!data.success) { btn.disabled = false; return; }
 
-            // Remove the row from the DOM.
+            // Remove the row immediately for instant visual feedback.
             var row = btn.closest('tr');
             if (row) { row.remove(); }
 
-            // Decrement the 24h-failure badge.
-            var countEl = document.getElementById('cm-dash-fail-count');
-            var badge   = document.getElementById('cm-dash-fail-badge');
-            if (countEl) {
-                var n = Math.max(0, parseInt(countEl.textContent, 10) - 1);
-                countEl.textContent = String(n);
-                if (badge) { badge.classList.toggle('hidden', n === 0); }
-            }
-
-            // If the tbody is now empty, show the "no results" message.
-            if (tbody.querySelectorAll('tr').length === 0) {
-                var wrap = tbody.closest('.overflow-x-auto');
-                if (wrap) {
-                    wrap.innerHTML = '<div class="px-6 py-8 text-center text-gray-400 dark:text-gray-500 text-sm">'
-                        + <?= json_encode($t('no_results')) ?> + '</div>';
-                }
-            }
+            // Refresh the whole failures section from the server: updates the
+            // badge, the "X von Y" hint, and fills in the next failure if any.
+            document.dispatchEvent(new CustomEvent('cm:ack-success'));
         })
         .catch(function () {
             btn.disabled = false;

@@ -254,4 +254,51 @@ final class HistoryEndpointTest extends AgentEndpointTestCase
 
         $this->assertSame($output, (string) $body['data'][0]['output']);
     }
+
+    #[Test]
+    public function unacknowledgedOnlyExcludesAcknowledgedExecutions(): void
+    {
+        $jobId = $this->seedJob();
+
+        // Unacknowledged failure – must appear
+        $this->seedFinishedExecution($jobId, [
+            'exit_code'        => 1,
+            'started_at'       => '2026-01-15 08:00:00',
+            'acknowledged_at'  => null,
+        ]);
+
+        // Acknowledged failure – must be excluded
+        $this->seedFinishedExecution($jobId, [
+            'exit_code'       => 2,
+            'started_at'      => '2026-01-15 09:00:00',
+            'acknowledged_at' => '2026-01-15 09:05:00',
+        ]);
+
+        $body = $this->callHistory(['status' => 'failed', 'unacknowledged_only' => '1']);
+
+        $this->assertSame(1, (int) ($body['total'] ?? -1));
+        $this->assertCount(1, $body['data'] ?? []);
+        $this->assertSame(1, (int) $body['data'][0]['exit_code']);
+        $this->assertNull($body['data'][0]['acknowledged_at']);
+    }
+
+    #[Test]
+    public function unacknowledgedOnlyZeroOrAbsentDoesNotFilterAcknowledged(): void
+    {
+        $jobId = $this->seedJob();
+
+        $this->seedFinishedExecution($jobId, [
+            'exit_code'       => 1,
+            'started_at'      => '2026-01-15 08:00:00',
+            'acknowledged_at' => '2026-01-15 08:05:00',
+        ]);
+
+        // Without the flag: acknowledged entry is returned
+        $bodyAll = $this->callHistory(['status' => 'failed']);
+        $this->assertSame(1, (int) ($bodyAll['total'] ?? -1));
+
+        // With unacknowledged_only=0: same as without the flag
+        $bodyZero = $this->callHistory(['status' => 'failed', 'unacknowledged_only' => '0']);
+        $this->assertSame(1, (int) ($bodyZero['total'] ?? -1));
+    }
 }

@@ -831,8 +831,9 @@ Paginated execution history.
 | `status` | string | `success`, `failed`, or `running` |
 | `from` | string | Start date (`YYYY-MM-DD`) |
 | `to` | string | End date (`YYYY-MM-DD`) |
-| `limit` | int | Page size (default: 25) |
+| `limit` | int | Page size (default: 50, max: 500) |
 | `offset` | int | Pagination offset (default: 0) |
+| `unacknowledged_only` | `0\|1` | `1` = only return executions where `acknowledged_at IS NULL` |
 
 **Response:**
 ```json

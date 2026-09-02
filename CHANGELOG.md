@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [6.2.1] – branch: `fix/v6.2.1`
+
+### Fixed
+
+- **`SESSION_IDLE_TIMEOUT` als Umgebungsvariable im Web-Container:** `docker/web/entrypoint.sh` schrieb bisher nur `session.lifetime` in die generierte `config.json`, nicht aber `session.idle_timeout`. Folge: Der server-seitige Idle-Timeout fiel immer auf `$lifetime` zurück — konfigurierbar war nur die Cookie-Lebensdauer, nicht das server-seitige Inaktivitätsfenster. Fix: `SESSION_IDLE_TIMEOUT` wird nun als optionale Umgebungsvariable ausgewertet; fehlt sie, wird `SESSION_LIFETIME` als Fallback verwendet. Beide Werte landen in `config.json` unter `session.lifetime` und `session.idle_timeout`.
+
+---
+
 ## [6.2.0] – branch: `feature/dashboard-acknowledge-ux`
 
 ### Added

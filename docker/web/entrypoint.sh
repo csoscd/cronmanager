@@ -25,6 +25,7 @@
 #   LOG_LEVEL           info
 #   LOG_MAX_DAYS        30
 #   SESSION_LIFETIME    3600
+#   SESSION_IDLE_TIMEOUT 3600  (server-side idle expiry; defaults to SESSION_LIFETIME)
 #   SESSION_NAME        cronmanager_sess
 #   I18N_LANGUAGE       en
 #   OIDC_ENABLED               false
@@ -124,8 +125,9 @@ php -r "
         'max_days' => (int)(getenv('LOG_MAX_DAYS') ?: 30),
     ],
     'session' => [
-        'lifetime' => (int)(getenv('SESSION_LIFETIME') ?: 3600),
-        'name'     => getenv('SESSION_NAME') ?: 'cronmanager_sess',
+        'lifetime'     => (int)(getenv('SESSION_LIFETIME') ?: 3600),
+        'idle_timeout' => (int)(getenv('SESSION_IDLE_TIMEOUT') ?: (getenv('SESSION_LIFETIME') ?: 3600)),
+        'name'         => getenv('SESSION_NAME') ?: 'cronmanager_sess',
     ],
     'i18n' => [
         'default_language' => getenv('I18N_LANGUAGE') ?: 'en',

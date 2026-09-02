@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Dark Mode: Tabellen-Hover-Effekt korrigiert:** `hover:bg-gray-50` erzeugte im Dark Mode fast weißen Zeilenhintergrund (#f9fafb), weil der Selektor in `brand.css` nicht überschrieben war. Fix: `.hover\:bg-gray-50/100/200:hover` auf subtiles Indigo-Tint (`rgba(129,140,248,.06/.08/.10)`) gesetzt — konsistent mit dem bestehenden Nav-Link-Hover.
+
 - **Dark Mode: höherer Textkontrast für Sekundärtexte:** `--cm-muted` von `#b4b4e0` auf `#dcdcfa` (~13.5:1 auf `#0e0f26`) und `--cm-faint` von `#9898c8` auf `#c4c4ec` (~11:1) angehoben. Betrifft Sidebar-Links, Labels, Footer, alle `.text-gray-400/500/600/700`-Elemente im Dark Mode. Nutzerfeedback: Sekundärtexte waren im Dark Mode zu dunkel und schwer lesbar.
 
 - **`SESSION_IDLE_TIMEOUT` als Umgebungsvariable im Web-Container:** `docker/web/entrypoint.sh` schrieb bisher nur `session.lifetime` in die generierte `config.json`, nicht aber `session.idle_timeout`. Folge: Der server-seitige Idle-Timeout fiel immer auf `$lifetime` zurück — konfigurierbar war nur die Cookie-Lebensdauer, nicht das server-seitige Inaktivitätsfenster. Fix: `SESSION_IDLE_TIMEOUT` wird nun als optionale Umgebungsvariable ausgewertet; fehlt sie, wird `SESSION_LIFETIME` als Fallback verwendet. Beide Werte landen in `config.json` unter `session.lifetime` und `session.idle_timeout`.

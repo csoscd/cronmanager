@@ -143,6 +143,9 @@ body.bg-gray-100  { background-color: var(--cm-bg-deep) !important; }
 .bg-indigo-50  { background-color: rgba(129,140,248,.08) !important; }
 
 /* Fehlende Overrides – im Dark Mode sonst helle Tailwind-Defaults */
+.hover\:bg-gray-50:hover  { background-color: rgba(129,140,248,.06) !important; }
+.hover\:bg-gray-100:hover { background-color: rgba(129,140,248,.08) !important; }
+.hover\:bg-gray-200:hover { background-color: rgba(129,140,248,.10) !important; }
 .bg-gray-200   { background-color: var(--cm-bg-elevated)            !important; }
 .bg-green-50   { background-color: rgba(52,211,153,.08)             !important; }
 .bg-amber-50   { background-color: rgba(251,191,36,.08)             !important; }

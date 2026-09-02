@@ -48,9 +48,9 @@
     --cm-border-focus: #818cf8;
 
     --cm-text:       #f0f0ff;
-    --cm-muted:      #b4b4e0;   /* war #8888bb – 2,2:1 zu dunkel */
-    --cm-faint:      #9898c8;   /* war #44446a – 2,2:1, WCAG-Verstoß */
-    --cm-text-muted: #b4b4e0;   /* Alias für Template-Inline-Styles */
+    --cm-muted:      #dcdcfa;   /* +2-Stufe: ~13.5:1 auf #0e0f26 */
+    --cm-faint:      #c4c4ec;   /* +2-Stufe: ~11:1 auf #0e0f26 */
+    --cm-text-muted: #dcdcfa;   /* Alias für Template-Inline-Styles */
     --cm-input-bg:   #0e0f26;
 }
 

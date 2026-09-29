@@ -23,7 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `GET /crons/{id}/dependency-check`: Von `cron-wrapper.sh` aufgerufen; gibt `{"satisfied": bool, "reason": "..."}` zurück. Fail-open: Bei DB-Fehler wird `satisfied=true` zurückgegeben.
 - **Cycle Detection:** Zyklen im Dependency-Graph werden beim Anlegen/Bearbeiten erkannt (Agent: HTTP 422 autoritativ; Web: Early-Feedback via Client-seitiger Validierung). DependencyRepository::detectCycle() traversiert den Graphen aufwärts, max. 100 Knoten.
 - **Web-UI-Erweiterungen:**
-  - Formular (Erstellen/Bearbeiten): Neue zusammenklappbare Sektion „Abhängigkeit von anderem Job" mit Typ-Auswahl, Vorgänger-Dropdown, Exit-Codes-Eingabe und Max-Alter-Eingabe (nur für `requires`). Schedule-Feld wird für `triggered_by`-Jobs ausgeblendet.
+  - Formular (Erstellen/Bearbeiten): Neue Sektion „Ausführungstyp" (immer sichtbar, nicht aufklappbar) mit drei Radio-Optionen: **Zeitplan** (Standard), **Prüfen vor Ausführung** (`requires`), **Ausgelöst durch Job** (`triggered_by`). Schedule-Feld sichtbar für „Zeitplan" und „Prüfen vor Ausführung", ausgeblendet für „Ausgelöst durch Job". Vorgänger-Dropdown und Exit-Codes sichtbar für beide Dependency-Typen. Max-Alter-Feld nur für „Prüfen vor Ausführung"; Wert `0` = kein Alterslimit.
   - Jobliste: Dependency-Badge in der Schedule-Spalte: Kettenglied-Symbol (requires) bzw. Blitz-Symbol (triggered_by) mit Link auf den Vorgänger-Job.
   - Detail-Ansicht: Dependency-Info im Properties-Block mit Link auf den Vorgänger-Job.
 - **Export:** Dependency-Annotation als Kommentar im Crontab-Export; `triggered_by`-Jobs werden mit `# (event-driven – no crontab entry)` markiert.
@@ -40,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `cron-wrapper.sh`: Neuer Schritt 2b (Dependency-Check via `GET /crons/{id}/dependency-check`) zwischen dem Abrufen des Job-Befehls und der Ausführung.
 - `DependencyRepository::exitCodeMatches()`: Leere Listen geben jetzt `false` zurück (nicht `true` durch `explode`-Artefakt mit `['']`).
 - `DependencyRepository::validateExitCodes()`: Ablehnung negativer Codes und Codes > 255; leere Tokens zwischen Kommas werden abgelehnt.
+- `DependencyCheckEndpoint`: `max_age_minutes = 0` überspringt die Zeitfenster-Prüfung vollständig — nur der Exit-Code des letzten Vorgänger-Runs wird geprüft.
 
 ---
 

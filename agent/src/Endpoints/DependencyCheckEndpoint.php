@@ -51,7 +51,7 @@ final class DependencyCheckEndpoint
     // Constants
     // -------------------------------------------------------------------------
 
-    /** Default time window when max_age_minutes is NULL. */
+    /** Default time window when max_age_minutes is NULL (legacy / not yet configured). */
     private const DEFAULT_MAX_AGE_MINUTES = 60;
 
     // -------------------------------------------------------------------------
@@ -118,9 +118,9 @@ final class DependencyCheckEndpoint
 
         $predecessorId = (int) $dep['predecessor_id'];
         $exitCodes     = (string) $dep['exit_codes'];
-        $maxAge        = $dep['max_age_minutes'] !== null
-            ? (int) $dep['max_age_minutes']
-            : self::DEFAULT_MAX_AGE_MINUTES;
+        // 0 = no age limit (only exit code matters); NULL = use legacy default
+        $rawAge        = $dep['max_age_minutes'] !== null ? (int) $dep['max_age_minutes'] : null;
+        $maxAge        = ($rawAge !== null) ? $rawAge : self::DEFAULT_MAX_AGE_MINUTES;
 
         try {
             [$satisfied, $reason] = $this->checkRequires($predecessorId, $exitCodes, $maxAge);
@@ -156,13 +156,14 @@ final class DependencyCheckEndpoint
      * Check whether the 'requires' dependency condition is met.
      *
      * Looks for the most recent finished, non-sentinel execution of the
-     * predecessor within the given time window whose exit code matches the
-     * configured list.  Maintenance sentinels (exit_code -4) and dependency
-     * skips (exit_code -7) are excluded from the check.
+     * predecessor whose exit code matches the configured list.  When maxAge
+     * is 0 the time constraint is omitted (any past execution qualifies).
+     * Maintenance sentinels (exit_code -4) and dependency skips (exit_code -7)
+     * are excluded from the check.
      *
      * @param int    $predecessorId Job ID of the required predecessor.
      * @param string $exitCodes     Comma-separated list of qualifying exit codes.
-     * @param int    $maxAge        Maximum age of the qualifying run in minutes.
+     * @param int    $maxAge        Maximum age in minutes; 0 = no age constraint.
      *
      * @return array{0: bool, 1: string} [satisfied, reason]
      *
@@ -170,27 +171,39 @@ final class DependencyCheckEndpoint
      */
     private function checkRequires(int $predecessorId, string $exitCodes, int $maxAge): array
     {
-        // Find the most recent real finished execution of the predecessor
-        $stmt = $this->pdo->prepare(
-            "SELECT id, exit_code, finished_at
-               FROM execution_log
-              WHERE cronjob_id  = :predecessor_id
-                AND finished_at IS NOT NULL
-                AND exit_code   NOT IN (-4, -7)
-                AND finished_at >= DATE_SUB(NOW(), INTERVAL :max_age MINUTE)
-              ORDER BY finished_at DESC
-              LIMIT 1"
-        );
-        $stmt->execute([':predecessor_id' => $predecessorId, ':max_age' => $maxAge]);
+        // When maxAge = 0 we skip the time constraint entirely
+        $timeClause = $maxAge > 0
+            ? 'AND finished_at >= DATE_SUB(NOW(), INTERVAL :max_age MINUTE)'
+            : '';
+
+        $sql = "SELECT id, exit_code, finished_at
+                  FROM execution_log
+                 WHERE cronjob_id  = :predecessor_id
+                   AND finished_at IS NOT NULL
+                   AND exit_code   NOT IN (-4, -7)
+                   {$timeClause}
+                 ORDER BY finished_at DESC
+                 LIMIT 1";
+
+        $stmt = $this->pdo->prepare($sql);
+        $binds = [':predecessor_id' => $predecessorId];
+        if ($maxAge > 0) {
+            $binds[':max_age'] = $maxAge;
+        }
+        $stmt->execute($binds);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $ageDesc = $maxAge > 0
+            ? sprintf('within the last %d minute(s)', $maxAge)
+            : 'at any time';
 
         if ($row === false) {
             return [
                 false,
                 sprintf(
-                    'Predecessor (job %d) has not finished with a real exit code within the last %d minute(s).',
+                    'Predecessor (job %d) has not finished with a real exit code %s.',
                     $predecessorId,
-                    $maxAge,
+                    $ageDesc,
                 ),
             ];
         }
@@ -212,10 +225,10 @@ final class DependencyCheckEndpoint
         return [
             true,
             sprintf(
-                'Predecessor (job %d) last ran with exit code %d within the last %d minute(s).',
+                'Predecessor (job %d) last ran with exit code %d %s.',
                 $predecessorId,
                 $actualCode,
-                $maxAge,
+                $ageDesc,
             ),
         ];
     }

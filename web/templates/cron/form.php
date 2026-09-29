@@ -66,8 +66,7 @@ $depType        = $existingDep !== null ? (string) ($existingDep['type'] ?? 'non
 $depPredId      = $existingDep !== null ? (int) ($existingDep['predecessor_id'] ?? 0) : 0;
 $depExitCodes   = $existingDep !== null ? (string) ($existingDep['exit_codes'] ?? '0') : '0';
 $depMaxAge      = $existingDep !== null && isset($existingDep['max_age_minutes']) && $existingDep['max_age_minutes'] !== null
-    ? (int) $existingDep['max_age_minutes'] : 60;
-$depOpen        = $existingDep !== null;
+    ? (int) $existingDep['max_age_minutes'] : 0;
 
 // Auto-expand the advanced tab when any non-default advanced value is already set.
 $advancedOpen  = $isAutoKillVal
@@ -252,77 +251,65 @@ foreach ($tags as $tag) {
                     </div>
                 </div>
 
-                <!-- Schedule -->
-                <div class="mb-4 <?= $depType === 'triggered_by' ? 'hidden' : '' ?>">
-                    <label for="schedule"
-                           class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        <?= htmlspecialchars($t('cron_schedule'), ENT_QUOTES, 'UTF-8') ?>
-                        <span class="text-red-500">*</span>
-                    </label>
-                    <input type="text" id="schedule" name="schedule"
-                           <?= $depType !== 'triggered_by' ? 'required' : '' ?>
-                           value="<?= htmlspecialchars($val('schedule'), ENT_QUOTES, 'UTF-8') ?>"
-                           class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm font-mono
-                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                                  focus:outline-none focus:ring-2 focus:ring-blue-500
-                                  focus:border-blue-500 transition"
-                           placeholder="*/5 * * * *">
-                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                        Minute Hour Day Month Weekday &ndash; e.g. <code>0 3 * * *</code> = daily at 03:00
-                    </p>
-                    <!-- Live human-readable preview – populated by JS below -->
-                    <p id="schedule-preview" class="mt-1 text-xs text-blue-500 dark:text-blue-400 min-h-[1.25rem]"></p>
-                </div>
-
-                <!-- Dependency -->
+                <!-- Ausführungstyp (Radio + Schedule + Dep-Details in einem Block) -->
                 <div class="mb-4 border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
-                    <button type="button" id="dep-toggle-btn"
-                            onclick="toggleDepSection()"
-                            class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium
-                                   text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50
-                                   hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors focus:outline-none">
-                        <span class="flex items-center gap-2">
-                            <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                      d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
-                            </svg>
-                            Abhängigkeit von anderem Job
-                        </span>
-                        <svg id="dep-toggle-icon" class="w-4 h-4 transition-transform <?= $depOpen ? 'rotate-180' : '' ?>"
-                             fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    <div class="px-4 py-3 bg-gray-50 dark:bg-gray-700/50 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
-                    </button>
-                    <div id="dep-section" class="<?= $depOpen ? '' : 'hidden' ?> px-4 py-4 space-y-4">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Ausführungstyp</span>
+                    </div>
+                    <div class="px-4 py-4 space-y-4">
 
-                        <!-- dep_type -->
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Typ</label>
-                            <div class="flex gap-4 text-sm">
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="radio" name="dep_type" value="none"
-                                           <?= $depType === 'none' ? 'checked' : '' ?>
-                                           onchange="updateDepFields()" class="text-blue-600">
-                                    <span class="text-gray-700 dark:text-gray-300">Keine Abhängigkeit</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="radio" name="dep_type" value="requires"
-                                           <?= $depType === 'requires' ? 'checked' : '' ?>
-                                           onchange="updateDepFields()" class="text-blue-600">
-                                    <span class="text-gray-700 dark:text-gray-300">Prüfen vor Ausführung (requires)</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="radio" name="dep_type" value="triggered_by"
-                                           <?= $depType === 'triggered_by' ? 'checked' : '' ?>
-                                           onchange="updateDepFields()" class="text-blue-600">
-                                    <span class="text-gray-700 dark:text-gray-300">Ausgelöst durch Job (triggered_by)</span>
-                                </label>
-                            </div>
-                            <div id="dep-type-desc" class="mt-2 text-xs text-gray-400 dark:text-gray-500"></div>
+                        <!-- Radio group -->
+                        <div class="flex flex-wrap gap-5 text-sm">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="dep_type" value="none"
+                                       <?= $depType === 'none' ? 'checked' : '' ?>
+                                       onchange="updateDepFields()" class="text-blue-600">
+                                <span class="text-gray-700 dark:text-gray-300 font-medium">Zeitplan</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="dep_type" value="requires"
+                                       <?= $depType === 'requires' ? 'checked' : '' ?>
+                                       onchange="updateDepFields()" class="text-blue-600">
+                                <span class="text-gray-700 dark:text-gray-300 font-medium">Prüfen vor Ausführung</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="dep_type" value="triggered_by"
+                                       <?= $depType === 'triggered_by' ? 'checked' : '' ?>
+                                       onchange="updateDepFields()" class="text-blue-600">
+                                <span class="text-gray-700 dark:text-gray-300 font-medium">Ausgelöst durch Job</span>
+                            </label>
+                        </div>
+                        <div id="dep-type-desc" class="text-xs text-gray-400 dark:text-gray-500 -mt-2"></div>
+
+                        <!-- Schedule – visible for "Zeitplan" and "Prüfen vor Ausführung" -->
+                        <div id="dep-schedule-block" class="<?= $depType === 'triggered_by' ? 'hidden' : '' ?>">
+                            <label for="schedule"
+                                   class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                <?= htmlspecialchars($t('cron_schedule'), ENT_QUOTES, 'UTF-8') ?>
+                                <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" id="schedule" name="schedule"
+                                   <?= $depType !== 'triggered_by' ? 'required' : '' ?>
+                                   value="<?= htmlspecialchars($val('schedule'), ENT_QUOTES, 'UTF-8') ?>"
+                                   class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm font-mono
+                                          bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                          focus:outline-none focus:ring-2 focus:ring-blue-500
+                                          focus:border-blue-500 transition"
+                                   placeholder="*/5 * * * *">
+                            <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                Minute Hour Day Month Weekday &ndash; e.g. <code>0 3 * * *</code> = daily at 03:00
+                            </p>
+                            <!-- Live human-readable preview – populated by JS below -->
+                            <p id="schedule-preview" class="mt-1 text-xs text-blue-500 dark:text-blue-400 min-h-[1.25rem]"></p>
                         </div>
 
-                        <!-- dep details (shown when not none) -->
+                        <!-- Dep details – visible for "Prüfen vor Ausführung" and "Ausgelöst durch Job" -->
                         <div id="dep-details" class="<?= $depType === 'none' ? 'hidden' : '' ?> space-y-3">
+
                             <!-- predecessor -->
                             <div>
                                 <label for="dep_predecessor_id"
@@ -338,7 +325,7 @@ foreach ($tags as $tag) {
                                         <?php
                                             $dJobId   = (int) ($depJob['id'] ?? 0);
                                             $dJobDesc = (string) ($depJob['description'] ?? '');
-                                            $dJobSched = $depJob['schedule'] !== null ? (string) $depJob['schedule'] : '[triggered_by]';
+                                            $dJobSched = $depJob['schedule'] !== null ? (string) $depJob['schedule'] : '[Ausgelöst durch Job]';
                                             // Exclude the current job from being its own predecessor
                                             if ($dJobId === 0 || (int) $jobId === $dJobId) continue;
                                         ?>
@@ -355,7 +342,7 @@ foreach ($tags as $tag) {
                             <div>
                                 <label for="dep_exit_codes"
                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    Exit-Codes (Bedingung erfüllt)
+                                    Exit-Code(s) des Vorgängers (Bedingung erfüllt)
                                 </label>
                                 <input type="text" id="dep_exit_codes" name="dep_exit_codes"
                                        value="<?= htmlspecialchars($depExitCodes, ENT_QUOTES, 'UTF-8') ?>"
@@ -366,22 +353,25 @@ foreach ($tags as $tag) {
                                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">Kommagetrennt, z.B. <code>0</code> oder <code>0,2</code></p>
                             </div>
 
-                            <!-- max_age_minutes (requires only) -->
+                            <!-- max_age_minutes – "Prüfen vor Ausführung" only -->
                             <div id="dep-max-age-row" class="<?= $depType === 'requires' ? '' : 'hidden' ?>">
                                 <label for="dep_max_age_minutes"
                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     Max. Alter des Vorgänger-Runs (Minuten)
                                 </label>
-                                <input type="number" id="dep_max_age_minutes" name="dep_max_age_minutes" min="1"
+                                <input type="number" id="dep_max_age_minutes" name="dep_max_age_minutes" min="0"
                                        value="<?= htmlspecialchars((string) $depMaxAge, ENT_QUOTES, 'UTF-8') ?>"
                                        class="w-40 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
                                               bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                                               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                                       placeholder="60">
-                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">Der Vorgänger muss innerhalb dieser Zeitspanne abgeschlossen haben.</p>
+                                       placeholder="0">
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Der Vorgänger muss innerhalb dieser Zeitspanne abgeschlossen haben.
+                                    <strong>0 = egal</strong> (kein Alterslimit, nur Exit-Code wird geprüft).
+                                </p>
                             </div>
 
-                            <!-- triggered_by: schedule is hidden and will be null -->
+                            <!-- "Ausgelöst durch Job" info note -->
                             <div id="dep-triggered-note" class="<?= $depType === 'triggered_by' ? '' : 'hidden' ?>">
                                 <div class="flex items-start gap-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700
                                             text-purple-700 dark:text-purple-300 rounded-lg px-3 py-2 text-xs">
@@ -392,6 +382,7 @@ foreach ($tags as $tag) {
                                 </div>
                             </div>
                         </div>
+
                     </div>
                 </div>
 
@@ -1064,46 +1055,39 @@ function addTag(tagName) {
     });
 })();
 
-// Dependency section JS
-function toggleDepSection() {
-    const section = document.getElementById('dep-section');
-    const icon    = document.getElementById('dep-toggle-icon');
-    if (!section) { return; }
-    const hidden = section.classList.toggle('hidden');
-    if (icon) { icon.classList.toggle('rotate-180', !hidden); }
-}
-
+// Ausführungstyp section JS
 function updateDepFields() {
     const radios      = document.querySelectorAll('input[name="dep_type"]');
     const details     = document.getElementById('dep-details');
     const maxAgeRow   = document.getElementById('dep-max-age-row');
     const trigNote    = document.getElementById('dep-triggered-note');
+    const schedBlock  = document.getElementById('dep-schedule-block');
     const schedInput  = document.getElementById('schedule');
-    const schedBlock  = schedInput ? schedInput.closest('.mb-4') : null;
     const descEl      = document.getElementById('dep-type-desc');
 
     let selected = 'none';
     radios.forEach(r => { if (r.checked) { selected = r.value; } });
 
     if (!details) { return; }
+
+    // Schedule: visible for "Zeitplan" (none) and "Prüfen vor Ausführung" (requires)
+    if (schedBlock) {
+        const hideSchedule = selected === 'triggered_by';
+        schedBlock.classList.toggle('hidden', hideSchedule);
+        if (schedInput) { schedInput.required = !hideSchedule; }
+    }
+
+    // Dep details: visible for "Prüfen vor Ausführung" and "Ausgelöst durch Job"
     details.classList.toggle('hidden', selected === 'none');
 
-    if (maxAgeRow)  { maxAgeRow.classList.toggle('hidden',  selected !== 'requires'); }
-    if (trigNote)   { trigNote.classList.toggle('hidden',   selected !== 'triggered_by'); }
-
-    // For triggered_by: hide schedule field (job has no schedule)
-    if (schedBlock) {
-        schedBlock.classList.toggle('hidden', selected === 'triggered_by');
-        if (schedInput) {
-            schedInput.required = selected !== 'triggered_by';
-        }
-    }
+    if (maxAgeRow) { maxAgeRow.classList.toggle('hidden', selected !== 'requires'); }
+    if (trigNote)  { trigNote.classList.toggle('hidden',  selected !== 'triggered_by'); }
 
     if (descEl) {
         const descriptions = {
             'none':         '',
-            'requires':     'Der Job läuft nach seinem normalen Schedule. Vor jeder Ausführung wird geprüft, ob der Vorgänger-Job innerhalb des konfigurierten Zeitfensters erfolgreich war. Wenn nicht, wird der Job mit Exit-Code -7 übersprungen.',
-            'triggered_by': 'Der Job hat keinen Cron-Schedule und wird automatisch gestartet, sobald der Vorgänger-Job mit einem der konfigurierten Exit-Codes beendet wird.',
+            'requires':     'Der Job läuft nach seinem Zeitplan. Vor jeder Ausführung wird geprüft, ob der Vorgänger-Job erfolgreich gelaufen ist. Wenn nicht, wird der Job mit Exit-Code -7 übersprungen.',
+            'triggered_by': 'Der Job hat keinen Zeitplan – er wird automatisch gestartet, sobald der Vorgänger-Job mit einem der konfigurierten Exit-Codes endet.',
         };
         descEl.textContent = descriptions[selected] ?? '';
     }

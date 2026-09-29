@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
 CREATE TABLE IF NOT EXISTS cronjobs (
     id                INT          AUTO_INCREMENT PRIMARY KEY,
     linux_user        VARCHAR(64)  NOT NULL           COMMENT 'OS user the cron job runs as',
-    schedule          VARCHAR(100) NOT NULL           COMMENT 'Standard cron schedule expression',
+    schedule          VARCHAR(100) NULL    DEFAULT NULL COMMENT 'Standard cron schedule expression; NULL for dependency-triggered jobs',
     command           TEXT         NOT NULL           COMMENT 'Full command string to execute',
     description       VARCHAR(255)                   COMMENT 'Human-readable job description',
     active            TINYINT(1)   DEFAULT 1          COMMENT '1 = enabled, 0 = disabled',
@@ -151,6 +151,9 @@ CREATE TABLE IF NOT EXISTS execution_log (
     retry_attempt            TINYINT UNSIGNED NOT NULL DEFAULT 0
                                                     COMMENT '0 = original execution, 1 = first retry, etc.',
     retry_root_execution_id  INT NULL            COMMENT 'Links all retries back to the first (attempt 0) execution; NULL for originals',
+    trigger_type             ENUM('scheduled','manual','dependency') NOT NULL DEFAULT 'scheduled'
+                                                    COMMENT 'How this execution was initiated',
+    predecessor_execution_id INT NULL DEFAULT NULL  COMMENT 'execution_log.id of the predecessor execution that triggered this run; NULL for scheduled/manual',
     -- Covering index for CronListEndpoint Subquery 1: MAX(id) GROUP BY cronjob_id
     INDEX idx_el_cronjob_cover     (cronjob_id, id),
     -- Covering index for CronListEndpoint Subquery 2: MAX(id) WHERE finished_at IS NOT NULL GROUP BY cronjob_id
@@ -165,6 +168,36 @@ CREATE TABLE IF NOT EXISTS execution_log (
     INDEX idx_el_cj_started        (cronjob_id, started_at),
     CONSTRAINT fk_el_cronjob FOREIGN KEY (cronjob_id)
         REFERENCES cronjobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- job_dependencies – dependency rules between cron jobs
+--
+-- type='requires':     job keeps its schedule; cron-wrapper checks at runtime
+--                      whether the predecessor's most recent execution finished
+--                      with one of exit_codes within max_age_minutes. On failure
+--                      the job is skipped with exit code -7.
+-- type='triggered_by': job has no schedule (cronjobs.schedule IS NULL); it is
+--                      started automatically by ExecutionFinishEndpoint when the
+--                      predecessor finishes with one of exit_codes.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS job_dependencies (
+    id                INT          AUTO_INCREMENT PRIMARY KEY,
+    job_id            INT          NOT NULL
+                                   COMMENT 'The dependent job (runs after / depends on predecessor)',
+    predecessor_id    INT          NOT NULL
+                                   COMMENT 'The job that must run first',
+    type              ENUM('requires','triggered_by') NOT NULL
+                                   COMMENT 'requires = runtime check with time window; triggered_by = event-driven, no schedule',
+    exit_codes        VARCHAR(255) NOT NULL DEFAULT '0'
+                                   COMMENT 'Comma-separated list of exit codes that satisfy the dependency, e.g. "0" or "0,2"',
+    max_age_minutes   INT UNSIGNED NULL DEFAULT NULL
+                                   COMMENT 'Only for type=requires: predecessor must have finished within this many minutes; NULL = 60',
+    created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_jd_job (job_id),
+    CONSTRAINT fk_jd_job         FOREIGN KEY (job_id)         REFERENCES cronjobs(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_jd_predecessor FOREIGN KEY (predecessor_id) REFERENCES cronjobs(id) ON DELETE RESTRICT,
+    INDEX idx_jd_predecessor (predecessor_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------
@@ -209,6 +242,25 @@ CREATE TABLE IF NOT EXISTS job_retry_state (
     PRIMARY KEY (job_id, target),
     CONSTRAINT fk_jrs_job FOREIGN KEY (job_id)
         REFERENCES cronjobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -----------------------------------------------------------------------------
+-- job_dependency_trigger_state – pending dependency-triggered executions
+--
+-- Written by ExecutionFinishEndpoint when a 'triggered_by' successor job needs
+-- to fire. Consumed and deleted by ExecutionStartEndpoint when the successor
+-- actually starts. Mirrors the job_retry_state pattern.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS job_dependency_trigger_state (
+    job_id                    INT          NOT NULL
+                                           COMMENT 'The job that will be triggered',
+    target                    VARCHAR(255) NOT NULL DEFAULT 'local'
+                                           COMMENT 'Execution target for the triggered run',
+    predecessor_execution_id  INT          NULL
+                                           COMMENT 'execution_log.id of the predecessor that caused this trigger',
+    created_at                DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (job_id, target),
+    CONSTRAINT fk_jdts_job FOREIGN KEY (job_id) REFERENCES cronjobs(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------------------------------

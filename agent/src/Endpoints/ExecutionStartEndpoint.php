@@ -342,15 +342,52 @@ final class ExecutionStartEndpoint
             }
 
             // ------------------------------------------------------------------
+            // 6b. Check for a pending dependency trigger state for this (job, target).
+            //     If found, set trigger_type='dependency' and record the predecessor.
+            // ------------------------------------------------------------------
+
+            $triggerType             = 'scheduled';
+            $predecessorExecutionId  = null;
+
+            $depTriggerStmt = $this->pdo->prepare(
+                'SELECT predecessor_execution_id
+                   FROM job_dependency_trigger_state
+                  WHERE job_id = :job_id AND target = :target
+                  LIMIT 1'
+            );
+            $depTriggerStmt->execute([':job_id' => $jobId, ':target' => $effectiveTargetForRetry]);
+            $depTriggerRow = $depTriggerStmt->fetch(\PDO::FETCH_ASSOC);
+
+            if ($depTriggerRow !== false) {
+                $triggerType            = 'dependency';
+                $predecessorExecutionId = $depTriggerRow['predecessor_execution_id'] !== null
+                    ? (int) $depTriggerRow['predecessor_execution_id']
+                    : null;
+
+                // Consume the trigger state row
+                $this->pdo->prepare(
+                    'DELETE FROM job_dependency_trigger_state WHERE job_id = :job_id AND target = :target'
+                )->execute([':job_id' => $jobId, ':target' => $effectiveTargetForRetry]);
+
+                $this->logger->info('ExecutionStartEndpoint: starting dependency-triggered execution', [
+                    'job_id'                  => $jobId,
+                    'target'                  => $effectiveTargetForRetry,
+                    'predecessor_execution_id' => $predecessorExecutionId,
+                ]);
+            }
+
+            // ------------------------------------------------------------------
             // 7. Insert the execution log row
             // ------------------------------------------------------------------
 
             $stmt = $this->pdo->prepare(
                 'INSERT INTO execution_log
                     (cronjob_id, started_at, finished_at, exit_code, output, target,
-                     during_maintenance, retry_attempt, retry_root_execution_id)
+                     during_maintenance, retry_attempt, retry_root_execution_id,
+                     trigger_type, predecessor_execution_id)
                  VALUES (:cronjob_id, :started_at, NULL, NULL, NULL, :target,
-                     :during_maintenance, :retry_attempt, :retry_root_execution_id)'
+                     :during_maintenance, :retry_attempt, :retry_root_execution_id,
+                     :trigger_type, :predecessor_execution_id)'
             );
             $stmt->execute([
                 ':cronjob_id'              => $jobId,
@@ -359,6 +396,8 @@ final class ExecutionStartEndpoint
                 ':during_maintenance'      => $duringMaintenance,
                 ':retry_attempt'           => $retryAttempt,
                 ':retry_root_execution_id' => $retryRootExecutionId,
+                ':trigger_type'            => $triggerType,
+                ':predecessor_execution_id'=> $predecessorExecutionId,
             ]);
 
             $executionId = (int) $this->pdo->lastInsertId();

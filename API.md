@@ -344,7 +344,8 @@ List all cron jobs.
       "ssh_host": null,
       "targets": ["local"],
       "tags": ["backup", "daily"],
-      "created_at": "2026-01-15T08:00:00Z"
+      "created_at": "2026-01-15T08:00:00Z",
+      "dependency": null
     }
   ],
   "count": 1,
@@ -352,6 +353,21 @@ List all cron jobs.
   "offset": 0
 }
 ```
+
+The `dependency` field is `null` for independent jobs, or an object for dependent jobs:
+
+```json
+{
+  "dependency": {
+    "predecessor_id": 5,
+    "type": "requires",
+    "exit_codes": "0",
+    "max_age_minutes": 60
+  }
+}
+```
+
+For `triggered_by` jobs, `max_age_minutes` is absent and `schedule` is `null`.
 
 ---
 
@@ -366,6 +382,21 @@ Get a single cron job by ID.
 ```json
 { "error": "Not Found", "message": "Cron job with ID 99 does not exist.", "code": 404 }
 ```
+
+---
+
+### GET /api/v1/jobs/{id}/dependency-check
+
+Check whether a job's dependency is currently satisfied.  No scope required (internal; called by `cron-wrapper.sh`).
+
+**Response 200:**
+
+```json
+{ "satisfied": true,  "reason": "Dependency satisfied: exit code 0 within 60 minutes" }
+{ "satisfied": false, "reason": "No qualifying predecessor execution found within 60 minutes" }
+```
+
+Fails open: returns `satisfied: true` when the job has no dependency, has a `triggered_by` dependency, or when the database is unreachable.
 
 ---
 
@@ -397,11 +428,21 @@ Create a new cron job.  Scope: **`jobs:write`**
   "retry_delay_minutes":       5,
   "restart_on_exitcodes":      [],
   "notify_after_failures":     3,
-  "notify_after_limit_exceeded": false
+  "notify_after_limit_exceeded": false,
+  "dependency": {
+    "predecessor_id": 5,
+    "type": "requires",
+    "exit_codes": "0",
+    "max_age_minutes": 60
+  }
 }
 ```
 
-Required fields: `linux_user`, `schedule`, `command`, `targets` (non-empty array).
+Required fields: `linux_user`, `command`, `targets` (non-empty array).
+`schedule` is required for normal jobs and `requires`-type dependencies. For `triggered_by` jobs, `schedule` must be `null` or omitted (the agent sets it to `null` automatically).
+`dependency` is optional. Set to `null` to remove an existing dependency (on PUT).
+
+**Error 422** when a dependency cycle is detected or `predecessor_id` does not exist.
 
 **Response 201:** Created job object.
 

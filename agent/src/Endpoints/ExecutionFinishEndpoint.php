@@ -50,6 +50,7 @@ namespace Cronmanager\Agent\Endpoints;
 
 use Cronmanager\Agent\Cron\CrontabManager;
 use Cronmanager\Agent\Notification\MailNotifier;
+use Cronmanager\Agent\Repository\DependencyRepository;
 use Cronmanager\Agent\Util\AnsiStripper;
 use Cronmanager\Agent\Util\ExitCodeMatcher;
 use Cronmanager\Agent\Notification\TelegramNotifier;
@@ -87,12 +88,13 @@ final class ExecutionFinishEndpoint
      * @param string           $wrapperScript    Absolute path to cron-wrapper.sh.
      */
     public function __construct(
-        private readonly PDO              $pdo,
-        private readonly Logger           $logger,
-        private readonly MailNotifier     $mailNotifier,
-        private readonly TelegramNotifier $telegramNotifier,
-        private readonly CrontabManager   $crontabManager,
-        private readonly string           $wrapperScript,
+        private readonly PDO                  $pdo,
+        private readonly Logger               $logger,
+        private readonly MailNotifier         $mailNotifier,
+        private readonly TelegramNotifier     $telegramNotifier,
+        private readonly CrontabManager       $crontabManager,
+        private readonly string               $wrapperScript,
+        private readonly DependencyRepository $deps,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -590,6 +592,95 @@ final class ExecutionFinishEndpoint
         }
 
         // ------------------------------------------------------------------
+        // 5c. Trigger dependent 'triggered_by' jobs
+        //
+        // When the job finished with a non-skipped exit code, check whether any
+        // active 'triggered_by' jobs are configured to start on this outcome.
+        // For each matching job, write a trigger-state row so ExecutionStartEndpoint
+        // can set trigger_type='dependency', then schedule a once-entry via crontab.
+        // Failures are logged but must not prevent the finish response.
+        // ------------------------------------------------------------------
+
+        if (!$alreadyFinished && $exitCode !== -4 && $exitCode !== -7) {
+            try {
+                $triggeredJobs = $this->deps->findTriggeredByJobs($jobId, $exitCode);
+
+                foreach ($triggeredJobs as $triggered) {
+                    $triggeredJobId = (int) $triggered['job_id'];
+
+                    try {
+                        // Fetch the triggered job's linux_user and targets
+                        $tjob = $this->fetchTriggeredJob($triggeredJobId);
+                        if ($tjob === null) {
+                            $this->logger->warning('ExecutionFinishEndpoint: triggered job not found', [
+                                'triggered_job_id' => $triggeredJobId,
+                            ]);
+                            continue;
+                        }
+
+                        $targets = $this->fetchJobTargets($triggeredJobId);
+                        if ($targets === []) {
+                            $targets = ['local'];
+                        }
+
+                        $tz       = new \DateTimeZone($this->resolveSystemTimezone());
+                        $now      = new \DateTime('now', $tz);
+                        $offset   = (int) $now->format('s') > 50 ? '+2 minutes' : '+1 minute';
+                        $next     = new \DateTime($offset, $tz);
+                        $schedule = sprintf(
+                            '%d %d %d %d *',
+                            (int) $next->format('i'),
+                            (int) $next->format('G'),
+                            (int) $next->format('j'),
+                            (int) $next->format('n'),
+                        );
+
+                        foreach ($targets as $tgt) {
+                            // Write trigger state (predecessor info for ExecutionStartEndpoint)
+                            $this->pdo->prepare(
+                                'INSERT INTO job_dependency_trigger_state
+                                    (job_id, target, predecessor_execution_id)
+                                 VALUES (:job_id, :target, :pred_exec_id)
+                                 ON DUPLICATE KEY UPDATE predecessor_execution_id = VALUES(predecessor_execution_id)'
+                            )->execute([
+                                ':job_id'       => $triggeredJobId,
+                                ':target'       => $tgt,
+                                ':pred_exec_id' => $executionId,
+                            ]);
+
+                            // Schedule once-entry in crontab
+                            $this->crontabManager->addOnceEntry(
+                                (string) $tjob['linux_user'],
+                                $triggeredJobId,
+                                $schedule,
+                                $this->wrapperScript,
+                                $tgt,
+                            );
+                        }
+
+                        $this->logger->info('ExecutionFinishEndpoint: triggered dependent job', [
+                            'triggered_job_id'        => $triggeredJobId,
+                            'predecessor_job_id'      => $jobId,
+                            'predecessor_execution_id' => $executionId,
+                            'exit_code'               => $exitCode,
+                            'targets'                 => $targets,
+                        ]);
+                    } catch (\Throwable $e) {
+                        $this->logger->error('ExecutionFinishEndpoint: error triggering dependent job', [
+                            'triggered_job_id' => $triggeredJobId,
+                            'message'          => $e->getMessage(),
+                        ]);
+                    }
+                }
+            } catch (\Throwable $e) {
+                $this->logger->error('ExecutionFinishEndpoint: error querying triggered_by jobs', [
+                    'job_id'  => $jobId,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // ------------------------------------------------------------------
         // 6. Write metrics to InfluxDB (non-blocking, background process)
         // ------------------------------------------------------------------
 
@@ -1017,6 +1108,35 @@ final class ExecutionFinishEndpoint
         ]);
 
         return true;
+    }
+
+    /**
+     * Fetch minimal data for a triggered_by job (linux_user).
+     *
+     * @param int $jobId
+     *
+     * @return array<string, mixed>|null
+     */
+    private function fetchTriggeredJob(int $jobId): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT id, linux_user FROM cronjobs WHERE id = :id AND active = 1 LIMIT 1');
+        $stmt->execute([':id' => $jobId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row !== false ? $row : null;
+    }
+
+    /**
+     * Fetch execution targets for a job from job_targets.
+     *
+     * @param int $jobId
+     *
+     * @return string[]
+     */
+    private function fetchJobTargets(int $jobId): array
+    {
+        $stmt = $this->pdo->prepare('SELECT target FROM job_targets WHERE job_id = :id ORDER BY target');
+        $stmt->execute([':id' => $jobId]);
+        return $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: [];
     }
 
     /**

@@ -57,6 +57,7 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Tags** | Label jobs to enable filtering and grouped export |
 | **Crontab import** | Detect and import existing unmanaged crontab entries |
 | **Export** | Download a ready-to-use crontab file or JSON for all managed jobs |
+| **Job Dependencies** | Two dependency types: **`requires`** (job keeps its schedule but is skipped with exit code -7 if the predecessor's most recent execution did not finish with a configured exit code within `max_age_minutes`); **`triggered_by`** (job has no schedule — it is started automatically when the predecessor finishes with a configured exit code). Cycle detection prevents circular chains. Both types visible in the job list and detail view |
 | **Auto-retry on failure** | Automatically re-run a failed job up to N times with a configurable delay between attempts; notification is suppressed until all retries are exhausted |
 | **Exit-code filter for restart** | Optionally restrict which exit codes trigger an automatic retry using a flexible expression such as `1-5,10,255`; empty (default) means any non-zero code |
 | **Email alerts** | Receive an email when a job exits with a non-zero status or exceeds its execution limit |

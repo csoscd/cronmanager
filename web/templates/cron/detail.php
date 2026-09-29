@@ -31,8 +31,9 @@ $isAdmin = isset($isAdmin) && (bool) $isAdmin;
 $jobId         = (string) ($job['id']             ?? '');
 $desc          = (string) ($job['description']    ?? "Job #{$jobId}");
 $user          = (string) ($job['linux_user']     ?? '');
-$sched         = (string) ($job['schedule']       ?? '');
+$sched         = $job['schedule'] !== null ? (string) $job['schedule'] : '';
 $scheduleHuman = isset($scheduleHuman) ? (string) $scheduleHuman : '';
+$dep           = (isset($job['dependency']) && is_array($job['dependency'])) ? $job['dependency'] : null;
 $command       = (string) ($job['command']        ?? '');
 $jobTags       = (array)  ($job['tags']            ?? []);
 $jobTargets    = (array)  ($job['targets']         ?? ['local']);
@@ -224,11 +225,38 @@ $ackErrorKey   = \Cronmanager\Web\Session\SessionManager::flash('_flash_ack_erro
             </dd>
         </div>
 
-        <!-- Schedule -->
+        <!-- Schedule / Dependency -->
         <div>
             <dt class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">
                 <?= htmlspecialchars($t('cron_schedule'), ENT_QUOTES, 'UTF-8') ?>
             </dt>
+            <?php if ($dep !== null): ?>
+                <?php $depPredId = (int) ($dep['predecessor_id'] ?? 0); $depType2 = (string) ($dep['type'] ?? ''); ?>
+                <?php if ($depType2 === 'triggered_by'): ?>
+                <dd class="text-sm text-gray-900 dark:text-gray-100">
+                    <span class="inline-flex items-center gap-1 text-purple-700 dark:text-purple-300 font-medium">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        Triggered by Job
+                        <a href="/crons/<?= htmlspecialchars(rawurlencode((string) $depPredId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
+                           class="text-blue-600 hover:underline ml-1">#<?= $depPredId ?></a>
+                    </span>
+                    <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">Exit-Codes: <?= htmlspecialchars((string)($dep['exit_codes'] ?? '0'), ENT_QUOTES, 'UTF-8') ?></span>
+                </dd>
+                <?php else: ?>
+                <dd class="text-sm text-gray-900 dark:text-gray-100 font-mono">
+                    <?= htmlspecialchars($sched, ENT_QUOTES, 'UTF-8') ?>
+                </dd>
+                <dd class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <span class="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                        Requires Job <a href="/crons/<?= htmlspecialchars(rawurlencode((string) $depPredId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
+                           class="text-blue-600 hover:underline">#<?= $depPredId ?></a>
+                        (exit: <?= htmlspecialchars((string)($dep['exit_codes'] ?? '0'), ENT_QUOTES, 'UTF-8') ?>,
+                         max <?= htmlspecialchars((string)($dep['max_age_minutes'] ?? 60), ENT_QUOTES, 'UTF-8') ?> min)
+                    </span>
+                </dd>
+                <?php endif; ?>
+            <?php else: ?>
             <dd class="text-sm text-gray-900 dark:text-gray-100 font-mono">
                 <?= htmlspecialchars($sched, ENT_QUOTES, 'UTF-8') ?>
             </dd>
@@ -236,6 +264,7 @@ $ackErrorKey   = \Cronmanager\Web\Session\SessionManager::flash('_flash_ack_erro
             <dd class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                 <?= htmlspecialchars($scheduleHuman, ENT_QUOTES, 'UTF-8') ?>
             </dd>
+            <?php endif; ?>
             <?php endif; ?>
         </div>
 

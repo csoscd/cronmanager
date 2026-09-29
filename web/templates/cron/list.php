@@ -524,10 +524,29 @@ $allTagNames = array_map(
 
                             <!-- Schedule -->
                             <td class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                <span class="font-mono"><?= htmlspecialchars($schedule, ENT_QUOTES, 'UTF-8') ?></span>
-                                <?php $schedHuman = (string) ($job['schedule_human'] ?? ''); ?>
-                                <?php if ($schedHuman !== '' && $schedHuman !== $schedule): ?>
-                                    <br><span class="text-xs text-gray-400 dark:text-gray-500"><?= htmlspecialchars($schedHuman, ENT_QUOTES, 'UTF-8') ?></span>
+                                <?php $dep = is_array($job['dependency'] ?? null) ? $job['dependency'] : null; ?>
+                                <?php if ($dep !== null): ?>
+                                    <?php $depPredId = (int) ($dep['predecessor_id'] ?? 0); $depType = (string) ($dep['type'] ?? ''); ?>
+                                    <?php if ($depType === 'triggered_by'): ?>
+                                        <span class="inline-flex items-center gap-1 text-xs text-purple-700 dark:text-purple-300 font-medium">
+                                            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                            <a href="/crons/<?= htmlspecialchars(rawurlencode((string)$depPredId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
+                                               class="hover:underline">#<?= htmlspecialchars((string)$depPredId, ENT_QUOTES, 'UTF-8') ?></a>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="font-mono"><?= htmlspecialchars($schedule, ENT_QUOTES, 'UTF-8') ?></span>
+                                        <span class="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 font-medium ml-1">
+                                            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                                            <a href="/crons/<?= htmlspecialchars(rawurlencode((string)$depPredId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
+                                               class="hover:underline">#<?= htmlspecialchars((string)$depPredId, ENT_QUOTES, 'UTF-8') ?></a>
+                                        </span>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="font-mono"><?= htmlspecialchars($schedule, ENT_QUOTES, 'UTF-8') ?></span>
+                                    <?php $schedHuman = (string) ($job['schedule_human'] ?? ''); ?>
+                                    <?php if ($schedHuman !== '' && $schedHuman !== $schedule): ?>
+                                        <br><span class="text-xs text-gray-400 dark:text-gray-500"><?= htmlspecialchars($schedHuman, ENT_QUOTES, 'UTF-8') ?></span>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </td>
 

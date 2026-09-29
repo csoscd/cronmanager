@@ -230,7 +230,8 @@ class CronController extends BaseController
 
         // Annotate each visible job with its human-readable schedule translation
         foreach ($pagedJobs as &$job) {
-            $job['schedule_human'] = $this->translateCron((string) ($job['schedule'] ?? ''));
+            $schedule = $job['schedule'] !== null ? (string) $job['schedule'] : '';
+            $job['schedule_human'] = $schedule !== '' ? $this->translateCron($schedule) : '';
         }
         unset($job);
 
@@ -321,6 +322,14 @@ class CronController extends BaseController
             ? $this->translator()->t('cron_copy_title', ['name' => (string) ($sourceJob['description'] ?? "Job #{$copyFromId}")])
             : $this->translator()->t('cron_add');
 
+        // Load all jobs for the predecessor dropdown in the dependency section
+        $allJobsForDep = [];
+        try {
+            $allJobsForDep = $agent->get('/crons')['data'] ?? [];
+        } catch (\RuntimeException) {
+            // Non-fatal: dropdown will be empty
+        }
+
         $this->render('cron/form.php', $pageTitle, [
             'job'            => $sourceJob,   // null on blank form, array when copying
             'tags'           => $tags,
@@ -328,6 +337,7 @@ class CronController extends BaseController
             'selectedTargets'=> $selectedTargets,
             'linuxUsers'     => $linuxUsers,
             'dockerMode'     => $dockerMode,
+            'allJobsForDep'  => $allJobsForDep,
             'error'          => null,
             'isEdit'         => false,        // always POST to /crons (new job)
             'isCopy'         => $isCopy,
@@ -476,9 +486,10 @@ class CronController extends BaseController
             return;
         }
 
+        $sched = $job['schedule'] !== null ? (string) $job['schedule'] : '';
         $this->render('cron/detail.php', (string) ($job['description'] ?? "Job #{$id}"), [
             'job'           => $job,
-            'scheduleHuman' => $this->translateCron((string) ($job['schedule'] ?? '')),
+            'scheduleHuman' => $sched !== '' ? $this->translateCron($sched) : '',
             'history'       => $history,
             'isAdmin'       => SessionManager::hasRole('admin'),
         ], '/crons');
@@ -497,13 +508,15 @@ class CronController extends BaseController
         $agent = $this->agentClient();
 
         try {
-            // One parallel batch instead of two sequential roundtrips
+            // One parallel batch instead of three sequential roundtrips
             $results = $agent->getMultiple([
-                'job'  => ['path' => '/crons/' . rawurlencode($id)],
-                'tags' => ['path' => '/tags'],
+                'job'     => ['path' => '/crons/' . rawurlencode($id)],
+                'tags'    => ['path' => '/tags'],
+                'alljobs' => ['path' => '/crons'],
             ]);
             $job  = $results['job'];
             $tags = $results['tags']['data'] ?? [];
+            $allJobsForDep = $results['alljobs']['data'] ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('CronController::edit: agent request failed', [
                 'id'      => $id,
@@ -541,6 +554,7 @@ class CronController extends BaseController
             'selectedTargets' => $selectedTargets,
             'linuxUsers'      => $linuxUsers,
             'dockerMode'      => $dockerMode,
+            'allJobsForDep'   => $allJobsForDep ?? [],
             'error'           => null,
             'isEdit'          => true,
             'returnUrl'       => $returnUrl,
@@ -1365,9 +1379,34 @@ class CronController extends BaseController
             ? (int) $rawSilenceGrace
             : null;
 
-        return [
+        // Dependency: dep_type=none|requires|triggered_by
+        $depType        = trim((string) ($post['dep_type'] ?? 'none'));
+        $depPredRaw     = trim((string) ($post['dep_predecessor_id'] ?? ''));
+        $depExitCodes   = trim((string) ($post['dep_exit_codes'] ?? '0'));
+        $depMaxAgeRaw   = trim((string) ($post['dep_max_age_minutes'] ?? ''));
+
+        $dependency = null;
+        if (in_array($depType, ['requires', 'triggered_by'], true) && ctype_digit($depPredRaw) && (int) $depPredRaw > 0) {
+            $depEntry = [
+                'predecessor_id' => (int) $depPredRaw,
+                'type'           => $depType,
+                'exit_codes'     => $depExitCodes !== '' ? $depExitCodes : '0',
+            ];
+            if ($depType === 'requires') {
+                $depEntry['max_age_minutes'] = ($depMaxAgeRaw !== '' && ctype_digit($depMaxAgeRaw) && (int) $depMaxAgeRaw > 0)
+                    ? (int) $depMaxAgeRaw
+                    : null;
+            }
+            $dependency = $depEntry;
+        }
+
+        // For triggered_by jobs, schedule must be null (no crontab entry)
+        $scheduleRaw = trim((string) ($post['schedule'] ?? ''));
+        $schedule    = ($depType === 'triggered_by') ? null : ($scheduleRaw !== '' ? $scheduleRaw : '');
+
+        $payload = [
             'linux_user'               => trim((string) ($post['linux_user']   ?? '')),
-            'schedule'                 => trim((string) ($post['schedule']     ?? '')),
+            'schedule'                 => $schedule,
             'command'                  => trim((string) ($post['command']      ?? '')),
             'description'              => trim((string) ($post['description']  ?? '')),
             'tags'                     => $tags,
@@ -1388,5 +1427,13 @@ class CronController extends BaseController
             'notify_after_limit_exceeded' => $notifyAfterLimitExceeded,
             'targets'                     => $targets,
         ];
+
+        // Include dependency key only when explicitly provided or clearing
+        // (dep_type key presence signals intent to set or clear dependency)
+        if (array_key_exists('dep_type', $post)) {
+            $payload['dependency'] = $dependency;
+        }
+
+        return $payload;
     }
 }

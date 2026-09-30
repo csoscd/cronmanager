@@ -245,11 +245,13 @@ try {
 
     $crontabManager = new \Cronmanager\Agent\Cron\CrontabManager($logger, $wrapperScript);
 
-    $cronList    = new \Cronmanager\Agent\Endpoints\CronListEndpoint($pdo, $logger, $crontabManager);
-    $cronGet     = new \Cronmanager\Agent\Endpoints\CronGetEndpoint($pdo, $logger);
-    $cronCreate  = new \Cronmanager\Agent\Endpoints\CronCreateEndpoint($pdo, $logger, $crontabManager, $wrapperScript, $auditLogger);
-    $cronUpdate  = new \Cronmanager\Agent\Endpoints\CronUpdateEndpoint($pdo, $logger, $crontabManager, $wrapperScript, $auditLogger);
-    $cronDelete  = new \Cronmanager\Agent\Endpoints\CronDeleteEndpoint($pdo, $logger, $crontabManager, $auditLogger);
+    $dependencyRepo = new \Cronmanager\Agent\Repository\DependencyRepository($pdo);
+
+    $cronList    = new \Cronmanager\Agent\Endpoints\CronListEndpoint($pdo, $logger, $crontabManager, $dependencyRepo);
+    $cronGet     = new \Cronmanager\Agent\Endpoints\CronGetEndpoint($pdo, $logger, $dependencyRepo);
+    $cronCreate  = new \Cronmanager\Agent\Endpoints\CronCreateEndpoint($pdo, $logger, $crontabManager, $wrapperScript, $auditLogger, $dependencyRepo);
+    $cronUpdate  = new \Cronmanager\Agent\Endpoints\CronUpdateEndpoint($pdo, $logger, $crontabManager, $wrapperScript, $auditLogger, $dependencyRepo);
+    $cronDelete  = new \Cronmanager\Agent\Endpoints\CronDeleteEndpoint($pdo, $logger, $crontabManager, $auditLogger, $dependencyRepo);
     $cronMonitor = new \Cronmanager\Agent\Endpoints\MonitorEndpoint($pdo, $logger);
 
     $cronUnmanaged   = new \Cronmanager\Agent\Endpoints\CronUnmanagedEndpoint($logger, $crontabManager);
@@ -276,6 +278,11 @@ try {
     // before /crons/{id} so the more-specific patterns are tried first.
     $router->addRoute('POST',   '/crons/{id}/execute/cleanup',  [$executeCleanup, 'handle']);
     $router->addRoute('POST',   '/crons/{id}/execute',          [$executeNow,     'handle']);
+    // /crons/{id}/dependency-check and /crons/{id}/acknowledge-all must be registered before /crons/{id}
+    $depCheck      = new \Cronmanager\Agent\Endpoints\DependencyCheckEndpoint($pdo, $logger, $dependencyRepo);
+    $ackAll        = new \Cronmanager\Agent\Endpoints\AcknowledgeAllEndpoint($pdo, $logger, $auditLogger, $auditUserId);
+    $router->addRoute('GET',    '/crons/{id}/dependency-check', [$depCheck,      'handle']);
+    $router->addRoute('POST',   '/crons/{id}/acknowledge-all',  [$ackAll,        'handle']);
     $router->addRoute('GET',    '/crons/{id}',                  [$cronGet,       'handle']);
     $router->addRoute('POST',   '/crons',                       [$cronCreate,    'handle']);
     $router->addRoute('PUT',    '/crons/{id}',                  [$cronUpdate,    'handle']);
@@ -289,7 +296,7 @@ try {
     $maintenanceWindowRepo = new \Cronmanager\Agent\Repository\MaintenanceWindowRepository($pdo, $logger);
 
     $execStart    = new \Cronmanager\Agent\Endpoints\ExecutionStartEndpoint($pdo, $logger, $maintenanceWindowRepo);
-    $execFinish   = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier, $telegramNotifier, $crontabManager, $wrapperScript);
+    $execFinish   = new \Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint($pdo, $logger, $mailNotifier, $telegramNotifier, $crontabManager, $wrapperScript, $dependencyRepo);
     $execProgress = new \Cronmanager\Agent\Endpoints\ExecutionProgressEndpoint($pdo, $logger);
     $execUpdatePid = new \Cronmanager\Agent\Endpoints\ExecutionUpdatePidEndpoint($pdo, $logger);
     $execKill      = new \Cronmanager\Agent\Endpoints\ExecutionKillEndpoint($pdo, $logger, $auditLogger);

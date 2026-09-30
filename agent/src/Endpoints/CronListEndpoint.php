@@ -21,6 +21,7 @@ declare(strict_types=1);
 namespace Cronmanager\Agent\Endpoints;
 
 use Cronmanager\Agent\Cron\CrontabManager;
+use Cronmanager\Agent\Repository\DependencyRepository;
 use Monolog\Logger;
 use PDO;
 use PDOException;
@@ -62,15 +63,17 @@ final class CronListEndpoint
     /**
      * CronListEndpoint constructor.
      *
-     * @param PDO            $pdo            Active PDO database connection.
-     * @param Logger         $logger         Monolog logger instance.
-     * @param CrontabManager $crontabManager Used to verify that active jobs have
-     *                                        a crontab entry (consistency check).
+     * @param PDO                  $pdo            Active PDO database connection.
+     * @param Logger               $logger         Monolog logger instance.
+     * @param CrontabManager       $crontabManager Used to verify that active jobs have
+     *                                              a crontab entry (consistency check).
+     * @param DependencyRepository $deps           Dependency repository.
      */
     public function __construct(
-        private readonly PDO            $pdo,
-        private readonly Logger         $logger,
-        private readonly CrontabManager $crontabManager,
+        private readonly PDO                  $pdo,
+        private readonly Logger               $logger,
+        private readonly CrontabManager       $crontabManager,
+        private readonly DependencyRepository $deps,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -179,6 +182,12 @@ final class CronListEndpoint
                 continue;
             }
 
+            // triggered_by jobs have no schedule and no crontab entry
+            if ($job['schedule'] === null) {
+                $job['crontab_ok'] = true;
+                continue;
+            }
+
             $user    = $job['linux_user'];
             $entries = $managedByUser[$user] ?? null;
 
@@ -260,7 +269,13 @@ final class CronListEndpoint
                 el_last.started_at             AS last_run,
                 el_last.finished_at            AS last_finished_at,
                 el_last_fin.exit_code          AS last_exit_code,
-                el_last_fin.acknowledged_at    AS last_acknowledged_at
+                el_last_fin.acknowledged_at    AS last_acknowledged_at,
+                jd.predecessor_id              AS dep_predecessor_id,
+                jd.type                        AS dep_type,
+                jd.exit_codes                  AS dep_exit_codes,
+                jd.max_age_minutes             AS dep_max_age_minutes,
+                jd.trigger_delay_minutes       AS dep_trigger_delay_minutes,
+                pred.description               AS dep_predecessor_description
             FROM cronjobs j
             LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
             LEFT JOIN tags t          ON t.id = ct.tag_id
@@ -272,6 +287,8 @@ final class CronListEndpoint
             -- cost grew with the total history size on every list request.
             LEFT JOIN execution_log el_last     ON el_last.id     = j.last_execution_id
             LEFT JOIN execution_log el_last_fin ON el_last_fin.id = j.last_finished_execution_id
+            LEFT JOIN job_dependencies jd       ON jd.job_id      = j.id
+            LEFT JOIN cronjobs pred             ON pred.id         = jd.predecessor_id
             WHERE (:user1 IS NULL OR j.linux_user = :user2)
               AND (:tag1 IS NULL OR j.id IN (
                     SELECT ct2.cronjob_id
@@ -334,10 +351,21 @@ final class CronListEndpoint
             $targets = ($mode === 'remote' && $sshHost !== '') ? [$sshHost] : ['local'];
         }
 
+        $dependency = $row['dep_predecessor_id'] !== null ? [
+            'predecessor_id'          => (int)    $row['dep_predecessor_id'],
+            'type'                    => (string) $row['dep_type'],
+            'exit_codes'              => (string) $row['dep_exit_codes'],
+            'max_age_minutes'         => $row['dep_max_age_minutes'] !== null ? (int) $row['dep_max_age_minutes'] : null,
+            'trigger_delay_minutes'   => (int) ($row['dep_trigger_delay_minutes'] ?? 0),
+            'predecessor_description' => isset($row['dep_predecessor_description'])
+                ? (string) $row['dep_predecessor_description']
+                : null,
+        ] : null;
+
         return [
             'id'                       => (int)    $row['id'],
             'linux_user'               => (string) $row['linux_user'],
-            'schedule'                 => (string) $row['schedule'],
+            'schedule'                 => $row['schedule'] !== null ? (string) $row['schedule'] : null,
             'command'                  => (string) $row['command'],
             'description'              => isset($row['description']) ? (string) $row['description'] : null,
             'active'                   => (bool)   $row['active'],
@@ -375,6 +403,7 @@ final class CronListEndpoint
             'last_acknowledged_at'     => isset($row['last_acknowledged_at']) && $row['last_acknowledged_at'] !== null ? (string) $row['last_acknowledged_at'] : null,
             'is_running'               => isset($row['last_run']) && $row['last_run'] !== null
                 && (!isset($row['last_finished_at']) || $row['last_finished_at'] === null),
+            'dependency'               => $dependency,
         ];
     }
 }

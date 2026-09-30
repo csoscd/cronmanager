@@ -6,6 +6,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [7.0.0] – branch: `feature/job-dependencies`
+
+### Added
+
+- **Job Dependencies:** Neue Abhängigkeitstypen zwischen Jobs:
+  - **`requires`**: Job behält seinen Cron-Schedule; `cron-wrapper.sh` prüft vor jeder Ausführung via `GET /crons/{id}/dependency-check`, ob der Vorgänger-Job innerhalb von `max_age_minutes` mit einem der konfigurierten Exit-Codes abgeschlossen hat. Bei nicht erfüllter Abhängigkeit wird der Job mit Exit-Code **-7** (Skipped – dependency not met) übersprungen.
+  - **`triggered_by`**: Job hat **keinen** Cron-Schedule (`schedule = NULL`); er wird event-driven durch `ExecutionFinishEndpoint` gestartet, sobald der Vorgänger mit einem der konfigurierten Exit-Codes endet. Nutzt die bestehende Run-Now / Once-Entry-Infrastruktur.
+- **Neue DB-Tabellen:**
+  - `job_dependencies`: UNIQUE KEY auf `job_id` (ein Dependency-Eintrag pro Job); FK mit `ON DELETE RESTRICT` auf Vorgänger und abhängigen Job.
+  - `job_dependency_trigger_state`: Brücken-Tabelle zwischen `ExecutionFinishEndpoint` (schreibt) und `ExecutionStartEndpoint` (liest + löscht); spiegelt das `job_retry_state`-Pattern.
+- **Neue `execution_log`-Spalten:**
+  - `trigger_type ENUM('scheduled','manual','dependency')`: Wie wurde die Ausführung gestartet?
+  - `predecessor_execution_id INT NULL`: Audit-Verknüpfung zur Vorgänger-Ausführung.
+- **Neue Agenten-Endpunkte:**
+  - `GET /crons/{id}/dependency-check`: Von `cron-wrapper.sh` aufgerufen; gibt `{"satisfied": bool, "reason": "..."}` zurück. Fail-open: Bei DB-Fehler wird `satisfied=true` zurückgegeben.
+- **Cycle Detection:** Zyklen im Dependency-Graph werden beim Anlegen/Bearbeiten erkannt (Agent: HTTP 422 autoritativ; Web: Early-Feedback via Client-seitiger Validierung). DependencyRepository::detectCycle() traversiert den Graphen aufwärts, max. 100 Knoten.
+- **Web-UI-Erweiterungen:**
+  - Formular (Erstellen/Bearbeiten): Neue Sektion „Ausführungstyp" (immer sichtbar, nicht aufklappbar) mit drei Radio-Optionen: **Zeitplan** (Standard), **Prüfen vor Ausführung** (`requires`), **Ausgelöst durch Job** (`triggered_by`). Schedule-Feld sichtbar für „Zeitplan" und „Prüfen vor Ausführung", ausgeblendet für „Ausgelöst durch Job". Vorgänger-Dropdown und Exit-Codes sichtbar für beide Dependency-Typen. Max-Alter-Feld nur für „Prüfen vor Ausführung"; Wert `0` = kein Alterslimit.
+  - Jobliste: Dependency-Badge in der Schedule-Spalte: Kettenglied-Symbol (requires) bzw. Blitz-Symbol (triggered_by) mit Link auf den Vorgänger-Job.
+  - Detail-Ansicht: Dependency-Info im Properties-Block mit Link auf den Vorgänger-Job.
+- **Export:** Dependency-Annotation als Kommentar im Crontab-Export; `triggered_by`-Jobs werden mit `# (event-driven – no crontab entry)` markiert.
+- **Silence Detection:** `triggered_by`-Jobs (schedule = NULL) werden in `check-limits.php` übersprungen (keine CronExpression verfügbar).
+- **`schema.sql`:** Aktualisiert mit allen neuen Tabellen und Spalten aus Migration 021.
+- **Migration:** `021_job_dependencies.sql`.
+- **Unit Tests:** `DependencyRepositoryTest` (20 Tests) für `exitCodeMatches()` und `validateExitCodes()`.
+
+- **Filter-Bar-Redesign (Joomla-Muster):** `/crons` und `/timeline` erhalten eine zweizeilige, aufklappbare Filter-Bar:
+  - **Zeile 1 (immer sichtbar):** Freitextsuche mit Icon, Suche-Button, „Filter-Optionen ▾"-Toggle, „Zurücksetzen"-Link (nur wenn aktiv), Einträge-pro-Seite rechts ausgerichtet.
+  - **Zeile 2 (einklappbar):** alle Dropdown-Filter. Zustand wird per `localStorage` (`cm_filter_opts_crons` / `cm_filter_opts_timeline`) gespeichert; beim Seitenaufruf mit aktivem Sekundärfilter wird Zeile 2 automatisch aufgeklappt.
+- **Neuer Filter „Ausführungstyp" auf `/crons`:** Filtert nach Abhängigkeitstyp — Zeitplan (kein Dependency-Eintrag), Prüfen vor Ausführung (`requires`), Ausgelöst durch Job (`triggered_by`). Auswertung client-seitig im `CronController` anhand des `dependency`-Felds der Job-Antwort.
+- **Suche nach Job-ID auf `/crons`:** Numerische Eingabe im Suchfeld trifft zusätzlich auf die Job-ID — Jobs können jetzt direkt per ID gesucht werden.
+- **Trigger-Verzögerung für `triggered_by`-Jobs:** Neues optionales Feld `trigger_delay_minutes` (Default: 0) in `job_dependencies`. Gibt an, wie viele Minuten nach dem Abschluss des Vorgängers gewartet werden soll, bevor der abhängige Job eingeplant wird. 0 = sofort (nächste verfügbare Cron-Minute). Eingabe im Formular nur sichtbar bei Typ „Ausgelöst durch Job". Migration `022_trigger_delay_minutes.sql`.
+- **Bulk-Bestätigen:** Neuer Button „Alle bestätigen" auf der Job-Detailseite (im Header der Ausführungshistorie) und neben jedem Bestätigen-Button im Dashboard. Markiert alle noch offenen Fehler eines Jobs in einem einzigen Schritt als bestätigt (nicht nur die angezeigten Einträge). Neuer Agent-Endpunkt `POST /crons/{id}/acknowledge-all`, neuer REST-API-Endpunkt `POST /api/v1/jobs/{id}/acknowledge-all` (Scope: `executions:acknowledge`).
+
+### Changed
+
+- `cronjobs.schedule` ist jetzt nullable (`VARCHAR(100) NULL DEFAULT NULL`) — Pflichtfeld nur für zeitgesteuerte Jobs.
+- `CronListEndpoint`, `CronGetEndpoint`, `CronCreateEndpoint`, `CronUpdateEndpoint`, `CronDeleteEndpoint`, `ExecutionFinishEndpoint`, `ExecutionStartEndpoint`: um Dependency-Unterstützung erweitert.
+- `DependencyRepository::save()`, `CronCreateEndpoint`, `CronUpdateEndpoint`: neuer Parameter `triggerDelayMinutes`; `CronGetEndpoint`, `CronListEndpoint`: `trigger_delay_minutes` in der Dependency-Antwort.
+- `OnceSchedule::compute(int $delayMinutes)`: neuer optionaler Parameter; `ExecutionFinishEndpoint` übergibt beim Triggern den konfigurierten Delay.
+- `ExportEndpoint`: `schedule`-Feld nullable; Dependency-Kommentare und Event-driven-Hinweis.
+- `cron-wrapper.sh`: Neuer Schritt 2b (Dependency-Check via `GET /crons/{id}/dependency-check`) zwischen dem Abrufen des Job-Befehls und der Ausführung.
+- `DependencyRepository::exitCodeMatches()`: Leere Listen geben jetzt `true` zurück (match-any: leeres Feld = immer ausführen, unabhängig vom Exit-Code).
+- `DependencyRepository::validateExitCodes()`: Negative Exit-Codes sind jetzt gültig; leere Eingabe ist gültig (bedeutet: alle Codes); Codes > 255 werden weiterhin abgelehnt.
+- `AgentHttpException`: Trägt jetzt den dekodierten JSON-Response-Body (`getResponseBody()`); `CronController` nutzt das für eine lokalisierte Darstellung von 422-Validierungsfehlern aus dem Agenten.
+
+### Fixed
+
+- **Export-Download 401/503**: `ExportController` berechnet die HMAC-Signatur korrekt mit userId/userName, sendete diese aber nicht als `X-User-Id`/`X-User-Name`-Header — der Agent las userId=0 und lehnte mit 401 ab. Header werden jetzt mitgesendet.
+- **`resync-crontab`: `triggered_by`-Jobs (schedule=NULL) verursachten "bad minute"-Fehler**: PHP wandelte `NULL` in `''` um; `syncEntries` schrieb einen Crontab-Eintrag ohne Schedule. Fix: Jobs mit `schedule = NULL` werden jetzt übersprungen und bestehende Einträge entfernt.
+- `DependencyCheckEndpoint`: `max_age_minutes = 0` überspringt die Zeitfenster-Prüfung vollständig — nur der Exit-Code des letzten Vorgänger-Runs wird geprüft.
+
+---
+
 ## [6.2.1] – branch: `fix/v6.2.1`
 
 ### Fixed

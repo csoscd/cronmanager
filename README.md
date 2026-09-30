@@ -45,7 +45,7 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Execution tracking** | Every job run is recorded: start time, end time, exit code, and captured stdout/stderr output |
 | **Execution limits** | Optional maximum runtime per job; alert and/or auto-kill when the limit is exceeded |
 | **Kill running execution** | Admins can terminate a running job mid-flight from the detail page (local: SIGTERM; SSH: remote kill) |
-| **Acknowledge failed executions** | Operators (and above) can mark a failed execution as acknowledged; acknowledged failures are suppressed from the dashboard error tile and badge counter. The action is reversible and fully audit-logged. Available from the job detail history table and the dashboard recent-failures tile — both via AJAX without a page reload |
+| **Acknowledge failed executions** | Operators (and above) can mark a failed execution as acknowledged; acknowledged failures are suppressed from the dashboard error tile and badge counter. The action is reversible and fully audit-logged. Available from the job detail history table and the dashboard recent-failures tile — both via AJAX without a page reload. **Bulk-acknowledge** marks all open failures for a job at once (detail page history header / dashboard row) |
 | **Singleton mode** | Flag a job so that new executions are silently skipped while a previous instance is still running |
 | **Job monitor** | Per-job statistics page with KPI cards (success rate, avg/min/max duration, alerts), an execution duration line chart, and a stacked bar chart – selectable time window from 1 hour to 1 year; period and target switching updates in-place via AJAX with auto-refresh for short windows |
 | **Dashboard** | At-a-glance view of total jobs, active/inactive counts, recent failures, and execution statistics; KPI cards refresh every 60 s via AJAX |
@@ -57,6 +57,7 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Tags** | Label jobs to enable filtering and grouped export |
 | **Crontab import** | Detect and import existing unmanaged crontab entries |
 | **Export** | Download a ready-to-use crontab file or JSON for all managed jobs |
+| **Job Dependencies** | Two dependency types: **`requires`** (job keeps its schedule but is skipped with exit code -7 if the predecessor's most recent execution did not finish with a configured exit code within `max_age_minutes`); **`triggered_by`** (job has no schedule — it is started automatically when the predecessor finishes with a configured exit code; optional `trigger_delay_minutes` delays scheduling). Cycle detection prevents circular chains. Both types visible in the job list and detail view |
 | **Auto-retry on failure** | Automatically re-run a failed job up to N times with a configurable delay between attempts; notification is suppressed until all retries are exhausted |
 | **Exit-code filter for restart** | Optionally restrict which exit codes trigger an automatic retry using a flexible expression such as `1-5,10,255`; empty (default) means any non-zero code |
 | **Email alerts** | Receive an email when a job exits with a non-zero status or exceeds its execution limit |

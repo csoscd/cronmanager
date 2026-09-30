@@ -27,6 +27,7 @@ namespace Cronmanager\Agent\Endpoints;
 
 use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Cron\CrontabManager;
+use Cronmanager\Agent\Repository\DependencyRepository;
 use Monolog\Logger;
 use PDO;
 use PDOException;
@@ -57,15 +58,18 @@ final class CronDeleteEndpoint
     /**
      * CronDeleteEndpoint constructor.
      *
-     * @param PDO            $pdo            Active PDO database connection.
-     * @param Logger         $logger         Monolog logger instance.
-     * @param CrontabManager $crontabManager CrontabManager for crontab cleanup.
+     * @param PDO                  $pdo            Active PDO database connection.
+     * @param Logger               $logger         Monolog logger instance.
+     * @param CrontabManager       $crontabManager CrontabManager for crontab cleanup.
+     * @param AuditLogger          $audit          Audit logger.
+     * @param DependencyRepository $deps           Dependency repository.
      */
     public function __construct(
-        private readonly PDO            $pdo,
-        private readonly Logger         $logger,
-        private readonly CrontabManager $crontabManager,
-        private readonly AuditLogger    $audit,
+        private readonly PDO                  $pdo,
+        private readonly Logger               $logger,
+        private readonly CrontabManager       $crontabManager,
+        private readonly AuditLogger          $audit,
+        private readonly DependencyRepository $deps,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -107,6 +111,38 @@ final class CronDeleteEndpoint
                 'error'   => 'Not Found',
                 'message' => sprintf('Cron job with ID %d does not exist.', $jobId),
                 'code'    => 404,
+            ]);
+            return;
+        }
+
+        // ------------------------------------------------------------------
+        // 1b. Block deletion when other jobs depend on this one
+        // ------------------------------------------------------------------
+
+        $dependents = $this->deps->findByPredecessorId($jobId);
+
+        if ($dependents !== []) {
+            $depDescriptions = array_map(
+                static fn(array $row): string => sprintf(
+                    '#%d %s',
+                    (int) $row['job_id'],
+                    $row['job_description'] !== null && $row['job_description'] !== ''
+                        ? (string) $row['job_description']
+                        : '(no description)',
+                ),
+                $dependents,
+            );
+
+            $this->logger->info('CronDeleteEndpoint: delete blocked – dependent jobs exist', [
+                'job_id'     => $jobId,
+                'dependents' => $depDescriptions,
+            ]);
+
+            jsonResponse(422, [
+                'error'      => 'Unprocessable Entity',
+                'message'    => 'Cannot delete this job because other jobs depend on it. Remove the dependency first.',
+                'code'       => 422,
+                'dependents' => $depDescriptions,
             ]);
             return;
         }

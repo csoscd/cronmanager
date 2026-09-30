@@ -117,178 +117,245 @@ $pageUrl = static function (int $newOffset) use ($filters, $limit, $isDirect, $a
 <!-- ======================================================================
      Filter bar
      ====================================================================== -->
+<?php
+$hasSecondaryFilter = $activeTag !== '' || $activeUser !== '' || $activeTarget !== ''
+    || $activeStatus !== '' || $activeFrom !== '' || $activeTo !== '';
+$hasAnyFilter = $activeSearch !== '' || $hasSecondaryFilter;
+?>
 <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-6">
-    <form method="GET" action="/timeline" class="flex flex-wrap items-end gap-3">
-
+    <form method="GET" action="/timeline">
+        <?php if ($agentId > 0): ?>
+            <input type="hidden" name="agent_id" value="<?= $agentId ?>">
+        <?php endif; ?>
         <!-- If a job_id deep-link is active, preserve it as a hidden field so
              subsequent filter changes and pagination retain the scope. -->
         <?php if ($activeJobId !== ''): ?>
             <input type="hidden" name="job_id" value="<?= htmlspecialchars($activeJobId, ENT_QUOTES, 'UTF-8') ?>">
         <?php endif; ?>
 
-        <!-- Search field -->
-        <div class="flex-1 min-w-40">
-            <label for="filter-search" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                <?= htmlspecialchars($t('filter_search'), ENT_QUOTES, 'UTF-8') ?>
-            </label>
-            <input type="text" id="filter-search" name="search"
-                   value="<?= htmlspecialchars($activeSearch, ENT_QUOTES, 'UTF-8') ?>"
-                   placeholder="<?= htmlspecialchars($t('filter_search_placeholder'), ENT_QUOTES, 'UTF-8') ?>"
-                   class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
-                          bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                          focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
+        <!-- Row 1: search + controls (always visible) -->
+        <div class="flex flex-wrap items-center gap-2">
 
-        <!-- Tag filter -->
-        <div class="flex-1 min-w-32">
-            <label for="filter-tag" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                <?= htmlspecialchars($t('cron_tags'), ENT_QUOTES, 'UTF-8') ?>
-            </label>
-            <select id="filter-tag" name="tag"
-                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
-                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                           focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value=""><?= htmlspecialchars($t('filter_all_tags'), ENT_QUOTES, 'UTF-8') ?></option>
-                <?php foreach ($tags as $tag): ?>
-                    <?php
-                        $tagName = (string) ($tag['name'] ?? $tag);
-                        $sel     = $activeTag === $tagName ? ' selected' : '';
-                    ?>
-                    <option value="<?= htmlspecialchars($tagName, ENT_QUOTES, 'UTF-8') ?>"<?= $sel ?>>
-                        <?= htmlspecialchars($tagName, ENT_QUOTES, 'UTF-8') ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
+            <!-- Free-text search -->
+            <div class="flex-1 min-w-48 relative">
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+                    </svg>
+                </div>
+                <input type="text" id="filter-search" name="search"
+                       value="<?= htmlspecialchars($activeSearch, ENT_QUOTES, 'UTF-8') ?>"
+                       placeholder="<?= htmlspecialchars($t('filter_search_placeholder'), ENT_QUOTES, 'UTF-8') ?>"
+                       class="w-full border border-gray-300 dark:border-gray-600 rounded-lg pl-9 pr-3 py-2 text-sm
+                              bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                              focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
 
-        <!-- User filter (hidden when only one linux user exists) -->
-        <?php if ($multiUser): ?>
-        <div class="flex-1 min-w-32">
-            <label for="filter-user" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                <?= htmlspecialchars($t('cron_linux_user'), ENT_QUOTES, 'UTF-8') ?>
-            </label>
-            <select id="filter-user" name="user"
-                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
-                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                           focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value=""><?= htmlspecialchars($t('filter_all_users'), ENT_QUOTES, 'UTF-8') ?></option>
-                <?php foreach ($users as $u): ?>
-                    <?php $sel = $activeUser === $u ? ' selected' : ''; ?>
-                    <option value="<?= htmlspecialchars($u, ENT_QUOTES, 'UTF-8') ?>"<?= $sel ?>>
-                        <?= htmlspecialchars($u, ENT_QUOTES, 'UTF-8') ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <?php endif; ?>
-
-        <!-- Target filter (shown only when more than one unique target exists) -->
-        <?php if (count($allTargets) > 1): ?>
-        <div class="flex-1 min-w-32">
-            <label for="filter-target" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                <?= htmlspecialchars($t('cron_targets'), ENT_QUOTES, 'UTF-8') ?>
-            </label>
-            <select id="filter-target" name="target"
-                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
-                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                           focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value=""><?= htmlspecialchars($t('filter_all_targets'), ENT_QUOTES, 'UTF-8') ?></option>
-                <?php foreach ($allTargets as $tgt): ?>
-                    <?php $sel = $activeTarget === $tgt ? ' selected' : ''; ?>
-                    <option value="<?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>"<?= $sel ?>>
-                        <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <?php endif; ?>
-
-        <!-- Status filter -->
-        <div class="flex-1 min-w-32">
-            <label for="filter-status" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                <?= htmlspecialchars($t('filter_status'), ENT_QUOTES, 'UTF-8') ?>
-            </label>
-            <select id="filter-status" name="status"
-                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
-                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                           focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value=""><?= htmlspecialchars($t('filter_status_all'), ENT_QUOTES, 'UTF-8') ?></option>
-                <option value="success"<?= $activeStatus === 'success' ? ' selected' : '' ?>>
-                    <?= htmlspecialchars($t('filter_status_success'), ENT_QUOTES, 'UTF-8') ?>
-                </option>
-                <option value="failed"<?= $activeStatus === 'failed' ? ' selected' : '' ?>>
-                    <?= htmlspecialchars($t('filter_status_failed'), ENT_QUOTES, 'UTF-8') ?>
-                </option>
-                <option value="running"<?= $activeStatus === 'running' ? ' selected' : '' ?>>
-                    <?= htmlspecialchars($t('filter_status_running'), ENT_QUOTES, 'UTF-8') ?>
-                </option>
-                <option value="skipped"<?= $activeStatus === 'skipped' ? ' selected' : '' ?>>
-                    <?= htmlspecialchars($t('filter_status_skipped'), ENT_QUOTES, 'UTF-8') ?>
-                </option>
-            </select>
-        </div>
-
-        <!-- From date -->
-        <div class="flex-1 min-w-32">
-            <label for="filter-from" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                <?= htmlspecialchars($t('filter_from'), ENT_QUOTES, 'UTF-8') ?>
-            </label>
-            <input type="date" id="filter-from" name="from"
-                   value="<?= htmlspecialchars($activeFrom, ENT_QUOTES, 'UTF-8') ?>"
-                   class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
-                          bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                          focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-
-        <!-- To date -->
-        <div class="flex-1 min-w-32">
-            <label for="filter-to" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                <?= htmlspecialchars($t('filter_to'), ENT_QUOTES, 'UTF-8') ?>
-            </label>
-            <input type="date" id="filter-to" name="to"
-                   value="<?= htmlspecialchars($activeTo, ENT_QUOTES, 'UTF-8') ?>"
-                   class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
-                          bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                          focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-
-        <!-- Page size selector -->
-        <div class="flex-1 min-w-28">
-            <label for="filter-limit" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                <?= htmlspecialchars($t('pagination_page_size'), ENT_QUOTES, 'UTF-8') ?>
-            </label>
-            <select id="filter-limit" name="limit"
-                    class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
-                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                           focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <?php foreach ([10, 25, 50, 100, 500] as $sz): ?>
-                    <option value="<?= $sz ?>"<?= $limit === $sz ? ' selected' : '' ?>><?= $sz ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-
-        <!-- Apply -->
-        <div>
+            <!-- Submit (search icon button) -->
             <button type="submit"
-                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium
-                           px-5 py-2 rounded-lg transition focus:outline-none
-                           focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-                <?= htmlspecialchars($t('filter_apply'), ENT_QUOTES, 'UTF-8') ?>
+                    class="inline-flex items-center justify-center w-9 h-9 bg-blue-600 hover:bg-blue-700 text-white
+                           rounded-lg transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                    title="<?= htmlspecialchars($t('filter_apply'), ENT_QUOTES, 'UTF-8') ?>">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+                </svg>
             </button>
+
+            <!-- Filter-Optionen toggle -->
+            <button type="button" id="cm-filter-toggle"
+                    class="inline-flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-white
+                           text-sm font-medium px-4 py-2 rounded-lg transition
+                           focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                <?= htmlspecialchars($t('filter_options_toggle'), ENT_QUOTES, 'UTF-8') ?>
+                <span class="cm-toggle-chevron text-xs">▼</span>
+            </button>
+
+            <!-- Zurücksetzen (nur wenn Filter aktiv) -->
+            <?php if ($hasAnyFilter): ?>
+            <a href="/timeline?<?= $agParam ?>_reset=1"
+               class="inline-flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300
+                      hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-gray-600
+                      rounded-lg px-3 py-2 transition">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+                <?= htmlspecialchars($t('filter_reset'), ENT_QUOTES, 'UTF-8') ?>
+            </a>
+            <?php endif; ?>
+
+            <!-- Einträge pro Seite (rechts ausgerichtet) -->
+            <div class="ml-auto flex items-center gap-2">
+                <label for="filter-limit" class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap hidden sm:block">
+                    <?= htmlspecialchars($t('pagination_page_size'), ENT_QUOTES, 'UTF-8') ?>
+                </label>
+                <select id="filter-limit" name="limit"
+                        onchange="this.form.submit()"
+                        class="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-2 text-sm
+                               bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                               focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <?php foreach ([10, 25, 50, 100, 500] as $sz): ?>
+                        <option value="<?= $sz ?>"<?= $limit === $sz ? ' selected' : '' ?>><?= $sz ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
         </div>
 
-        <!-- Reset filters link -->
-        <?php if ($hasActiveFilter): ?>
-        <div>
-            <a href="/timeline?<?= $agParam ?>_reset=1"
-               class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white underline py-2 block">
-                &times; <?= htmlspecialchars($t('filter_reset'), ENT_QUOTES, 'UTF-8') ?>
-            </a>
+        <!-- Row 2: additional filter dropdowns (collapsible) -->
+        <div id="cm-filter-opts"
+             class="<?= $hasSecondaryFilter ? '' : 'hidden' ?> mt-3 pt-3 border-t border-gray-100 dark:border-gray-700"
+             data-force-open="<?= $hasSecondaryFilter ? '1' : '0' ?>">
+            <div class="flex flex-wrap gap-3">
+
+                <!-- Tag filter -->
+                <div class="flex-1 min-w-32">
+                    <label for="filter-tag" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        <?= htmlspecialchars($t('cron_tags'), ENT_QUOTES, 'UTF-8') ?>
+                    </label>
+                    <select id="filter-tag" name="tag"
+                            class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                   bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value=""><?= htmlspecialchars($t('filter_all_tags'), ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php foreach ($tags as $tag): ?>
+                            <?php
+                                $tagName = (string) ($tag['name'] ?? $tag);
+                                $sel     = $activeTag === $tagName ? ' selected' : '';
+                            ?>
+                            <option value="<?= htmlspecialchars($tagName, ENT_QUOTES, 'UTF-8') ?>"<?= $sel ?>>
+                                <?= htmlspecialchars($tagName, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <!-- User filter (hidden when only one linux user exists) -->
+                <?php if ($multiUser): ?>
+                <div class="flex-1 min-w-32">
+                    <label for="filter-user" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        <?= htmlspecialchars($t('cron_linux_user'), ENT_QUOTES, 'UTF-8') ?>
+                    </label>
+                    <select id="filter-user" name="user"
+                            class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                   bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value=""><?= htmlspecialchars($t('filter_all_users'), ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php foreach ($users as $u): ?>
+                            <?php $sel = $activeUser === $u ? ' selected' : ''; ?>
+                            <option value="<?= htmlspecialchars($u, ENT_QUOTES, 'UTF-8') ?>"<?= $sel ?>>
+                                <?= htmlspecialchars($u, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
+
+                <!-- Target filter (shown only when more than one unique target exists) -->
+                <?php if (count($allTargets) > 1): ?>
+                <div class="flex-1 min-w-32">
+                    <label for="filter-target" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        <?= htmlspecialchars($t('cron_targets'), ENT_QUOTES, 'UTF-8') ?>
+                    </label>
+                    <select id="filter-target" name="target"
+                            class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                   bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value=""><?= htmlspecialchars($t('filter_all_targets'), ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php foreach ($allTargets as $tgt): ?>
+                            <?php $sel = $activeTarget === $tgt ? ' selected' : ''; ?>
+                            <option value="<?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>"<?= $sel ?>>
+                                <?= htmlspecialchars($tgt, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <?php endif; ?>
+
+                <!-- Status filter -->
+                <div class="flex-1 min-w-32">
+                    <label for="filter-status" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        <?= htmlspecialchars($t('filter_status'), ENT_QUOTES, 'UTF-8') ?>
+                    </label>
+                    <select id="filter-status" name="status"
+                            class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                   bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value=""><?= htmlspecialchars($t('filter_status_all'), ENT_QUOTES, 'UTF-8') ?></option>
+                        <option value="success"<?= $activeStatus === 'success' ? ' selected' : '' ?>>
+                            <?= htmlspecialchars($t('filter_status_success'), ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                        <option value="failed"<?= $activeStatus === 'failed' ? ' selected' : '' ?>>
+                            <?= htmlspecialchars($t('filter_status_failed'), ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                        <option value="running"<?= $activeStatus === 'running' ? ' selected' : '' ?>>
+                            <?= htmlspecialchars($t('filter_status_running'), ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                        <option value="skipped"<?= $activeStatus === 'skipped' ? ' selected' : '' ?>>
+                            <?= htmlspecialchars($t('filter_status_skipped'), ENT_QUOTES, 'UTF-8') ?>
+                        </option>
+                    </select>
+                </div>
+
+                <!-- From date -->
+                <div class="flex-1 min-w-32">
+                    <label for="filter-from" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        <?= htmlspecialchars($t('filter_from'), ENT_QUOTES, 'UTF-8') ?>
+                    </label>
+                    <input type="date" id="filter-from" name="from"
+                           value="<?= htmlspecialchars($activeFrom, ENT_QUOTES, 'UTF-8') ?>"
+                           class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                  focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <!-- To date -->
+                <div class="flex-1 min-w-32">
+                    <label for="filter-to" class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        <?= htmlspecialchars($t('filter_to'), ENT_QUOTES, 'UTF-8') ?>
+                    </label>
+                    <input type="date" id="filter-to" name="to"
+                           value="<?= htmlspecialchars($activeTo, ENT_QUOTES, 'UTF-8') ?>"
+                           class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                  focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+            </div>
         </div>
-        <?php endif; ?>
 
     </form>
 </div>
+
+<script>
+(function () {
+    'use strict';
+    var panel  = document.getElementById('cm-filter-opts');
+    var toggle = document.getElementById('cm-filter-toggle');
+    if (!panel || !toggle) { return; }
+
+    var LS_KEY = 'cm_filter_opts_timeline';
+    var chevron = toggle.querySelector('.cm-toggle-chevron');
+
+    function isOpen() { return !panel.classList.contains('hidden'); }
+
+    function setOpen(open, save) {
+        panel.classList.toggle('hidden', !open);
+        if (chevron) { chevron.textContent = open ? '▲' : '▼'; }
+        if (save) {
+            try { localStorage.setItem(LS_KEY, open ? '1' : '0'); } catch (_) {}
+        }
+    }
+
+    if (panel.dataset.forceOpen === '1') {
+        if (chevron) { chevron.textContent = '▲'; }
+    } else {
+        try {
+            if (localStorage.getItem(LS_KEY) === '1') { setOpen(true, false); }
+        } catch (_) {}
+    }
+
+    toggle.addEventListener('click', function () { setOpen(!isOpen(), true); });
+}());
+</script>
 
 <!-- ======================================================================
      Results summary

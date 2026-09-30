@@ -66,9 +66,10 @@ class CronController extends BaseController
         $filterTag    = $this->filterParam('tag',    'cronmgr_crons_tag');
         $filterUser   = $this->filterParam('user',   'cronmgr_crons_user');
         $filterTarget = $this->filterParam('target', 'cronmgr_crons_target');
-        $filterSearch = $this->filterParam('search', 'cronmgr_crons_search');
-        $filterResult = $this->filterParam('result', 'cronmgr_crons_result');
-        $filterActive = $this->filterParam('active', 'cronmgr_crons_active');
+        $filterSearch   = $this->filterParam('search',    'cronmgr_crons_search');
+        $filterResult   = $this->filterParam('result',    'cronmgr_crons_result');
+        $filterActive   = $this->filterParam('active',    'cronmgr_crons_active');
+        $filterExecType = $this->filterParam('exec_type', 'cronmgr_crons_exec_type');
 
         // ------------------------------------------------------------------
         // Resolve page-size preference
@@ -157,10 +158,15 @@ class CronController extends BaseController
             }
         }
 
-        // Apply free-text search filter (description + command, case-insensitive substring)
+        // Apply free-text search filter (description + command, case-insensitive; also matches numeric job ID)
         if ($filterSearch !== '') {
-            $needle = mb_strtolower($filterSearch);
-            $jobs   = array_values(array_filter($jobs, static function (array $job) use ($needle): bool {
+            $needle    = mb_strtolower($filterSearch);
+            $isNumeric = ctype_digit($filterSearch) && (int) $filterSearch > 0;
+            $numericId = $isNumeric ? (int) $filterSearch : 0;
+            $jobs      = array_values(array_filter($jobs, static function (array $job) use ($needle, $isNumeric, $numericId): bool {
+                if ($isNumeric && (int) ($job['id'] ?? 0) === $numericId) {
+                    return true;
+                }
                 $desc    = mb_strtolower((string) ($job['description'] ?? ''));
                 $command = mb_strtolower((string) ($job['command']     ?? ''));
                 return str_contains($desc, $needle) || str_contains($command, $needle);
@@ -174,6 +180,19 @@ class CronController extends BaseController
                 $jobs,
                 static fn(array $job): bool => (bool) ($job['active'] ?? false) === $wantActive
             ));
+        }
+
+        // Apply execution-type filter (none = no dependency, requires, triggered_by)
+        if ($filterExecType !== '') {
+            $jobs = array_values(array_filter($jobs, static function (array $job) use ($filterExecType): bool {
+                $dep = is_array($job['dependency'] ?? null) ? $job['dependency'] : null;
+                return match ($filterExecType) {
+                    'none'         => $dep === null,
+                    'requires'     => $dep !== null && ($dep['type'] ?? '') === 'requires',
+                    'triggered_by' => $dep !== null && ($dep['type'] ?? '') === 'triggered_by',
+                    default        => true,
+                };
+            }));
         }
 
         // Apply last-result filter (ok = exit_code 0, failed = exit_code != 0, not_run = never started)
@@ -230,7 +249,8 @@ class CronController extends BaseController
 
         // Annotate each visible job with its human-readable schedule translation
         foreach ($pagedJobs as &$job) {
-            $job['schedule_human'] = $this->translateCron((string) ($job['schedule'] ?? ''));
+            $schedule = $job['schedule'] !== null ? (string) $job['schedule'] : '';
+            $job['schedule_human'] = $schedule !== '' ? $this->translateCron($schedule) : '';
         }
         unset($job);
 
@@ -243,6 +263,7 @@ class CronController extends BaseController
             'filterSearch'          => $filterSearch,
             'filterResult'          => $filterResult,
             'filterActive'          => $filterActive,
+            'filterExecType'        => $filterExecType,
             'users'                 => $users,
             'multiUser'             => count($users) > 1,
             'allTargets'            => $allTargets,
@@ -321,6 +342,14 @@ class CronController extends BaseController
             ? $this->translator()->t('cron_copy_title', ['name' => (string) ($sourceJob['description'] ?? "Job #{$copyFromId}")])
             : $this->translator()->t('cron_add');
 
+        // Load all jobs for the predecessor dropdown in the dependency section
+        $allJobsForDep = [];
+        try {
+            $allJobsForDep = $agent->get('/crons')['data'] ?? [];
+        } catch (\RuntimeException) {
+            // Non-fatal: dropdown will be empty
+        }
+
         $this->render('cron/form.php', $pageTitle, [
             'job'            => $sourceJob,   // null on blank form, array when copying
             'tags'           => $tags,
@@ -328,6 +357,7 @@ class CronController extends BaseController
             'selectedTargets'=> $selectedTargets,
             'linuxUsers'     => $linuxUsers,
             'dockerMode'     => $dockerMode,
+            'allJobsForDep'  => $allJobsForDep,
             'error'          => null,
             'isEdit'         => false,        // always POST to /crons (new job)
             'isCopy'         => $isCopy,
@@ -358,9 +388,11 @@ class CronController extends BaseController
 
             // Re-render form with error
             try {
-                $tags = $this->agentClient()->get('/tags')['data'] ?? [];
+                $tags          = $this->agentClient()->get('/tags')['data'] ?? [];
+                $allJobsForDep = $this->agentClient()->get('/crons')['data'] ?? [];
             } catch (\RuntimeException) {
-                $tags = [];
+                $tags          = [];
+                $allJobsForDep = [];
             }
 
             [$linuxUsers, $dockerMode, $sshHosts] = $this->fetchLinuxUsersAndSshHosts();
@@ -371,14 +403,15 @@ class CronController extends BaseController
             }
 
             $this->render('cron/form.php', $this->translator()->t('cron_add'), [
-                'job'        => $_POST,
-                'tags'       => $tags,
-                'sshHosts'   => $sshHosts,
-                'linuxUsers' => $linuxUsers,
-                'dockerMode' => $dockerMode,
-                'error'      => $e->getMessage(),
-                'isEdit'     => false,
-                'returnUrl'  => $postReturn,
+                'job'           => $_POST,
+                'tags'          => $tags,
+                'sshHosts'      => $sshHosts,
+                'linuxUsers'    => $linuxUsers,
+                'dockerMode'    => $dockerMode,
+                'allJobsForDep' => $allJobsForDep,
+                'error'         => $this->localizeAgentError($e),
+                'isEdit'        => false,
+                'returnUrl'     => $postReturn,
             ], '/crons');
             return;
         }
@@ -476,9 +509,10 @@ class CronController extends BaseController
             return;
         }
 
+        $sched = $job['schedule'] !== null ? (string) $job['schedule'] : '';
         $this->render('cron/detail.php', (string) ($job['description'] ?? "Job #{$id}"), [
             'job'           => $job,
-            'scheduleHuman' => $this->translateCron((string) ($job['schedule'] ?? '')),
+            'scheduleHuman' => $sched !== '' ? $this->translateCron($sched) : '',
             'history'       => $history,
             'isAdmin'       => SessionManager::hasRole('admin'),
         ], '/crons');
@@ -497,13 +531,15 @@ class CronController extends BaseController
         $agent = $this->agentClient();
 
         try {
-            // One parallel batch instead of two sequential roundtrips
+            // One parallel batch instead of three sequential roundtrips
             $results = $agent->getMultiple([
-                'job'  => ['path' => '/crons/' . rawurlencode($id)],
-                'tags' => ['path' => '/tags'],
+                'job'     => ['path' => '/crons/' . rawurlencode($id)],
+                'tags'    => ['path' => '/tags'],
+                'alljobs' => ['path' => '/crons'],
             ]);
             $job  = $results['job'];
             $tags = $results['tags']['data'] ?? [];
+            $allJobsForDep = $results['alljobs']['data'] ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('CronController::edit: agent request failed', [
                 'id'      => $id,
@@ -541,6 +577,7 @@ class CronController extends BaseController
             'selectedTargets' => $selectedTargets,
             'linuxUsers'      => $linuxUsers,
             'dockerMode'      => $dockerMode,
+            'allJobsForDep'   => $allJobsForDep ?? [],
             'error'           => null,
             'isEdit'          => true,
             'returnUrl'       => $returnUrl,
@@ -571,11 +608,13 @@ class CronController extends BaseController
             ]);
 
             try {
-                $job  = $this->agentClient()->get('/crons/' . rawurlencode($id));
-                $tags = $this->agentClient()->get('/tags')['data'] ?? [];
+                $job           = $this->agentClient()->get('/crons/' . rawurlencode($id));
+                $tags          = $this->agentClient()->get('/tags')['data'] ?? [];
+                $allJobsForDep = $this->agentClient()->get('/crons')['data'] ?? [];
             } catch (\RuntimeException) {
-                $job  = $_POST;
-                $tags = [];
+                $job           = $_POST;
+                $tags          = [];
+                $allJobsForDep = [];
             }
 
             $mergedJob = array_merge((array) $job, $_POST);
@@ -587,14 +626,15 @@ class CronController extends BaseController
             }
 
             $this->render('cron/form.php', $this->translator()->t('cron_edit'), [
-                'job'        => $mergedJob,
-                'tags'       => $tags,
-                'sshHosts'   => $sshHosts,
-                'linuxUsers' => $linuxUsers,
-                'dockerMode' => $dockerMode,
-                'error'      => $e->getMessage(),
-                'isEdit'     => true,
-                'returnUrl'  => $postReturn,
+                'job'           => $mergedJob,
+                'tags'          => $tags,
+                'sshHosts'      => $sshHosts,
+                'linuxUsers'    => $linuxUsers,
+                'dockerMode'    => $dockerMode,
+                'allJobsForDep' => $allJobsForDep,
+                'error'         => $this->localizeAgentError($e),
+                'isEdit'        => true,
+                'returnUrl'     => $postReturn,
             ], '/crons');
             return;
         }
@@ -1159,6 +1199,64 @@ class CronController extends BaseController
         $this->acknowledgeExecution($params, false);
     }
 
+    /**
+     * POST /crons/{id}/acknowledge-all
+     *
+     * Bulk-acknowledges all unacknowledged failures for a cron job.
+     * Always JSON-aware: returns {"success": true, "acknowledged_count": N}.
+     *
+     * @param array<string, string> $params Path parameters: id (job ID).
+     * @return void
+     */
+    public function acknowledgeAllExecutions(array $params): void
+    {
+        $jobId = isset($params['id']) ? (int) $params['id'] : 0;
+
+        $this->logger->info('CronController::acknowledgeAllExecutions: request', [
+            'job_id' => $jobId,
+        ]);
+
+        try {
+            $result = $this->agentClient()->post("/crons/{$jobId}/acknowledge-all", []);
+            $count  = (int) ($result['acknowledged_count'] ?? 0);
+
+            if ($this->isJsonRequest()) {
+                $this->jsonResponse([
+                    'success'             => true,
+                    'acknowledged_count'  => $count,
+                ]);
+                return;
+            }
+
+            SessionManager::set('_flash_ack_notice', $this->translator()->t('execution_acknowledged_all', ['count' => $count]));
+        } catch (AgentHttpException $e) {
+            $this->logger->warning('CronController::acknowledgeAllExecutions: agent returned error', [
+                'job_id' => $jobId,
+                'status' => $e->getStatusCode(),
+                'error'  => $e->getMessage(),
+            ]);
+            if ($this->isJsonRequest()) {
+                $this->jsonResponse(['success' => false, 'error' => $this->translator()->t('error_agent_unavailable')]);
+                return;
+            }
+            SessionManager::set('_flash_ack_error', 'error_agent_unavailable');
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::acknowledgeAllExecutions: agent unreachable', [
+                'job_id' => $jobId,
+                'error'  => $e->getMessage(),
+            ]);
+            if ($this->isJsonRequest()) {
+                $this->jsonResponse(['success' => false, 'error' => $this->translator()->t('error_agent_unavailable')]);
+                return;
+            }
+            SessionManager::set('_flash_ack_error', 'error_agent_unavailable');
+        }
+
+        $returnUrl = trim((string) ($_POST['_return'] ?? ''));
+        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons';
+        (new Response())->redirect($safe);
+    }
+
     public function killExecution(array $params): void
     {
         $executionId = isset($params['id']) ? (int) $params['id'] : 0;
@@ -1365,9 +1463,41 @@ class CronController extends BaseController
             ? (int) $rawSilenceGrace
             : null;
 
-        return [
+        // Dependency: dep_type=none|requires|triggered_by
+        $depType        = trim((string) ($post['dep_type'] ?? 'none'));
+        $depPredRaw     = trim((string) ($post['dep_predecessor_id'] ?? ''));
+        $depExitCodes   = trim((string) ($post['dep_exit_codes'] ?? ''));
+        $depMaxAgeRaw   = trim((string) ($post['dep_max_age_minutes'] ?? ''));
+
+        $depTriggerDelayRaw = trim((string) ($post['dep_trigger_delay_minutes'] ?? ''));
+
+        $dependency = null;
+        if (in_array($depType, ['requires', 'triggered_by'], true) && ctype_digit($depPredRaw) && (int) $depPredRaw > 0) {
+            $depEntry = [
+                'predecessor_id' => (int) $depPredRaw,
+                'type'           => $depType,
+                'exit_codes'     => $depExitCodes,
+            ];
+            if ($depType === 'requires') {
+                $depEntry['max_age_minutes'] = ($depMaxAgeRaw !== '' && ctype_digit($depMaxAgeRaw) && (int) $depMaxAgeRaw > 0)
+                    ? (int) $depMaxAgeRaw
+                    : null;
+            }
+            if ($depType === 'triggered_by') {
+                $depEntry['trigger_delay_minutes'] = ($depTriggerDelayRaw !== '' && ctype_digit($depTriggerDelayRaw))
+                    ? (int) $depTriggerDelayRaw
+                    : 0;
+            }
+            $dependency = $depEntry;
+        }
+
+        // For triggered_by jobs, schedule must be null (no crontab entry)
+        $scheduleRaw = trim((string) ($post['schedule'] ?? ''));
+        $schedule    = ($depType === 'triggered_by') ? null : ($scheduleRaw !== '' ? $scheduleRaw : '');
+
+        $payload = [
             'linux_user'               => trim((string) ($post['linux_user']   ?? '')),
-            'schedule'                 => trim((string) ($post['schedule']     ?? '')),
+            'schedule'                 => $schedule,
             'command'                  => trim((string) ($post['command']      ?? '')),
             'description'              => trim((string) ($post['description']  ?? '')),
             'tags'                     => $tags,
@@ -1388,5 +1518,92 @@ class CronController extends BaseController
             'notify_after_limit_exceeded' => $notifyAfterLimitExceeded,
             'targets'                     => $targets,
         ];
+
+        // Include dependency key only when explicitly provided or clearing
+        // (dep_type key presence signals intent to set or clear dependency)
+        if (array_key_exists('dep_type', $post)) {
+            $payload['dependency'] = $dependency;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Convert an AgentHttpException into a localized German error message.
+     *
+     * 422 responses carry a structured {"error":..., "fields":{...}} body.
+     * Each field name and validation message is mapped to German so the user
+     * never sees raw English agent internals.
+     */
+    private function localizeAgentError(\RuntimeException $e): string
+    {
+        if (!($e instanceof \Cronmanager\Web\Agent\AgentHttpException) || $e->getStatusCode() !== 422) {
+            return $e->getMessage();
+        }
+
+        $body   = $e->getResponseBody();
+        $fields = isset($body['fields']) && is_array($body['fields']) ? $body['fields'] : [];
+
+        if ($fields === []) {
+            return 'Validierungsfehler: Ungültige Eingabe.';
+        }
+
+        $fieldLabels = [
+            'linux_user'                       => 'Linux-Benutzer',
+            'schedule'                         => 'Zeitplan',
+            'command'                          => 'Befehl',
+            'targets'                          => 'Ausführungsziele',
+            'dependency'                       => 'Abhängigkeit',
+            'dependency.predecessor_id'        => 'Vorgängerjob',
+            'dependency.type'                  => 'Ausführungstyp',
+            'dependency.exit_codes'            => 'Exit-Codes des Vorgängers',
+            'dependency.max_age_minutes'       => 'Max. Alter (Minuten)',
+            'dependency.trigger_delay_minutes' => 'Verzögerung (Minuten)',
+        ];
+
+        $lines = [];
+        foreach ($fields as $field => $msg) {
+            $label = $fieldLabels[$field] ?? $field;
+            $lines[] = $label . ': ' . $this->translateAgentErrorMessage((string) $msg);
+        }
+
+        return 'Validierungsfehler: ' . implode('; ', $lines);
+    }
+
+    /**
+     * Translate a known English agent validation message to German.
+     */
+    private function translateAgentErrorMessage(string $msg): string
+    {
+        // Translate known patterns; return original when no match.
+        $patterns = [
+            '/is not a valid exit code \(must be an integer\)/'
+                => 'ist kein gültiger Exit-Code (muss eine ganze Zahl sein)',
+            '/is out of range \(must be ≤ 255\)/'
+                => 'ist außerhalb des gültigen Bereichs (muss ≤ 255 sein)',
+            '/Empty token found; check for consecutive commas\./'
+                => 'Leeres Token – aufeinanderfolgende Kommas?',
+            '/Must be a (positive|non-negative) integer\./'
+                => 'Muss eine nicht-negative ganze Zahl sein.',
+            '/Must not be empty\./'
+                => 'Darf nicht leer sein.',
+            '/Job with ID (\d+) does not exist\./'
+                => 'Job mit ID $1 existiert nicht.',
+            '/Adding this dependency would create a cycle\./'
+                => 'Diese Abhängigkeit würde einen Zyklus erzeugen.',
+            '/is not a valid dependency type/'
+                => 'ist kein gültiger Abhängigkeitstyp.',
+            '/is required/'
+                => 'ist ein Pflichtfeld.',
+        ];
+
+        foreach ($patterns as $pattern => $replacement) {
+            $translated = preg_replace($pattern, $replacement, $msg);
+            if ($translated !== $msg && $translated !== null) {
+                return $translated;
+            }
+        }
+
+        return $msg;
     }
 }

@@ -24,12 +24,14 @@ namespace Cronmanager\Web\Agent;
 class AgentHttpException extends \RuntimeException
 {
     /**
-     * @param int    $statusCode HTTP status code returned by the agent.
-     * @param string $message    Human-readable error message.
+     * @param int                  $statusCode   HTTP status code returned by the agent.
+     * @param string               $message      Human-readable error message.
+     * @param array<string, mixed> $responseBody Decoded JSON response body (empty when not JSON).
      */
     public function __construct(
-        private readonly int $statusCode,
-        string $message = '',
+        private readonly int   $statusCode,
+        string                 $message = '',
+        private readonly array $responseBody = [],
     ) {
         parent::__construct($message);
     }
@@ -40,5 +42,15 @@ class AgentHttpException extends \RuntimeException
     public function getStatusCode(): int
     {
         return $this->statusCode;
+    }
+
+    /**
+     * Return the decoded JSON response body, or an empty array when unavailable.
+     *
+     * @return array<string, mixed>
+     */
+    public function getResponseBody(): array
+    {
+        return $this->responseBody;
     }
 }

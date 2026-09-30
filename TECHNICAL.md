@@ -1474,13 +1474,38 @@ UNIQUE KEY: `(job_id, target)`
 | `cronjob_id` | INT UNSIGNED FK → `cronjobs.id` | CASCADE DELETE |
 | `started_at` | DATETIME | |
 | `finished_at` | DATETIME NULL | NULL while running |
-| `exit_code` | INT NULL | NULL while running; `-2` = killed by operator; `-3` = limit exceeded (still running); `-4` = skipped due to maintenance window; `-5` = interrupted by agent restart (orphan cleanup) |
+| `exit_code` | INT NULL | NULL while running; `-2` = killed by operator; `-3` = limit exceeded (still running); `-4` = skipped due to maintenance window; `-5` = interrupted by agent restart (orphan cleanup); `-7` = skipped – dependency not met (requires-type) |
 | `output` | TEXT NULL | Truncated at 50,000 bytes |
 | `target` | VARCHAR(255) NULL | `"local"`, SSH alias, or NULL (pre-migration rows) |
 | `pid` | INT UNSIGNED NULL | Process PID for local executions; cleared on finish |
 | `pid_file` | VARCHAR(255) NULL | Remote PID file path for SSH executions; cleared on finish |
 | `notified_limit_exceeded` | TINYINT(1) | `1` = limit-exceeded notification already sent |
 | `during_maintenance` | TINYINT(1) | `1` = this execution occurred during a maintenance window |
+| `retry_attempt` | TINYINT UNSIGNED | `0` = original; `1+` = retry attempts |
+| `retry_root_execution_id` | INT NULL | Links retries back to attempt 0; NULL for originals |
+| `trigger_type` | ENUM | `"scheduled"` (cron daemon), `"manual"` (Run Now), `"dependency"` (triggered_by predecessor) |
+| `predecessor_execution_id` | INT NULL | `execution_log.id` of the predecessor execution that triggered this run; NULL for scheduled/manual |
+
+### `job_dependencies`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INT PK | |
+| `job_id` | INT | References the dependent job; UNIQUE (one dependency per job) |
+| `predecessor_id` | INT | The job that must run first |
+| `type` | ENUM | `"requires"` (pre-run check) or `"triggered_by"` (event-driven) |
+| `exit_codes` | VARCHAR(255) | Comma-separated exit codes that satisfy the dependency, e.g. `"0"` or `"0,2"` (range 0–255 only) |
+| `max_age_minutes` | INT UNSIGNED NULL | Only for `requires`: predecessor must have finished within this many minutes; NULL = 60 |
+
+### `job_dependency_trigger_state`
+
+Transient table written by `ExecutionFinishEndpoint` when a `triggered_by` successor job needs to fire. Consumed and deleted by `ExecutionStartEndpoint` on the successor's next start. Mirrors the `job_retry_state` pattern.
+
+| Column | Type | Notes |
+|---|---|---|
+| `job_id` | INT PK part | The job that will be triggered |
+| `target` | VARCHAR(255) PK part | Execution target |
+| `predecessor_execution_id` | INT NULL | `execution_log.id` of the triggering predecessor execution |
 
 ### `maintenance_windows`
 

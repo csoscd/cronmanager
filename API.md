@@ -344,7 +344,8 @@ List all cron jobs.
       "ssh_host": null,
       "targets": ["local"],
       "tags": ["backup", "daily"],
-      "created_at": "2026-01-15T08:00:00Z"
+      "created_at": "2026-01-15T08:00:00Z",
+      "dependency": null
     }
   ],
   "count": 1,
@@ -352,6 +353,22 @@ List all cron jobs.
   "offset": 0
 }
 ```
+
+The `dependency` field is `null` for independent jobs, or an object for dependent jobs:
+
+```json
+{
+  "dependency": {
+    "predecessor_id": 5,
+    "type": "requires",
+    "exit_codes": "0",
+    "max_age_minutes": 60,
+    "trigger_delay_minutes": 0
+  }
+}
+```
+
+For `triggered_by` jobs, `max_age_minutes` is absent, `schedule` is `null`, and `trigger_delay_minutes` specifies the delay in minutes between the predecessor's completion and the job being scheduled (0 = next cron-minute).
 
 ---
 
@@ -366,6 +383,21 @@ Get a single cron job by ID.
 ```json
 { "error": "Not Found", "message": "Cron job with ID 99 does not exist.", "code": 404 }
 ```
+
+---
+
+### GET /api/v1/jobs/{id}/dependency-check
+
+Check whether a job's dependency is currently satisfied.  No scope required (internal; called by `cron-wrapper.sh`).
+
+**Response 200:**
+
+```json
+{ "satisfied": true,  "reason": "Dependency satisfied: exit code 0 within 60 minutes" }
+{ "satisfied": false, "reason": "No qualifying predecessor execution found within 60 minutes" }
+```
+
+Fails open: returns `satisfied: true` when the job has no dependency, has a `triggered_by` dependency, or when the database is unreachable.
 
 ---
 
@@ -397,11 +429,23 @@ Create a new cron job.  Scope: **`jobs:write`**
   "retry_delay_minutes":       5,
   "restart_on_exitcodes":      [],
   "notify_after_failures":     3,
-  "notify_after_limit_exceeded": false
+  "notify_after_limit_exceeded": false,
+  "dependency": {
+    "predecessor_id": 5,
+    "type": "requires",
+    "exit_codes": "0",
+    "max_age_minutes": 60,
+    "trigger_delay_minutes": 0
+  }
 }
 ```
 
-Required fields: `linux_user`, `schedule`, `command`, `targets` (non-empty array).
+Required fields: `linux_user`, `command`, `targets` (non-empty array).
+`schedule` is required for normal jobs and `requires`-type dependencies. For `triggered_by` jobs, `schedule` must be `null` or omitted (the agent sets it to `null` automatically).
+`dependency` is optional. Set to `null` to remove an existing dependency (on PUT).
+`trigger_delay_minutes` is optional (default: 0) and only meaningful for `triggered_by` jobs; it specifies how many minutes to wait after the predecessor finishes before scheduling the triggered job.
+
+**Error 422** when a dependency cycle is detected or `predecessor_id` does not exist.
 
 **Response 201:** Created job object.
 
@@ -477,6 +521,23 @@ Clear the acknowledgement on a previously acknowledged execution. Scope: **`exec
 ```json
 { "agent_id": 1, "acknowledged": false }
 ```
+
+---
+
+### POST /api/v1/jobs/{id}/acknowledge-all
+
+Bulk-acknowledges all unacknowledged failed executions for a job. Only executions
+that are finished, have a non-zero exit code, and are not yet acknowledged are updated.
+
+Scope: **`executions:acknowledge`**
+
+**Response 200:**
+
+```json
+{ "agent_id": 1, "job_id": 5, "acknowledged_count": 3 }
+```
+
+`acknowledged_count` is the number of rows actually updated (0 if no unacknowledged failures existed).
 
 ---
 
@@ -1069,6 +1130,7 @@ Return a paginated list of audit log entries with optional filters.
 | `cron.execute_now` | "Run Now" triggered |
 | `cron.kill` | Running execution killed |
 | `execution.acknowledged` | Execution marked as acknowledged |
+| `execution.acknowledged_all` | All unacknowledged failures of a job bulk-acknowledged |
 | `execution.unacknowledged` | Acknowledgement cleared |
 | `maintenance_window.create` | Maintenance window created (snapshot) |
 | `maintenance_window.update` | Maintenance window settings changed (diff) |

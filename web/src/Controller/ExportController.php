@@ -145,6 +145,8 @@ class ExportController extends BaseController
             $response = $guzzle->request('GET', $agentUrl . $path . $queryString, [
                 'headers' => [
                     'X-Agent-Signature' => $signature,
+                    'X-User-Id'         => (string) $userId,
+                    'X-User-Name'       => $userName,
                     'Accept'            => '*/*',
                 ],
                 'stream' => true,

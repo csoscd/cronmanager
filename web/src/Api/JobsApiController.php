@@ -376,6 +376,48 @@ final class JobsApiController extends BaseApiController
     }
 
     /**
+     * POST /api/v1/jobs/{id}/acknowledge-all
+     *
+     * Bulk-acknowledges all unacknowledged failed executions for a job.
+     * Scope: executions:acknowledge
+     *
+     * @param array<string, string> $params Path parameters: id (job ID).
+     * @return void
+     */
+    public function acknowledgeAll(array $params): void
+    {
+        $pdo    = Connection::getInstance()->getPdo();
+        $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_EXECUTIONS_ACKNOWLEDGE);
+
+        if ($apiKey === null) {
+            return;
+        }
+
+        $id = (int) ($params['id'] ?? 0);
+
+        if ($id <= 0) {
+            $this->jsonError(400, 'Bad Request', 'Job ID must be a positive integer.');
+            return;
+        }
+
+        $agent = $this->agentClient($apiKey);
+        if ($agent === null) {
+            return;
+        }
+
+        $response = $this->agentPost($agent, "/crons/{$id}/acknowledge-all");
+        if ($response === null) {
+            return;
+        }
+
+        $this->jsonOk([
+            'agent_id'            => $this->resolvedAgentId,
+            'job_id'              => $id,
+            'acknowledged_count'  => (int) ($response['acknowledged_count'] ?? 0),
+        ]);
+    }
+
+    /**
      * GET /api/v1/jobs/{id}/history
      *
      * @param array<string, string> $params Path parameters: id.

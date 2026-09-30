@@ -40,6 +40,7 @@ namespace Cronmanager\Agent\Endpoints;
 
 use Cronmanager\Agent\Audit\AuditLogger;
 use Cronmanager\Agent\Cron\CrontabManager;
+use Cronmanager\Agent\Repository\DependencyRepository;
 use Cronmanager\Agent\Util\ExitCodeMatcher;
 use Cron\CronExpression;
 use Monolog\Logger;
@@ -64,17 +65,20 @@ final class CronCreateEndpoint
     /**
      * CronCreateEndpoint constructor.
      *
-     * @param PDO            $pdo            Active PDO database connection.
-     * @param Logger         $logger         Monolog logger instance.
-     * @param CrontabManager $crontabManager CrontabManager for crontab operations.
-     * @param string         $wrapperScript  Path to the cron-wrapper shell script.
+     * @param PDO                  $pdo            Active PDO database connection.
+     * @param Logger               $logger         Monolog logger instance.
+     * @param CrontabManager       $crontabManager CrontabManager for crontab operations.
+     * @param string               $wrapperScript  Path to the cron-wrapper shell script.
+     * @param AuditLogger          $audit          Audit logger instance.
+     * @param DependencyRepository $deps           Repository for job_dependencies.
      */
     public function __construct(
-        private readonly PDO            $pdo,
-        private readonly Logger         $logger,
-        private readonly CrontabManager $crontabManager,
-        private readonly string         $wrapperScript,
-        private readonly AuditLogger    $audit,
+        private readonly PDO                  $pdo,
+        private readonly Logger               $logger,
+        private readonly CrontabManager       $crontabManager,
+        private readonly string               $wrapperScript,
+        private readonly AuditLogger          $audit,
+        private readonly DependencyRepository $deps,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -128,7 +132,11 @@ final class CronCreateEndpoint
         // ------------------------------------------------------------------
 
         $linuxUser            = (string)  $body['linux_user'];
-        $schedule             = (string)  $body['schedule'];
+        // triggered_by jobs have no schedule (schedule = null in DB)
+        $dependency    = isset($body['dependency']) && is_array($body['dependency']) ? $body['dependency'] : null;
+        $depType       = $dependency !== null ? (string) ($dependency['type'] ?? '') : null;
+        $isTriggeredBy = $depType === 'triggered_by';
+        $schedule             = (!$isTriggeredBy && isset($body['schedule'])) ? (string) $body['schedule'] : null;
         $command              = (string)  $body['command'];
         $description          = isset($body['description'])       ? (string) $body['description']       : null;
         $active               = isset($body['active'])            ? (bool)   $body['active']            : true;
@@ -165,6 +173,16 @@ final class CronCreateEndpoint
             : null;
         $targets              = $this->normaliseTargets($body['targets'] ?? ['local']);
         $tags                 = isset($body['tags']) && is_array($body['tags']) ? $body['tags'] : [];
+
+        // Validate dependency (if provided)
+        if ($dependency !== null) {
+            $depErrors = $this->validateDependency($dependency, 0);
+            if ($depErrors !== []) {
+                jsonResponse(422, ['error' => 'Validation failed', 'fields' => $depErrors]);
+                return;
+            }
+            // Cycle detection cannot run without jobId yet; checked after insert below
+        }
 
         // Derive legacy columns from targets for backward compatibility with
         // old wrapper invocations that carry no target argument.
@@ -231,14 +249,43 @@ final class CronCreateEndpoint
             // Insert execution targets
             $this->syncTargets($jobId, $targets);
 
-            // Register crontab entries if the job is active (one per target)
-            if ($active) {
+            // Register crontab entries if the job is active and has a schedule
+            // (triggered_by jobs have no schedule and are never in the crontab)
+            if ($active && $schedule !== null) {
                 $this->crontabManager->addEntriesForTargets(
                     $linuxUser,
                     $jobId,
                     $schedule,
                     $this->wrapperScript,
                     $targets,
+                );
+            }
+
+            // Save dependency row (after jobId is known so cycle-detection works)
+            if ($dependency !== null) {
+                $predecessorId = (int) $dependency['predecessor_id'];
+
+                if ($this->deps->detectCycle($jobId, $predecessorId)) {
+                    // Rollback and report cycle
+                    $this->pdo->rollBack();
+                    jsonResponse(422, [
+                        'error'   => 'Validation failed',
+                        'fields'  => ['dependency.predecessor_id' => 'This predecessor would create a dependency cycle.'],
+                    ]);
+                    return;
+                }
+
+                $this->deps->save(
+                    jobId:               $jobId,
+                    predecessorId:       $predecessorId,
+                    type:                $depType,
+                    exitCodes:           trim((string) ($dependency['exit_codes'] ?? '0')),
+                    maxAgeMinutes:       isset($dependency['max_age_minutes']) && is_int($dependency['max_age_minutes'])
+                        ? $dependency['max_age_minutes']
+                        : null,
+                    triggerDelayMinutes: isset($dependency['trigger_delay_minutes']) && is_int($dependency['trigger_delay_minutes'])
+                        ? max(0, $dependency['trigger_delay_minutes'])
+                        : 0,
                 );
             }
 
@@ -326,13 +373,16 @@ final class CronCreateEndpoint
             $errors['linux_user'] = 'Must contain only [a-zA-Z0-9_-] and be at most 64 characters.';
         }
 
-        // schedule: required, 5 or 6 space-separated cron fields, max 100 chars
-        if (!isset($body['schedule']) || !is_string($body['schedule']) || $body['schedule'] === '') {
-            $errors['schedule'] = 'Field is required.';
-        } elseif (strlen($body['schedule']) > 100) {
-            $errors['schedule'] = 'Must not exceed 100 characters.';
-        } elseif (!$this->isValidCronSchedule($body['schedule'])) {
-            $errors['schedule'] = 'Must be a valid cron expression (5 or 6 space-separated fields).';
+        // schedule: required unless this is a triggered_by dependency job
+        $isTriggeredByDep = isset($body['dependency']['type']) && $body['dependency']['type'] === 'triggered_by';
+        if (!$isTriggeredByDep) {
+            if (!isset($body['schedule']) || !is_string($body['schedule']) || $body['schedule'] === '') {
+                $errors['schedule'] = 'Field is required (omit only for triggered_by dependency jobs).';
+            } elseif (strlen($body['schedule']) > 100) {
+                $errors['schedule'] = 'Must not exceed 100 characters.';
+            } elseif (!$this->isValidCronSchedule($body['schedule'])) {
+                $errors['schedule'] = 'Must be a valid cron expression (5 or 6 space-separated fields).';
+            }
         }
 
         // command: required, non-empty string
@@ -406,6 +456,65 @@ final class CronCreateEndpoint
                         break;
                     }
                 }
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Validate a dependency object from the request body.
+     *
+     * @param array<string, mixed> $dep    Dependency sub-object.
+     * @param int                  $jobId  Job ID (0 when not yet known – skips self-ref check).
+     *
+     * @return array<string, string> Field → error message. Empty when valid.
+     */
+    private function validateDependency(array $dep, int $jobId): array
+    {
+        $errors = [];
+
+        // predecessor_id: required positive integer
+        if (!isset($dep['predecessor_id']) || !is_int($dep['predecessor_id']) || $dep['predecessor_id'] <= 0) {
+            $errors['dependency.predecessor_id'] = 'Must be a positive integer.';
+        } elseif ($jobId > 0 && (int) $dep['predecessor_id'] === $jobId) {
+            $errors['dependency.predecessor_id'] = 'A job cannot depend on itself.';
+        } else {
+            // Verify predecessor exists
+            $stmt = $this->pdo->prepare('SELECT 1 FROM cronjobs WHERE id = :id LIMIT 1');
+            $stmt->execute([':id' => $dep['predecessor_id']]);
+            if ($stmt->fetchColumn() === false) {
+                $errors['dependency.predecessor_id'] = sprintf(
+                    'Job with ID %d does not exist.',
+                    (int) $dep['predecessor_id']
+                );
+            }
+        }
+
+        // type: required, must be 'requires' or 'triggered_by'
+        if (!isset($dep['type']) || !in_array($dep['type'], ['requires', 'triggered_by'], true)) {
+            $errors['dependency.type'] = "Must be 'requires' or 'triggered_by'.";
+        }
+
+        // exit_codes: optional, defaults to '0' – validate when present
+        if (isset($dep['exit_codes']) && is_string($dep['exit_codes'])) {
+            $exitErr = DependencyRepository::validateExitCodes($dep['exit_codes']);
+            if ($exitErr !== null) {
+                $errors['dependency.exit_codes'] = $exitErr;
+            }
+        }
+
+        // max_age_minutes: optional, only for 'requires', must be positive int
+        if (isset($dep['max_age_minutes'])) {
+            if (!is_int($dep['max_age_minutes']) || $dep['max_age_minutes'] <= 0) {
+                $errors['dependency.max_age_minutes'] = 'Must be a positive integer.';
+            }
+        }
+
+        // trigger_delay_minutes: optional, only for 'triggered_by', must be non-negative int
+        if (isset($dep['trigger_delay_minutes'])) {
+            if (!is_int($dep['trigger_delay_minutes']) || $dep['trigger_delay_minutes'] < 0) {
+                $errors['dependency.trigger_delay_minutes'] = 'Must be a non-negative integer.';
             }
         }
 
@@ -554,7 +663,7 @@ final class CronCreateEndpoint
      *
      * @param int $jobId The job ID to fetch.
      *
-     * @return array<string, mixed> Job record including tags and targets.
+     * @return array<string, mixed> Job record including tags, targets, and dependency.
      *
      * @throws PDOException On database errors.
      */
@@ -608,10 +717,12 @@ final class CronCreateEndpoint
         $tags    = $tagsRaw    !== '' ? explode(',', $tagsRaw)    : [];
         $targets = $targetsRaw !== '' ? explode(',', $targetsRaw) : ['local'];
 
+        $dep = $this->deps->findByJobId($jobId);
+
         return [
             'id'                       => (int)    $row['id'],
             'linux_user'               => (string) $row['linux_user'],
-            'schedule'                 => (string) $row['schedule'],
+            'schedule'                 => $row['schedule'] !== null ? (string) $row['schedule'] : null,
             'command'                  => (string) $row['command'],
             'description'              => isset($row['description']) ? (string) $row['description'] : null,
             'active'                   => (bool)   $row['active'],
@@ -642,6 +753,12 @@ final class CronCreateEndpoint
             'ssh_host'                 => isset($row['ssh_host']) ? (string) $row['ssh_host'] : null,
             'created_at'               => (string) $row['created_at'],
             'tags'                     => $tags,
+            'dependency'               => $dep !== null ? [
+                'predecessor_id'   => (int)    $dep['predecessor_id'],
+                'type'             => (string) $dep['type'],
+                'exit_codes'       => (string) $dep['exit_codes'],
+                'max_age_minutes'  => $dep['max_age_minutes'] !== null ? (int) $dep['max_age_minutes'] : null,
+            ] : null,
         ];
     }
 }

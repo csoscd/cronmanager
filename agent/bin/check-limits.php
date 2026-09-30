@@ -402,8 +402,14 @@ if ($maintenanceRepo->isAgentInMaintenance()) {
     foreach ($silenceRows as $srow) {
         $jobId        = (int)    $srow['id'];
         $description  = (string) ($srow['description'] ?? '');
-        $schedule     = (string) $srow['schedule'];
+        $schedule     = $srow['schedule'] !== null ? (string) $srow['schedule'] : null;
         $createdAt    = (string) $srow['created_at'];
+
+        // triggered_by jobs have no schedule – they fire on predecessor completion,
+        // not on a cron expression – so silence detection does not apply.
+        if ($schedule === null) {
+            continue;
+        }
         $lastRealStart = $srow['last_real_start'] !== null ? (string) $srow['last_real_start'] : null;
         $lastAnyStart  = $srow['last_any_start']  !== null ? (string) $srow['last_any_start']  : null;
         $lastAlertAt   = $srow['last_silence_alert_at'] !== null ? (string) $srow['last_silence_alert_at'] : null;

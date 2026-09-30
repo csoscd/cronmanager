@@ -275,6 +275,34 @@ json_get() {
     rm -f "${tmp_json}"
 }
 
+# Extracts a nested field using dot-notation from a JSON string.
+# Only two levels deep: "parent.child".
+#
+# Arguments:
+#   $1  JSON string
+#   $2  Dot-notation path (e.g. "dependency.type")
+#
+# Outputs the field value to stdout (empty string if not found or null).
+json_get_nested() {
+    local json="$1"
+    local path="$2"
+    local tmp_json
+    tmp_json="$(mktemp)"
+    printf '%s' "${json}" > "${tmp_json}"
+    php -r "
+        \$d = json_decode(file_get_contents('${tmp_json}'), true);
+        if (!\$d) { exit; }
+        \$parts = explode('.', '${path}');
+        \$v = \$d;
+        foreach (\$parts as \$p) {
+            if (!is_array(\$v) || !array_key_exists(\$p, \$v)) { exit; }
+            \$v = \$v[\$p];
+        }
+        if (!\$v !== null) { echo (string)\$v; }
+    " 2>/dev/null || true
+    rm -f "${tmp_json}"
+}
+
 # =============================================================================
 # Real-time progress reporting
 # =============================================================================
@@ -446,6 +474,69 @@ if [[ -z "$COMMAND" ]]; then
 fi
 
 log_info "Job ${JOB_ID}: executing command: ${COMMAND}"
+
+# =============================================================================
+# Step 2b: Dependency check (requires-type jobs only)
+# =============================================================================
+#
+# When the job has a 'requires' dependency, ask the agent whether the
+# predecessor's most recent execution satisfies the dependency before running.
+# If the check fails (satisfied=false), the execution is recorded as skipped
+# with exit code -7 and the wrapper exits cleanly without running the command.
+#
+# Fail-open: if the agent is unreachable the job runs anyway (satisfied=true).
+# 'triggered_by' jobs are handled event-driven and never carry out this check.
+
+DEP_TYPE="$(json_get_nested "${CRON_RESPONSE}" "dependency.type")"
+
+if [[ "${DEP_TYPE}" == "requires" ]]; then
+    log_info "Job ${JOB_ID}: dependency type=requires – calling dependency-check"
+
+    DEP_CHECK_PATH="/crons/${JOB_ID}/dependency-check"
+    DEP_CHECK_RESPONSE=""
+    _dep_satisfied="true"   # fail-open default
+
+    _dep_attempt=0
+    while [[ $_dep_attempt -lt $QUICK_MAX_ATTEMPTS ]]; do
+        _dep_attempt=$((_dep_attempt + 1))
+        if [[ $_dep_attempt -gt 1 ]]; then
+            log_info "Job ${JOB_ID}: retrying ${DEP_CHECK_PATH} in ${QUICK_RETRY_INTERVAL}s (attempt ${_dep_attempt}/${QUICK_MAX_ATTEMPTS})..."
+            sleep "${QUICK_RETRY_INTERVAL}"
+        fi
+        if DEP_CHECK_RESPONSE="$(agent_request "GET" "${DEP_CHECK_PATH}" "")"; then
+            # Parse the 'satisfied' boolean (json_encode emits true/false as literals)
+            _dep_satisfied="$(json_get "${DEP_CHECK_RESPONSE}" "satisfied")"
+            [[ -z "${_dep_satisfied}" ]] && _dep_satisfied="1"   # missing field = ok
+            break
+        fi
+        log_warn "Job ${JOB_ID}: could not reach agent for ${DEP_CHECK_PATH} (attempt ${_dep_attempt}/${QUICK_MAX_ATTEMPTS}) – fail-open"
+    done
+
+    # Normalize PHP json_encode booleans: true/false or 1/0
+    if [[ "${_dep_satisfied}" == "false" || "${_dep_satisfied}" == "0" ]]; then
+        DEP_REASON="$(json_get "${DEP_CHECK_RESPONSE}" "reason")"
+        log_info "Job ${JOB_ID}: dependency not satisfied – skipping (reason: ${DEP_REASON:-unknown})"
+
+        if [[ "$EXECUTION_ID" != "0" ]]; then
+            FINISHED_AT="$(date -Iseconds)"
+            SKIP_BODY="$(php -r "
+                echo json_encode([
+                    'execution_id' => (int)'${EXECUTION_ID}',
+                    'job_id'       => (int)'${JOB_ID}',
+                    'exit_code'    => -7,
+                    'output'       => 'Dependency not satisfied: ' . '${DEP_REASON}',
+                    'finished_at'  => '${FINISHED_AT}',
+                    'target'       => '${TARGET}',
+                ], JSON_UNESCAPED_UNICODE);
+            ")"
+            agent_request "POST" "/execution/finish" "${SKIP_BODY}" >/dev/null 2>&1 || true
+        fi
+
+        exit 0
+    fi
+
+    log_info "Job ${JOB_ID}: dependency satisfied – proceeding"
+fi
 
 # =============================================================================
 # Step 3: Resolve target, then execute the job command (locally or via SSH)

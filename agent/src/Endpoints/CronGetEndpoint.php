@@ -41,6 +41,7 @@ declare(strict_types=1);
 
 namespace Cronmanager\Agent\Endpoints;
 
+use Cronmanager\Agent\Repository\DependencyRepository;
 use Monolog\Logger;
 use PDO;
 use PDOException;
@@ -62,12 +63,14 @@ final class CronGetEndpoint
     /**
      * CronGetEndpoint constructor.
      *
-     * @param PDO    $pdo    Active PDO database connection.
-     * @param Logger $logger Monolog logger instance.
+     * @param PDO                  $pdo    Active PDO database connection.
+     * @param Logger               $logger Monolog logger instance.
+     * @param DependencyRepository $deps   Dependency repository.
      */
     public function __construct(
-        private readonly PDO    $pdo,
-        private readonly Logger $logger,
+        private readonly PDO                  $pdo,
+        private readonly Logger               $logger,
+        private readonly DependencyRepository $deps,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -109,7 +112,7 @@ final class CronGetEndpoint
         ]);
 
         // ------------------------------------------------------------------
-        // 2. Fetch the job from the database
+        // 2. Fetch the job and its dependency from the database
         // ------------------------------------------------------------------
 
         try {
@@ -143,8 +146,17 @@ final class CronGetEndpoint
         }
 
         // ------------------------------------------------------------------
-        // 4. Return the job record
+        // 4. Enrich with dependency info and return
         // ------------------------------------------------------------------
+
+        $dep = $this->deps->findByJobId($jobId);
+        $job['dependency'] = $dep !== null ? [
+            'predecessor_id'        => (int)    $dep['predecessor_id'],
+            'type'                  => (string) $dep['type'],
+            'exit_codes'            => (string) $dep['exit_codes'],
+            'max_age_minutes'       => $dep['max_age_minutes'] !== null ? (int) $dep['max_age_minutes'] : null,
+            'trigger_delay_minutes' => (int) ($dep['trigger_delay_minutes'] ?? 0),
+        ] : null;
 
         jsonResponse(200, $job);
     }
@@ -253,7 +265,7 @@ final class CronGetEndpoint
         return [
             'id'                       => (int)    $row['id'],
             'linux_user'               => (string) $row['linux_user'],
-            'schedule'                 => (string) $row['schedule'],
+            'schedule'                 => $row['schedule'] !== null ? (string) $row['schedule'] : null,
             'command'                  => (string) $row['command'],
             'description'              => isset($row['description']) ? (string) $row['description'] : null,
             'active'                   => (bool)   $row['active'],

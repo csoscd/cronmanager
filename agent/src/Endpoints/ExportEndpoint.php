@@ -190,7 +190,7 @@ final class ExportEndpoint
 
         foreach ($jobs as $job) {
             $jobUser  = (string) $job['linux_user'];
-            $schedule = (string) $job['schedule'];
+            $schedule = $job['schedule'] !== null ? (string) $job['schedule'] : null;
             $command  = (string) $job['command'];
             $targets  = is_array($job['targets']) && $job['targets'] !== [] ? $job['targets'] : ['local'];
 
@@ -210,7 +210,27 @@ final class ExportEndpoint
                 $commentParts[] = sprintf('tags:%s', $tagList);
             }
 
+            // Dependency annotation
+            $dep = $job['dependency'] ?? null;
+            if (is_array($dep) && isset($dep['predecessor_id'])) {
+                $depType    = (string) $dep['type'];
+                $depPredId  = (int) $dep['predecessor_id'];
+                $depCodes   = (string) ($dep['exit_codes'] ?? '0');
+                if ($depType === 'requires') {
+                    $maxAge     = $dep['max_age_minutes'] !== null ? (int) $dep['max_age_minutes'] : 60;
+                    $commentParts[] = sprintf('requires:job#%d(exit_codes:%s,max_age:%dmin)', $depPredId, $depCodes, $maxAge);
+                } else {
+                    $commentParts[] = sprintf('triggered_by:job#%d(exit_codes:%s)', $depPredId, $depCodes);
+                }
+            }
+
             echo sprintf("# %s\n", implode(' ', $commentParts));
+
+            // triggered_by jobs have no crontab entry – they are event-driven
+            if ($schedule === null) {
+                echo "# (event-driven – no crontab entry)\n";
+                continue;
+            }
 
             // One crontab line per execution target
             foreach ($targets as $target) {
@@ -335,11 +355,16 @@ final class ExportEndpoint
                 j.notify_after_failures,
                 j.created_at,
                 GROUP_CONCAT(DISTINCT t.name  ORDER BY t.name  SEPARATOR ',') AS tags,
-                GROUP_CONCAT(DISTINCT jt.target ORDER BY jt.target SEPARATOR ',') AS targets
+                GROUP_CONCAT(DISTINCT jt.target ORDER BY jt.target SEPARATOR ',') AS targets,
+                jd.predecessor_id              AS dep_predecessor_id,
+                jd.type                        AS dep_type,
+                jd.exit_codes                  AS dep_exit_codes,
+                jd.max_age_minutes             AS dep_max_age_minutes
             FROM cronjobs j
             LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
             LEFT JOIN tags t ON t.id = ct.tag_id
             LEFT JOIN job_targets jt ON jt.job_id = j.id
+            LEFT JOIN job_dependencies jd ON jd.job_id = j.id
             {$whereClause}
             GROUP BY j.id
             ORDER BY j.linux_user, j.id
@@ -372,10 +397,17 @@ final class ExportEndpoint
         $tags       = $tagsRaw    !== '' ? explode(',', $tagsRaw)    : [];
         $targets    = $targetsRaw !== '' ? explode(',', $targetsRaw) : ['local'];
 
+        $dependency = $row['dep_predecessor_id'] !== null ? [
+            'predecessor_id'  => (int)    $row['dep_predecessor_id'],
+            'type'            => (string) $row['dep_type'],
+            'exit_codes'      => (string) $row['dep_exit_codes'],
+            'max_age_minutes' => $row['dep_max_age_minutes'] !== null ? (int) $row['dep_max_age_minutes'] : null,
+        ] : null;
+
         return [
             'id'                => (int)    $row['id'],
             'linux_user'        => (string) $row['linux_user'],
-            'schedule'          => (string) $row['schedule'],
+            'schedule'          => $row['schedule'] !== null ? (string) $row['schedule'] : null,
             'command'           => (string) $row['command'],
             'description'       => isset($row['description']) ? (string) $row['description'] : null,
             'active'                   => (bool)   $row['active'],
@@ -393,6 +425,7 @@ final class ExportEndpoint
             'created_at'               => (string) $row['created_at'],
             'tags'                     => $tags,
             'targets'                  => $targets,
+            'dependency'               => $dependency,
         ];
     }
 }

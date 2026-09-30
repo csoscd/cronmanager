@@ -576,6 +576,18 @@ $shownFailures       = count($recentFailures);
             return;
         }
 
+        // Remove rows whose execution_id is no longer in the server response
+        // (they were acknowledged since the last render).
+        var serverIds = new Set();
+        entries.forEach(function (e) {
+            if (e.execution_id) { serverIds.add(String(e.execution_id)); }
+        });
+        tbody.querySelectorAll('[data-ack-id]').forEach(function (b) {
+            var row = b.closest('tr');
+            if (row && !serverIds.has(String(b.dataset.ackId))) { row.remove(); }
+        });
+
+        // Add new entries that are not yet shown.
         var currentIds = new Set();
         tbody.querySelectorAll('[data-ack-id]').forEach(function (b) {
             currentIds.add(String(b.dataset.ackId));

@@ -515,7 +515,12 @@ class HostAgentClient
                 'status' => $status,
                 'body'   => substr($body, 0, 500),
             ]);
-            throw new AgentHttpException($status, "Agent error {$status}: {$body}");
+            $decoded = json_decode($body, associative: true);
+            throw new AgentHttpException(
+                $status,
+                "Agent error {$status}: {$body}",
+                is_array($decoded) ? $decoded : [],
+            );
         }
 
         $decoded = json_decode($body, associative: true);

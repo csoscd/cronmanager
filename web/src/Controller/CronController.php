@@ -409,7 +409,7 @@ class CronController extends BaseController
                 'linuxUsers'    => $linuxUsers,
                 'dockerMode'    => $dockerMode,
                 'allJobsForDep' => $allJobsForDep,
-                'error'         => $e->getMessage(),
+                'error'         => $this->localizeAgentError($e),
                 'isEdit'        => false,
                 'returnUrl'     => $postReturn,
             ], '/crons');
@@ -632,7 +632,7 @@ class CronController extends BaseController
                 'linuxUsers'    => $linuxUsers,
                 'dockerMode'    => $dockerMode,
                 'allJobsForDep' => $allJobsForDep,
-                'error'         => $e->getMessage(),
+                'error'         => $this->localizeAgentError($e),
                 'isEdit'        => true,
                 'returnUrl'     => $postReturn,
             ], '/crons');
@@ -1468,5 +1468,84 @@ class CronController extends BaseController
         }
 
         return $payload;
+    }
+
+    /**
+     * Convert an AgentHttpException into a localized German error message.
+     *
+     * 422 responses carry a structured {"error":..., "fields":{...}} body.
+     * Each field name and validation message is mapped to German so the user
+     * never sees raw English agent internals.
+     */
+    private function localizeAgentError(\RuntimeException $e): string
+    {
+        if (!($e instanceof \Cronmanager\Web\Agent\AgentHttpException) || $e->getStatusCode() !== 422) {
+            return $e->getMessage();
+        }
+
+        $body   = $e->getResponseBody();
+        $fields = isset($body['fields']) && is_array($body['fields']) ? $body['fields'] : [];
+
+        if ($fields === []) {
+            return 'Validierungsfehler: Ungültige Eingabe.';
+        }
+
+        $fieldLabels = [
+            'linux_user'                       => 'Linux-Benutzer',
+            'schedule'                         => 'Zeitplan',
+            'command'                          => 'Befehl',
+            'targets'                          => 'Ausführungsziele',
+            'dependency'                       => 'Abhängigkeit',
+            'dependency.predecessor_id'        => 'Vorgängerjob',
+            'dependency.type'                  => 'Ausführungstyp',
+            'dependency.exit_codes'            => 'Exit-Codes des Vorgängers',
+            'dependency.max_age_minutes'       => 'Max. Alter (Minuten)',
+            'dependency.trigger_delay_minutes' => 'Verzögerung (Minuten)',
+        ];
+
+        $lines = [];
+        foreach ($fields as $field => $msg) {
+            $label = $fieldLabels[$field] ?? $field;
+            $lines[] = $label . ': ' . $this->translateAgentErrorMessage((string) $msg);
+        }
+
+        return 'Validierungsfehler: ' . implode('; ', $lines);
+    }
+
+    /**
+     * Translate a known English agent validation message to German.
+     */
+    private function translateAgentErrorMessage(string $msg): string
+    {
+        // Translate known patterns; return original when no match.
+        $patterns = [
+            '/is not a valid exit code \(must be an integer\)/'
+                => 'ist kein gültiger Exit-Code (muss eine ganze Zahl sein)',
+            '/is out of range \(must be ≤ 255\)/'
+                => 'ist außerhalb des gültigen Bereichs (muss ≤ 255 sein)',
+            '/Empty token found; check for consecutive commas\./'
+                => 'Leeres Token – aufeinanderfolgende Kommas?',
+            '/Must be a (positive|non-negative) integer\./'
+                => 'Muss eine nicht-negative ganze Zahl sein.',
+            '/Must not be empty\./'
+                => 'Darf nicht leer sein.',
+            '/Job with ID (\d+) does not exist\./'
+                => 'Job mit ID $1 existiert nicht.',
+            '/Adding this dependency would create a cycle\./'
+                => 'Diese Abhängigkeit würde einen Zyklus erzeugen.',
+            '/is not a valid dependency type/'
+                => 'ist kein gültiger Abhängigkeitstyp.',
+            '/is required/'
+                => 'ist ein Pflichtfeld.',
+        ];
+
+        foreach ($patterns as $pattern => $replacement) {
+            $translated = preg_replace($pattern, $replacement, $msg);
+            if ($translated !== $msg && $translated !== null) {
+                return $translated;
+            }
+        }
+
+        return $msg;
     }
 }

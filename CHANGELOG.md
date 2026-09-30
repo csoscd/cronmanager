@@ -32,6 +32,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Migration:** `021_job_dependencies.sql`.
 - **Unit Tests:** `DependencyRepositoryTest` (20 Tests) für `exitCodeMatches()` und `validateExitCodes()`.
 
+- **Filter-Bar-Redesign (Joomla-Muster):** `/crons` und `/timeline` erhalten eine zweizeilige, aufklappbare Filter-Bar:
+  - **Zeile 1 (immer sichtbar):** Freitextsuche mit Icon, Suche-Button, „Filter-Optionen ▾"-Toggle, „Zurücksetzen"-Link (nur wenn aktiv), Einträge-pro-Seite rechts ausgerichtet.
+  - **Zeile 2 (einklappbar):** alle Dropdown-Filter. Zustand wird per `localStorage` (`cm_filter_opts_crons` / `cm_filter_opts_timeline`) gespeichert; beim Seitenaufruf mit aktivem Sekundärfilter wird Zeile 2 automatisch aufgeklappt.
+- **Neuer Filter „Ausführungstyp" auf `/crons`:** Filtert nach Abhängigkeitstyp — Zeitplan (kein Dependency-Eintrag), Prüfen vor Ausführung (`requires`), Ausgelöst durch Job (`triggered_by`). Auswertung client-seitig im `CronController` anhand des `dependency`-Felds der Job-Antwort.
+- **Suche nach Job-ID auf `/crons`:** Numerische Eingabe im Suchfeld trifft zusätzlich auf die Job-ID — Jobs können jetzt direkt per ID gesucht werden.
+
 ### Changed
 
 - `cronjobs.schedule` ist jetzt nullable (`VARCHAR(100) NULL DEFAULT NULL`) — Pflichtfeld nur für zeitgesteuerte Jobs.

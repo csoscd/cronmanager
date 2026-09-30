@@ -66,9 +66,10 @@ class CronController extends BaseController
         $filterTag    = $this->filterParam('tag',    'cronmgr_crons_tag');
         $filterUser   = $this->filterParam('user',   'cronmgr_crons_user');
         $filterTarget = $this->filterParam('target', 'cronmgr_crons_target');
-        $filterSearch = $this->filterParam('search', 'cronmgr_crons_search');
-        $filterResult = $this->filterParam('result', 'cronmgr_crons_result');
-        $filterActive = $this->filterParam('active', 'cronmgr_crons_active');
+        $filterSearch   = $this->filterParam('search',    'cronmgr_crons_search');
+        $filterResult   = $this->filterParam('result',    'cronmgr_crons_result');
+        $filterActive   = $this->filterParam('active',    'cronmgr_crons_active');
+        $filterExecType = $this->filterParam('exec_type', 'cronmgr_crons_exec_type');
 
         // ------------------------------------------------------------------
         // Resolve page-size preference
@@ -157,10 +158,15 @@ class CronController extends BaseController
             }
         }
 
-        // Apply free-text search filter (description + command, case-insensitive substring)
+        // Apply free-text search filter (description + command, case-insensitive; also matches numeric job ID)
         if ($filterSearch !== '') {
-            $needle = mb_strtolower($filterSearch);
-            $jobs   = array_values(array_filter($jobs, static function (array $job) use ($needle): bool {
+            $needle    = mb_strtolower($filterSearch);
+            $isNumeric = ctype_digit($filterSearch) && (int) $filterSearch > 0;
+            $numericId = $isNumeric ? (int) $filterSearch : 0;
+            $jobs      = array_values(array_filter($jobs, static function (array $job) use ($needle, $isNumeric, $numericId): bool {
+                if ($isNumeric && (int) ($job['id'] ?? 0) === $numericId) {
+                    return true;
+                }
                 $desc    = mb_strtolower((string) ($job['description'] ?? ''));
                 $command = mb_strtolower((string) ($job['command']     ?? ''));
                 return str_contains($desc, $needle) || str_contains($command, $needle);
@@ -174,6 +180,19 @@ class CronController extends BaseController
                 $jobs,
                 static fn(array $job): bool => (bool) ($job['active'] ?? false) === $wantActive
             ));
+        }
+
+        // Apply execution-type filter (none = no dependency, requires, triggered_by)
+        if ($filterExecType !== '') {
+            $jobs = array_values(array_filter($jobs, static function (array $job) use ($filterExecType): bool {
+                $dep = is_array($job['dependency'] ?? null) ? $job['dependency'] : null;
+                return match ($filterExecType) {
+                    'none'         => $dep === null,
+                    'requires'     => $dep !== null && ($dep['type'] ?? '') === 'requires',
+                    'triggered_by' => $dep !== null && ($dep['type'] ?? '') === 'triggered_by',
+                    default        => true,
+                };
+            }));
         }
 
         // Apply last-result filter (ok = exit_code 0, failed = exit_code != 0, not_run = never started)
@@ -244,6 +263,7 @@ class CronController extends BaseController
             'filterSearch'          => $filterSearch,
             'filterResult'          => $filterResult,
             'filterActive'          => $filterActive,
+            'filterExecType'        => $filterExecType,
             'users'                 => $users,
             'multiUser'             => count($users) > 1,
             'allTargets'            => $allTargets,

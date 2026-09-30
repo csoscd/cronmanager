@@ -55,6 +55,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **Export-Download 401/503**: `ExportController` berechnet die HMAC-Signatur korrekt mit userId/userName, sendete diese aber nicht als `X-User-Id`/`X-User-Name`-Header — der Agent las userId=0 und lehnte mit 401 ab. Header werden jetzt mitgesendet.
+- **`resync-crontab`: `triggered_by`-Jobs (schedule=NULL) verursachten "bad minute"-Fehler**: PHP wandelte `NULL` in `''` um; `syncEntries` schrieb einen Crontab-Eintrag ohne Schedule. Fix: Jobs mit `schedule = NULL` werden jetzt übersprungen und bestehende Einträge entfernt.
 - `DependencyCheckEndpoint`: `max_age_minutes = 0` überspringt die Zeitfenster-Prüfung vollständig — nur der Exit-Code des letzten Vorgänger-Runs wird geprüft.
 
 ---

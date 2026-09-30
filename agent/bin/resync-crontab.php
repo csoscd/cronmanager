@@ -100,8 +100,20 @@ $errors  = [];
 foreach ($jobs as $job) {
     $jobId     = (int)    $job['id'];
     $linuxUser = (string) $job['linux_user'];
-    $schedule  = (string) $job['schedule'];
+    $scheduleRaw = $job['schedule'];   // may be NULL for triggered_by jobs
+    $schedule    = $scheduleRaw !== null ? (string) $scheduleRaw : null;
     $active    = (bool)   $job['active'];
+
+    // triggered_by jobs have no schedule; they are started by ExecutionFinishEndpoint
+    // and must never appear in the crontab.
+    if ($schedule === null) {
+        $crontabManager->removeAllEntries($linuxUser, $jobId);
+        $logger->debug('resync-crontab: skipped event-driven job (no schedule)', [
+            'job_id'     => $jobId,
+            'linux_user' => $linuxUser,
+        ]);
+        continue;
+    }
 
     try {
         if ($active) {

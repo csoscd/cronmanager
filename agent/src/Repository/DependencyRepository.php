@@ -216,7 +216,7 @@ final class DependencyRepository
     {
         $trimmed = trim($exitCodes);
         if ($trimmed === '') {
-            return false;
+            return true; // empty = match any exit code
         }
         foreach (explode(',', $trimmed) as $code) {
             $code = trim($code);
@@ -241,7 +241,7 @@ final class DependencyRepository
         $trimmed = trim($exitCodes);
 
         if ($trimmed === '') {
-            return 'Must not be empty.';
+            return null; // empty = match any exit code (always trigger/satisfy)
         }
 
         foreach (explode(',', $trimmed) as $part) {

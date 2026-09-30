@@ -64,7 +64,7 @@ $allJobsForDep  = isset($allJobsForDep) && is_array($allJobsForDep) ? $allJobsFo
 $existingDep    = ($job !== null && isset($job['dependency']) && is_array($job['dependency'])) ? $job['dependency'] : null;
 $depType        = $existingDep !== null ? (string) ($existingDep['type'] ?? 'none') : 'none';
 $depPredId      = $existingDep !== null ? (int) ($existingDep['predecessor_id'] ?? 0) : 0;
-$depExitCodes   = $existingDep !== null ? (string) ($existingDep['exit_codes'] ?? '0') : '0';
+$depExitCodes   = $existingDep !== null ? (string) ($existingDep['exit_codes'] ?? '') : '';
 $depMaxAge      = $existingDep !== null && isset($existingDep['max_age_minutes']) && $existingDep['max_age_minutes'] !== null
     ? (int) $existingDep['max_age_minutes'] : 0;
 $depTriggerDelay = $existingDep !== null && isset($existingDep['trigger_delay_minutes'])
@@ -351,8 +351,8 @@ foreach ($tags as $tag) {
                                        class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm font-mono
                                               bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                                               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                                       placeholder="0">
-                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">Kommagetrennt, z.B. <code>0</code> oder <code>0,2</code></p>
+                                       placeholder="leer = immer">
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">Kommagetrennt, z.B. <code>0</code> oder <code>0,-1</code>. <strong>Leer lassen</strong> = immer ausführen, unabhängig vom Exit-Code.</p>
                             </div>
 
                             <!-- max_age_minutes – "Prüfen vor Ausführung" only -->

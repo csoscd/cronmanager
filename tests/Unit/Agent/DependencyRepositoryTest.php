@@ -55,9 +55,12 @@ final class DependencyRepositoryTest extends TestCase
     }
 
     #[Test]
-    public function exitCodeMatchesReturnsFalseForEmptyList(): void
+    public function exitCodeMatchesReturnsTrueForEmptyList(): void
     {
-        self::assertFalse(DependencyRepository::exitCodeMatches(0, ''));
+        // empty = match any exit code (always trigger/satisfy)
+        self::assertTrue(DependencyRepository::exitCodeMatches(0, ''));
+        self::assertTrue(DependencyRepository::exitCodeMatches(1, ''));
+        self::assertTrue(DependencyRepository::exitCodeMatches(-1, ''));
     }
 
     // -------------------------------------------------------------------------
@@ -102,10 +105,10 @@ final class DependencyRepositoryTest extends TestCase
     }
 
     #[Test]
-    public function validateExitCodesRejectsEmptyString(): void
+    public function validateExitCodesAcceptsEmptyString(): void
     {
-        $error = DependencyRepository::validateExitCodes('');
-        self::assertIsString($error);
+        // empty = match any exit code (always trigger/satisfy)
+        self::assertNull(DependencyRepository::validateExitCodes(''));
     }
 
     #[Test]
@@ -139,7 +142,7 @@ final class DependencyRepositoryTest extends TestCase
             'code in list'               => [2,   '0,1,2',   true],
             'code not in list'           => [5,   '0,1,2',   false],
             'whitespace ignored'         => [1,   ' 0 , 1 ', true],
-            'empty list = no match'      => [0,   '',        false],
+            'empty list = match any'     => [0,   '',        true],
             'negative system code (-7)'  => [-7,  '0',       false],
             'negative system code (-4)'  => [-4,  '0',       false],
         ];

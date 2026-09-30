@@ -1408,7 +1408,7 @@ class CronController extends BaseController
         // Dependency: dep_type=none|requires|triggered_by
         $depType        = trim((string) ($post['dep_type'] ?? 'none'));
         $depPredRaw     = trim((string) ($post['dep_predecessor_id'] ?? ''));
-        $depExitCodes   = trim((string) ($post['dep_exit_codes'] ?? '0'));
+        $depExitCodes   = trim((string) ($post['dep_exit_codes'] ?? ''));
         $depMaxAgeRaw   = trim((string) ($post['dep_max_age_minutes'] ?? ''));
 
         $depTriggerDelayRaw = trim((string) ($post['dep_trigger_delay_minutes'] ?? ''));
@@ -1418,7 +1418,7 @@ class CronController extends BaseController
             $depEntry = [
                 'predecessor_id' => (int) $depPredRaw,
                 'type'           => $depType,
-                'exit_codes'     => $depExitCodes !== '' ? $depExitCodes : '0',
+                'exit_codes'     => $depExitCodes,
             ];
             if ($depType === 'requires') {
                 $depEntry['max_age_minutes'] = ($depMaxAgeRaw !== '' && ctype_digit($depMaxAgeRaw) && (int) $depMaxAgeRaw > 0)

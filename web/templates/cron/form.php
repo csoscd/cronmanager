@@ -373,15 +373,8 @@ foreach ($tags as $tag) {
                                 </p>
                             </div>
 
-                            <!-- "Ausgelöst durch Job" info note + delay -->
+                            <!-- "Ausgelöst durch Job" delay + info note -->
                             <div id="dep-triggered-note" class="<?= $depType === 'triggered_by' ? '' : 'hidden' ?> space-y-3">
-                                <div class="flex items-start gap-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700
-                                            text-purple-700 dark:text-purple-300 rounded-lg px-3 py-2 text-xs">
-                                    <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                                    </svg>
-                                    <span>Dieser Job hat keinen Cron-Schedule – er wird automatisch gestartet, sobald der Vorgänger-Job mit einem der konfigurierten Exit-Codes endet.</span>
-                                </div>
                                 <div>
                                     <label for="dep_trigger_delay_minutes"
                                            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -397,6 +390,13 @@ foreach ($tags as $tag) {
                                         Minuten Wartezeit nach Abschluss des Vorgängers, bevor der Job eingeplant wird.
                                         <strong>0 = sofort</strong> (nächste verfügbare Cron-Minute).
                                     </p>
+                                </div>
+                                <div class="flex items-start gap-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700
+                                            text-purple-700 dark:text-purple-300 rounded-lg px-3 py-2 text-xs">
+                                    <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                    </svg>
+                                    <span>Dieser Job hat keinen Cron-Schedule – er wird automatisch gestartet, sobald der Vorgänger-Job mit einem der konfigurierten Exit-Codes endet.</span>
                                 </div>
                             </div>
                         </div>

@@ -51,6 +51,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `DependencyRepository::exitCodeMatches()`: Leere Listen geben jetzt `true` zurück (match-any: leeres Feld = immer ausführen, unabhängig vom Exit-Code).
 - `DependencyRepository::validateExitCodes()`: Negative Exit-Codes sind jetzt gültig; leere Eingabe ist gültig (bedeutet: alle Codes); Codes > 255 werden weiterhin abgelehnt.
 - `AgentHttpException`: Trägt jetzt den dekodierten JSON-Response-Body (`getResponseBody()`); `CronController` nutzt das für eine lokalisierte Darstellung von 422-Validierungsfehlern aus dem Agenten.
+
+### Fixed
+
+- **Export-Download 401/503**: `ExportController` berechnet die HMAC-Signatur korrekt mit userId/userName, sendete diese aber nicht als `X-User-Id`/`X-User-Name`-Header — der Agent las userId=0 und lehnte mit 401 ab. Header werden jetzt mitgesendet.
 - `DependencyCheckEndpoint`: `max_age_minutes = 0` überspringt die Zeitfenster-Prüfung vollständig — nur der Exit-Code des letzten Vorgänger-Runs wird geprüft.
 
 ---

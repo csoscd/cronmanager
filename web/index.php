@@ -213,6 +213,7 @@ try {
         $apiRouter->addPublicRoute('POST',   '/api/v1/executions/{id}/kill',          [$jobsApi, 'kill']);
         $apiRouter->addPublicRoute('POST',   '/api/v1/executions/{id}/acknowledge',   [$jobsApi, 'acknowledge']);
         $apiRouter->addPublicRoute('DELETE', '/api/v1/executions/{id}/acknowledge',   [$jobsApi, 'unacknowledge']);
+        $apiRouter->addPublicRoute('POST',   '/api/v1/jobs/{id}/acknowledge-all',     [$jobsApi, 'acknowledgeAll']);
 
         // Export
         $apiRouter->addPublicRoute('GET',    '/api/v1/export',                 [$exportApi, 'download']);
@@ -345,6 +346,7 @@ try {
     $router->addProtectedRoute('POST', '/execution/{id}/kill',           [$cronCtrl, 'killExecution'],          'admin');
     $router->addProtectedRoute('POST', '/execution/{id}/acknowledge',    [$cronCtrl, 'acknowledgeExecution'],   'operator');
     $router->addProtectedRoute('POST', '/execution/{id}/unacknowledge',  [$cronCtrl, 'unacknowledgeExecution'], 'operator');
+    $router->addProtectedRoute('POST', '/crons/{id}/acknowledge-all',    [$cronCtrl, 'acknowledgeAllExecutions'], 'operator');
 
     $router->addProtectedRoute('GET',  '/timeline',            [$timelineCtrl,  'index']);
     $router->addProtectedRoute('GET',  '/swimlane',            [$swimlaneCtrl,  'index']);

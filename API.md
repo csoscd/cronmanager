@@ -524,6 +524,23 @@ Clear the acknowledgement on a previously acknowledged execution. Scope: **`exec
 
 ---
 
+### POST /api/v1/jobs/{id}/acknowledge-all
+
+Bulk-acknowledges all unacknowledged failed executions for a job. Only executions
+that are finished, have a non-zero exit code, and are not yet acknowledged are updated.
+
+Scope: **`executions:acknowledge`**
+
+**Response 200:**
+
+```json
+{ "agent_id": 1, "job_id": 5, "acknowledged_count": 3 }
+```
+
+`acknowledged_count` is the number of rows actually updated (0 if no unacknowledged failures existed).
+
+---
+
 ### GET /api/v1/jobs/{id}/history
 
 Execution history for a specific job.
@@ -1113,6 +1130,7 @@ Return a paginated list of audit log entries with optional filters.
 | `cron.execute_now` | "Run Now" triggered |
 | `cron.kill` | Running execution killed |
 | `execution.acknowledged` | Execution marked as acknowledged |
+| `execution.acknowledged_all` | All unacknowledged failures of a job bulk-acknowledged |
 | `execution.unacknowledged` | Acknowledgement cleared |
 | `maintenance_window.create` | Maintenance window created (snapshot) |
 | `maintenance_window.update` | Maintenance window settings changed (diff) |

@@ -278,9 +278,11 @@ try {
     // before /crons/{id} so the more-specific patterns are tried first.
     $router->addRoute('POST',   '/crons/{id}/execute/cleanup',  [$executeCleanup, 'handle']);
     $router->addRoute('POST',   '/crons/{id}/execute',          [$executeNow,     'handle']);
-    // /crons/{id}/dependency-check must be registered before /crons/{id}
-    $depCheck = new \Cronmanager\Agent\Endpoints\DependencyCheckEndpoint($pdo, $logger, $dependencyRepo);
+    // /crons/{id}/dependency-check and /crons/{id}/acknowledge-all must be registered before /crons/{id}
+    $depCheck      = new \Cronmanager\Agent\Endpoints\DependencyCheckEndpoint($pdo, $logger, $dependencyRepo);
+    $ackAll        = new \Cronmanager\Agent\Endpoints\AcknowledgeAllEndpoint($pdo, $logger, $auditLogger, $auditUserId);
     $router->addRoute('GET',    '/crons/{id}/dependency-check', [$depCheck,      'handle']);
+    $router->addRoute('POST',   '/crons/{id}/acknowledge-all',  [$ackAll,        'handle']);
     $router->addRoute('GET',    '/crons/{id}',                  [$cronGet,       'handle']);
     $router->addRoute('POST',   '/crons',                       [$cronCreate,    'handle']);
     $router->addRoute('PUT',    '/crons/{id}',                  [$cronUpdate,    'handle']);

@@ -38,6 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Neuer Filter „Ausführungstyp" auf `/crons`:** Filtert nach Abhängigkeitstyp — Zeitplan (kein Dependency-Eintrag), Prüfen vor Ausführung (`requires`), Ausgelöst durch Job (`triggered_by`). Auswertung client-seitig im `CronController` anhand des `dependency`-Felds der Job-Antwort.
 - **Suche nach Job-ID auf `/crons`:** Numerische Eingabe im Suchfeld trifft zusätzlich auf die Job-ID — Jobs können jetzt direkt per ID gesucht werden.
 - **Trigger-Verzögerung für `triggered_by`-Jobs:** Neues optionales Feld `trigger_delay_minutes` (Default: 0) in `job_dependencies`. Gibt an, wie viele Minuten nach dem Abschluss des Vorgängers gewartet werden soll, bevor der abhängige Job eingeplant wird. 0 = sofort (nächste verfügbare Cron-Minute). Eingabe im Formular nur sichtbar bei Typ „Ausgelöst durch Job". Migration `022_trigger_delay_minutes.sql`.
+- **Bulk-Bestätigen:** Neuer Button „Alle bestätigen" auf der Job-Detailseite (im Header der Ausführungshistorie) und neben jedem Bestätigen-Button im Dashboard. Markiert alle noch offenen Fehler eines Jobs in einem einzigen Schritt als bestätigt (nicht nur die angezeigten Einträge). Neuer Agent-Endpunkt `POST /crons/{id}/acknowledge-all`, neuer REST-API-Endpunkt `POST /api/v1/jobs/{id}/acknowledge-all` (Scope: `executions:acknowledge`).
 
 ### Changed
 
@@ -47,8 +48,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `OnceSchedule::compute(int $delayMinutes)`: neuer optionaler Parameter; `ExecutionFinishEndpoint` übergibt beim Triggern den konfigurierten Delay.
 - `ExportEndpoint`: `schedule`-Feld nullable; Dependency-Kommentare und Event-driven-Hinweis.
 - `cron-wrapper.sh`: Neuer Schritt 2b (Dependency-Check via `GET /crons/{id}/dependency-check`) zwischen dem Abrufen des Job-Befehls und der Ausführung.
-- `DependencyRepository::exitCodeMatches()`: Leere Listen geben jetzt `false` zurück (nicht `true` durch `explode`-Artefakt mit `['']`).
-- `DependencyRepository::validateExitCodes()`: Ablehnung negativer Codes und Codes > 255; leere Tokens zwischen Kommas werden abgelehnt.
+- `DependencyRepository::exitCodeMatches()`: Leere Listen geben jetzt `true` zurück (match-any: leeres Feld = immer ausführen, unabhängig vom Exit-Code).
+- `DependencyRepository::validateExitCodes()`: Negative Exit-Codes sind jetzt gültig; leere Eingabe ist gültig (bedeutet: alle Codes); Codes > 255 werden weiterhin abgelehnt.
+- `AgentHttpException`: Trägt jetzt den dekodierten JSON-Response-Body (`getResponseBody()`); `CronController` nutzt das für eine lokalisierte Darstellung von 422-Validierungsfehlern aus dem Agenten.
 - `DependencyCheckEndpoint`: `max_age_minutes = 0` überspringt die Zeitfenster-Prüfung vollständig — nur der Exit-Code des letzten Vorgänger-Runs wird geprüft.
 
 ---

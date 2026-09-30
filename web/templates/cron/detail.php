@@ -473,7 +473,19 @@ $ackErrorKey   = \Cronmanager\Web\Session\SessionManager::flash('_flash_ack_erro
         <h2 class="text-base font-semibold text-gray-800 dark:text-gray-200">
             <?= htmlspecialchars($t('cron_history'), ENT_QUOTES, 'UTF-8') ?>
         </h2>
-        <div class="flex items-center gap-1">
+        <div class="flex items-center gap-2">
+            <?php if ($isAdmin && $jobId !== ''): ?>
+            <!-- Bulk-acknowledge all failures for this job -->
+            <button id="cm-ack-all-btn"
+                    type="button"
+                    title="<?= htmlspecialchars($t('execution_acknowledge_all'), ENT_QUOTES, 'UTF-8') ?>"
+                    class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
+                           bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600
+                           dark:text-gray-300 border border-gray-200 dark:border-gray-600
+                           transition focus:outline-none focus:ring-2 focus:ring-gray-400">
+                <?= htmlspecialchars($t('execution_acknowledge_all'), ENT_QUOTES, 'UTF-8') ?>
+            </button>
+            <?php endif; ?>
             <!-- Auto-reload toggle -->
             <button id="cm-reload-toggle"
                     type="button"
@@ -926,3 +938,41 @@ document.addEventListener('keydown', function (e) {
     });
 }());
 </script>
+
+<?php if ($isAdmin && $jobId !== ''): ?>
+<script>
+// AJAX bulk-acknowledge: "Alle bestätigen" button in the history section header.
+(function () {
+    'use strict';
+    var btn  = document.getElementById('cm-ack-all-btn');
+    var CSRF = <?= json_encode($csrf_token ?? '') ?>;
+    var JOB  = <?= json_encode($jobId) ?>;
+    if (!btn) { return; }
+
+    btn.addEventListener('click', function () {
+        if (btn.disabled) { return; }
+        btn.disabled = true;
+
+        var url  = '/crons/' + encodeURIComponent(JOB) + '/acknowledge-all?_json=1';
+        var body = new URLSearchParams({ _csrf: CSRF });
+
+        fetch(url, {
+            method:      'POST',
+            headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body:        body.toString(),
+            credentials: 'same-origin',
+        })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (data) {
+            btn.disabled = false;
+            if (data.success) {
+                document.dispatchEvent(new CustomEvent('cm:reload-detail'));
+            }
+        })
+        .catch(function () {
+            btn.disabled = false;
+        });
+    });
+}());
+</script>
+<?php endif; ?>

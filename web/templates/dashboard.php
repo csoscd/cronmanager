@@ -273,14 +273,26 @@ $shownFailures       = count($recentFailures);
                                 <?php endif; ?>
                                 <?php if ($isOperator && $executionId !== ''): ?>
                                 <td class="px-4 py-3 text-sm whitespace-nowrap">
-                                    <button type="button"
-                                            data-ack-id="<?= htmlspecialchars($executionId, ENT_QUOTES, 'UTF-8') ?>"
-                                            class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
-                                                   bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600
-                                                   dark:text-gray-300 border border-gray-200 dark:border-gray-600
-                                                   transition focus:outline-none focus:ring-2 focus:ring-gray-400">
-                                        <?= htmlspecialchars($t('execution_acknowledge'), ENT_QUOTES, 'UTF-8') ?>
-                                    </button>
+                                    <div class="flex flex-col gap-1">
+                                        <button type="button"
+                                                data-ack-id="<?= htmlspecialchars($executionId, ENT_QUOTES, 'UTF-8') ?>"
+                                                class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
+                                                       bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600
+                                                       dark:text-gray-300 border border-gray-200 dark:border-gray-600
+                                                       transition focus:outline-none focus:ring-2 focus:ring-gray-400">
+                                            <?= htmlspecialchars($t('execution_acknowledge'), ENT_QUOTES, 'UTF-8') ?>
+                                        </button>
+                                        <?php if ($jobId !== ''): ?>
+                                        <button type="button"
+                                                data-ack-all-job-id="<?= htmlspecialchars($jobId, ENT_QUOTES, 'UTF-8') ?>"
+                                                class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium
+                                                       bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600
+                                                       dark:text-gray-300 border border-gray-200 dark:border-gray-600
+                                                       transition focus:outline-none focus:ring-2 focus:ring-gray-400">
+                                            <?= htmlspecialchars($t('execution_acknowledge_all'), ENT_QUOTES, 'UTF-8') ?>
+                                        </button>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                                 <?php elseif ($isOperator): ?>
                                 <td class="px-4 py-3"></td>
@@ -436,7 +448,8 @@ $shownFailures       = count($recentFailures);
         isOperator: <?= json_encode($isOperator) ?>,
         showOutput: <?= json_encode($showOutputPreview) ?>,
         noResults:  <?= json_encode($t('no_results')) ?>,
-        ackLabel:   <?= json_encode($t('execution_acknowledge')) ?>,
+        ackLabel:    <?= json_encode($t('execution_acknowledge')) ?>,
+        ackAllLabel: <?= json_encode($t('execution_acknowledge_all')) ?>,
         hintShow:   <?= json_encode($t('dashboard_failures_showing')) ?>,
         hintOf:     <?= json_encode($t('dashboard_failures_of')) ?>,
         hintUnack:  <?= json_encode($t('dashboard_failures_unack')) ?>,
@@ -522,13 +535,19 @@ $shownFailures       = count($recentFailures);
         }
 
         if (CM_DASH.isOperator && e.execution_id) {
+            var btnCls = 'inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium'
+                       + ' bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600'
+                       + ' dark:text-gray-300 border border-gray-200 dark:border-gray-600'
+                       + ' transition focus:outline-none focus:ring-2 focus:ring-gray-400';
             html += '<td class="px-4 py-3 text-sm whitespace-nowrap">'
-                  + '<button type="button" data-ack-id="' + esc(e.execution_id) + '"'
-                  + ' class="inline-flex items-center gap-1 px-3 py-1 rounded text-xs font-medium'
-                  + ' bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600'
-                  + ' dark:text-gray-300 border border-gray-200 dark:border-gray-600'
-                  + ' transition focus:outline-none focus:ring-2 focus:ring-gray-400">'
-                  + esc(CM_DASH.ackLabel) + '</button></td>';
+                  + '<div class="flex flex-col gap-1">'
+                  + '<button type="button" data-ack-id="' + esc(e.execution_id) + '" class="' + btnCls + '">'
+                  + esc(CM_DASH.ackLabel) + '</button>';
+            if (e.job_id) {
+                html += '<button type="button" data-ack-all-job-id="' + esc(e.job_id) + '" class="' + btnCls + '">'
+                      + esc(CM_DASH.ackAllLabel) + '</button>';
+            }
+            html += '</div></td>';
         }
 
         var tr = document.createElement('tr');
@@ -635,6 +654,48 @@ $shownFailures       = count($recentFailures);
             // Refresh the whole failures section from the server: updates the
             // badge, the "X von Y" hint, and fills in the next failure if any.
             document.dispatchEvent(new CustomEvent('cm:ack-success'));
+        })
+        .catch(function () {
+            btn.disabled = false;
+        });
+    });
+}());
+</script>
+
+<script>
+// AJAX bulk-acknowledge via event delegation on the recent-failures tbody.
+// Buttons carry data-ack-all-job-id with the job id.
+// On success the whole failures section is refreshed from the server.
+(function () {
+    'use strict';
+    var CSRF  = <?= json_encode($csrf_token ?? '') ?>;
+    var tbody = document.getElementById('cm-dash-fail-tbody');
+    if (!tbody) { return; }
+
+    tbody.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-ack-all-job-id]');
+        if (!btn || btn.disabled) { return; }
+
+        var jobId = btn.dataset.ackAllJobId;
+        if (!jobId) { return; }
+
+        btn.disabled = true;
+
+        var url  = '/crons/' + encodeURIComponent(jobId) + '/acknowledge-all?_json=1';
+        var body = new URLSearchParams({ _csrf: CSRF });
+
+        fetch(url, {
+            method:      'POST',
+            headers:     { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body:        body.toString(),
+            credentials: 'same-origin',
+        })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (data) {
+            btn.disabled = false;
+            if (data.success) {
+                document.dispatchEvent(new CustomEvent('cm:ack-success'));
+            }
         })
         .catch(function () {
             btn.disabled = false;

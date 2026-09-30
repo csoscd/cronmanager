@@ -1199,6 +1199,64 @@ class CronController extends BaseController
         $this->acknowledgeExecution($params, false);
     }
 
+    /**
+     * POST /crons/{id}/acknowledge-all
+     *
+     * Bulk-acknowledges all unacknowledged failures for a cron job.
+     * Always JSON-aware: returns {"success": true, "acknowledged_count": N}.
+     *
+     * @param array<string, string> $params Path parameters: id (job ID).
+     * @return void
+     */
+    public function acknowledgeAllExecutions(array $params): void
+    {
+        $jobId = isset($params['id']) ? (int) $params['id'] : 0;
+
+        $this->logger->info('CronController::acknowledgeAllExecutions: request', [
+            'job_id' => $jobId,
+        ]);
+
+        try {
+            $result = $this->agentClient()->post("/crons/{$jobId}/acknowledge-all", []);
+            $count  = (int) ($result['acknowledged_count'] ?? 0);
+
+            if ($this->isJsonRequest()) {
+                $this->jsonResponse([
+                    'success'             => true,
+                    'acknowledged_count'  => $count,
+                ]);
+                return;
+            }
+
+            SessionManager::set('_flash_ack_notice', $this->translator()->t('execution_acknowledged_all', ['count' => $count]));
+        } catch (AgentHttpException $e) {
+            $this->logger->warning('CronController::acknowledgeAllExecutions: agent returned error', [
+                'job_id' => $jobId,
+                'status' => $e->getStatusCode(),
+                'error'  => $e->getMessage(),
+            ]);
+            if ($this->isJsonRequest()) {
+                $this->jsonResponse(['success' => false, 'error' => $this->translator()->t('error_agent_unavailable')]);
+                return;
+            }
+            SessionManager::set('_flash_ack_error', 'error_agent_unavailable');
+        } catch (\RuntimeException $e) {
+            $this->logger->error('CronController::acknowledgeAllExecutions: agent unreachable', [
+                'job_id' => $jobId,
+                'error'  => $e->getMessage(),
+            ]);
+            if ($this->isJsonRequest()) {
+                $this->jsonResponse(['success' => false, 'error' => $this->translator()->t('error_agent_unavailable')]);
+                return;
+            }
+            SessionManager::set('_flash_ack_error', 'error_agent_unavailable');
+        }
+
+        $returnUrl = trim((string) ($_POST['_return'] ?? ''));
+        $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : '/crons';
+        (new Response())->redirect($safe);
+    }
+
     public function killExecution(array $params): void
     {
         $executionId = isset($params['id']) ? (int) $params['id'] : 0;

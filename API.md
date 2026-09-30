@@ -362,12 +362,13 @@ The `dependency` field is `null` for independent jobs, or an object for dependen
     "predecessor_id": 5,
     "type": "requires",
     "exit_codes": "0",
-    "max_age_minutes": 60
+    "max_age_minutes": 60,
+    "trigger_delay_minutes": 0
   }
 }
 ```
 
-For `triggered_by` jobs, `max_age_minutes` is absent and `schedule` is `null`.
+For `triggered_by` jobs, `max_age_minutes` is absent, `schedule` is `null`, and `trigger_delay_minutes` specifies the delay in minutes between the predecessor's completion and the job being scheduled (0 = next cron-minute).
 
 ---
 
@@ -433,7 +434,8 @@ Create a new cron job.  Scope: **`jobs:write`**
     "predecessor_id": 5,
     "type": "requires",
     "exit_codes": "0",
-    "max_age_minutes": 60
+    "max_age_minutes": 60,
+    "trigger_delay_minutes": 0
   }
 }
 ```
@@ -441,6 +443,7 @@ Create a new cron job.  Scope: **`jobs:write`**
 Required fields: `linux_user`, `command`, `targets` (non-empty array).
 `schedule` is required for normal jobs and `requires`-type dependencies. For `triggered_by` jobs, `schedule` must be `null` or omitted (the agent sets it to `null` automatically).
 `dependency` is optional. Set to `null` to remove an existing dependency (on PUT).
+`trigger_delay_minutes` is optional (default: 0) and only meaningful for `triggered_by` jobs; it specifies how many minutes to wait after the predecessor finishes before scheduling the triggered job.
 
 **Error 422** when a dependency cycle is detected or `predecessor_id` does not exist.
 

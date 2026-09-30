@@ -276,13 +276,16 @@ final class CronCreateEndpoint
                 }
 
                 $this->deps->save(
-                    jobId:         $jobId,
-                    predecessorId: $predecessorId,
-                    type:          $depType,
-                    exitCodes:     trim((string) ($dependency['exit_codes'] ?? '0')),
-                    maxAgeMinutes: isset($dependency['max_age_minutes']) && is_int($dependency['max_age_minutes'])
+                    jobId:               $jobId,
+                    predecessorId:       $predecessorId,
+                    type:                $depType,
+                    exitCodes:           trim((string) ($dependency['exit_codes'] ?? '0')),
+                    maxAgeMinutes:       isset($dependency['max_age_minutes']) && is_int($dependency['max_age_minutes'])
                         ? $dependency['max_age_minutes']
                         : null,
+                    triggerDelayMinutes: isset($dependency['trigger_delay_minutes']) && is_int($dependency['trigger_delay_minutes'])
+                        ? max(0, $dependency['trigger_delay_minutes'])
+                        : 0,
                 );
             }
 
@@ -505,6 +508,13 @@ final class CronCreateEndpoint
         if (isset($dep['max_age_minutes'])) {
             if (!is_int($dep['max_age_minutes']) || $dep['max_age_minutes'] <= 0) {
                 $errors['dependency.max_age_minutes'] = 'Must be a positive integer.';
+            }
+        }
+
+        // trigger_delay_minutes: optional, only for 'triggered_by', must be non-negative int
+        if (isset($dep['trigger_delay_minutes'])) {
+            if (!is_int($dep['trigger_delay_minutes']) || $dep['trigger_delay_minutes'] < 0) {
+                $errors['dependency.trigger_delay_minutes'] = 'Must be a non-negative integer.';
             }
         }
 

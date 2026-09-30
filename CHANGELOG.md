@@ -37,11 +37,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - **Zeile 2 (einklappbar):** alle Dropdown-Filter. Zustand wird per `localStorage` (`cm_filter_opts_crons` / `cm_filter_opts_timeline`) gespeichert; beim Seitenaufruf mit aktivem Sekundärfilter wird Zeile 2 automatisch aufgeklappt.
 - **Neuer Filter „Ausführungstyp" auf `/crons`:** Filtert nach Abhängigkeitstyp — Zeitplan (kein Dependency-Eintrag), Prüfen vor Ausführung (`requires`), Ausgelöst durch Job (`triggered_by`). Auswertung client-seitig im `CronController` anhand des `dependency`-Felds der Job-Antwort.
 - **Suche nach Job-ID auf `/crons`:** Numerische Eingabe im Suchfeld trifft zusätzlich auf die Job-ID — Jobs können jetzt direkt per ID gesucht werden.
+- **Trigger-Verzögerung für `triggered_by`-Jobs:** Neues optionales Feld `trigger_delay_minutes` (Default: 0) in `job_dependencies`. Gibt an, wie viele Minuten nach dem Abschluss des Vorgängers gewartet werden soll, bevor der abhängige Job eingeplant wird. 0 = sofort (nächste verfügbare Cron-Minute). Eingabe im Formular nur sichtbar bei Typ „Ausgelöst durch Job". Migration `022_trigger_delay_minutes.sql`.
 
 ### Changed
 
 - `cronjobs.schedule` ist jetzt nullable (`VARCHAR(100) NULL DEFAULT NULL`) — Pflichtfeld nur für zeitgesteuerte Jobs.
 - `CronListEndpoint`, `CronGetEndpoint`, `CronCreateEndpoint`, `CronUpdateEndpoint`, `CronDeleteEndpoint`, `ExecutionFinishEndpoint`, `ExecutionStartEndpoint`: um Dependency-Unterstützung erweitert.
+- `DependencyRepository::save()`, `CronCreateEndpoint`, `CronUpdateEndpoint`: neuer Parameter `triggerDelayMinutes`; `CronGetEndpoint`, `CronListEndpoint`: `trigger_delay_minutes` in der Dependency-Antwort.
+- `OnceSchedule::compute(int $delayMinutes)`: neuer optionaler Parameter; `ExecutionFinishEndpoint` übergibt beim Triggern den konfigurierten Delay.
 - `ExportEndpoint`: `schedule`-Feld nullable; Dependency-Kommentare und Event-driven-Hinweis.
 - `cron-wrapper.sh`: Neuer Schritt 2b (Dependency-Check via `GET /crons/{id}/dependency-check`) zwischen dem Abrufen des Job-Befehls und der Ausführung.
 - `DependencyRepository::exitCodeMatches()`: Leere Listen geben jetzt `false` zurück (nicht `true` durch `explode`-Artefakt mit `['']`).

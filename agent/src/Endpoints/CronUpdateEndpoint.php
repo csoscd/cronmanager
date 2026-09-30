@@ -298,13 +298,16 @@ final class CronUpdateEndpoint
             // Persist dependency changes
             if ($setDep && $depData !== null) {
                 $this->deps->save(
-                    jobId:         $jobId,
-                    predecessorId: (int) $depData['predecessor_id'],
-                    type:          $depType,
-                    exitCodes:     trim((string) ($depData['exit_codes'] ?? '0')),
-                    maxAgeMinutes: isset($depData['max_age_minutes']) && is_int($depData['max_age_minutes'])
+                    jobId:               $jobId,
+                    predecessorId:       (int) $depData['predecessor_id'],
+                    type:                $depType,
+                    exitCodes:           trim((string) ($depData['exit_codes'] ?? '0')),
+                    maxAgeMinutes:       isset($depData['max_age_minutes']) && is_int($depData['max_age_minutes'])
                         ? $depData['max_age_minutes']
                         : null,
+                    triggerDelayMinutes: isset($depData['trigger_delay_minutes']) && is_int($depData['trigger_delay_minutes'])
+                        ? max(0, $depData['trigger_delay_minutes'])
+                        : 0,
                 );
             } elseif ($removeDep) {
                 $this->deps->delete($jobId);
@@ -397,6 +400,10 @@ final class CronUpdateEndpoint
 
         if (isset($dep['max_age_minutes']) && (!is_int($dep['max_age_minutes']) || $dep['max_age_minutes'] <= 0)) {
             $errors['dependency.max_age_minutes'] = 'Must be a positive integer.';
+        }
+
+        if (isset($dep['trigger_delay_minutes']) && (!is_int($dep['trigger_delay_minutes']) || $dep['trigger_delay_minutes'] < 0)) {
+            $errors['dependency.trigger_delay_minutes'] = 'Must be a non-negative integer.';
         }
 
         return $errors;
@@ -864,10 +871,11 @@ final class CronUpdateEndpoint
             'created_at'               => (string) $row['created_at'],
             'tags'                     => $tags,
             'dependency'               => $dep !== null ? [
-                'predecessor_id'  => (int)    $dep['predecessor_id'],
-                'type'            => (string) $dep['type'],
-                'exit_codes'      => (string) $dep['exit_codes'],
-                'max_age_minutes' => $dep['max_age_minutes'] !== null ? (int) $dep['max_age_minutes'] : null,
+                'predecessor_id'        => (int)    $dep['predecessor_id'],
+                'type'                  => (string) $dep['type'],
+                'exit_codes'            => (string) $dep['exit_codes'],
+                'max_age_minutes'       => $dep['max_age_minutes'] !== null ? (int) $dep['max_age_minutes'] : null,
+                'trigger_delay_minutes' => (int) ($dep['trigger_delay_minutes'] ?? 0),
             ] : null,
         ];
     }

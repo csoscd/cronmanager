@@ -67,6 +67,8 @@ $depPredId      = $existingDep !== null ? (int) ($existingDep['predecessor_id'] 
 $depExitCodes   = $existingDep !== null ? (string) ($existingDep['exit_codes'] ?? '0') : '0';
 $depMaxAge      = $existingDep !== null && isset($existingDep['max_age_minutes']) && $existingDep['max_age_minutes'] !== null
     ? (int) $existingDep['max_age_minutes'] : 0;
+$depTriggerDelay = $existingDep !== null && isset($existingDep['trigger_delay_minutes'])
+    ? (int) $existingDep['trigger_delay_minutes'] : 0;
 
 // Auto-expand the advanced tab when any non-default advanced value is already set.
 $advancedOpen  = $isAutoKillVal
@@ -371,14 +373,30 @@ foreach ($tags as $tag) {
                                 </p>
                             </div>
 
-                            <!-- "Ausgelöst durch Job" info note -->
-                            <div id="dep-triggered-note" class="<?= $depType === 'triggered_by' ? '' : 'hidden' ?>">
+                            <!-- "Ausgelöst durch Job" info note + delay -->
+                            <div id="dep-triggered-note" class="<?= $depType === 'triggered_by' ? '' : 'hidden' ?> space-y-3">
                                 <div class="flex items-start gap-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700
                                             text-purple-700 dark:text-purple-300 rounded-lg px-3 py-2 text-xs">
                                     <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                                     </svg>
                                     <span>Dieser Job hat keinen Cron-Schedule – er wird automatisch gestartet, sobald der Vorgänger-Job mit einem der konfigurierten Exit-Codes endet.</span>
+                                </div>
+                                <div>
+                                    <label for="dep_trigger_delay_minutes"
+                                           class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Verzögerung (Minuten)
+                                    </label>
+                                    <input type="number" id="dep_trigger_delay_minutes" name="dep_trigger_delay_minutes" min="0"
+                                           value="<?= htmlspecialchars((string) $depTriggerDelay, ENT_QUOTES, 'UTF-8') ?>"
+                                           class="w-40 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                                  bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                                  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                                           placeholder="0">
+                                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                        Minuten Wartezeit nach Abschluss des Vorgängers, bevor der Job eingeplant wird.
+                                        <strong>0 = sofort</strong> (nächste verfügbare Cron-Minute).
+                                    </p>
                                 </div>
                             </div>
                         </div>

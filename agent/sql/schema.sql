@@ -191,8 +191,10 @@ CREATE TABLE IF NOT EXISTS job_dependencies (
                                    COMMENT 'requires = runtime check with time window; triggered_by = event-driven, no schedule',
     exit_codes        VARCHAR(255) NOT NULL DEFAULT '0'
                                    COMMENT 'Comma-separated list of exit codes that satisfy the dependency, e.g. "0" or "0,2"',
-    max_age_minutes   INT UNSIGNED NULL DEFAULT NULL
+    max_age_minutes        INT UNSIGNED NULL DEFAULT NULL
                                    COMMENT 'Only for type=requires: predecessor must have finished within this many minutes; NULL = 60',
+    trigger_delay_minutes  INT UNSIGNED NOT NULL DEFAULT 0
+                                   COMMENT 'Minutes to wait before scheduling the triggered job; 0 = next cron-minute (default)',
     created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_jd_job (job_id),
     CONSTRAINT fk_jd_job         FOREIGN KEY (job_id)         REFERENCES cronjobs(id) ON DELETE RESTRICT,

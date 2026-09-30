@@ -273,7 +273,8 @@ final class CronListEndpoint
                 jd.predecessor_id              AS dep_predecessor_id,
                 jd.type                        AS dep_type,
                 jd.exit_codes                  AS dep_exit_codes,
-                jd.max_age_minutes             AS dep_max_age_minutes
+                jd.max_age_minutes             AS dep_max_age_minutes,
+                jd.trigger_delay_minutes       AS dep_trigger_delay_minutes
             FROM cronjobs j
             LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
             LEFT JOIN tags t          ON t.id = ct.tag_id
@@ -349,10 +350,11 @@ final class CronListEndpoint
         }
 
         $dependency = $row['dep_predecessor_id'] !== null ? [
-            'predecessor_id'  => (int)    $row['dep_predecessor_id'],
-            'type'            => (string) $row['dep_type'],
-            'exit_codes'      => (string) $row['dep_exit_codes'],
-            'max_age_minutes' => $row['dep_max_age_minutes'] !== null ? (int) $row['dep_max_age_minutes'] : null,
+            'predecessor_id'        => (int)    $row['dep_predecessor_id'],
+            'type'                  => (string) $row['dep_type'],
+            'exit_codes'            => (string) $row['dep_exit_codes'],
+            'max_age_minutes'       => $row['dep_max_age_minutes'] !== null ? (int) $row['dep_max_age_minutes'] : null,
+            'trigger_delay_minutes' => (int) ($row['dep_trigger_delay_minutes'] ?? 0),
         ] : null;
 
         return [

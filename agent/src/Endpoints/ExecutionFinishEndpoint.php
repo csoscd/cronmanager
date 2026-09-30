@@ -53,6 +53,7 @@ use Cronmanager\Agent\Notification\MailNotifier;
 use Cronmanager\Agent\Repository\DependencyRepository;
 use Cronmanager\Agent\Util\AnsiStripper;
 use Cronmanager\Agent\Util\ExitCodeMatcher;
+use Cronmanager\Agent\Util\OnceSchedule;
 use Cronmanager\Agent\Notification\TelegramNotifier;
 use Monolog\Logger;
 use PDO;
@@ -321,15 +322,7 @@ final class ExecutionFinishEndpoint
                         $effectiveTarget = $target ?? 'local';
 
                         // Compute the crontab schedule for retry_delay_minutes from now
-                        $tz       = new \DateTimeZone($this->resolveSystemTimezone());
-                        $fireAt   = new \DateTime('+' . $retryDelayMinutes . ' minutes', $tz);
-                        $schedule = sprintf(
-                            '%d %d %d %d *',
-                            (int) $fireAt->format('i'),
-                            (int) $fireAt->format('G'),
-                            (int) $fireAt->format('j'),
-                            (int) $fireAt->format('n'),
-                        );
+                        $schedule = OnceSchedule::compute($retryDelayMinutes);
 
                         // Write pending retry state so ExecutionStartEndpoint can pick it up.
                         // ON DUPLICATE KEY UPDATE uses VALUES() to avoid PDO named-parameter
@@ -350,7 +343,7 @@ final class ExecutionFinishEndpoint
                             ':next_attempt' => $nextAttempt,
                             ':root_id'      => $rootExecutionId,
                             ':delay'        => $retryDelayMinutes,
-                            ':scheduled_at' => (new \DateTime('now', $tz))->format('Y-m-d H:i:s'),
+                            ':scheduled_at' => (new \DateTime('now', OnceSchedule::timezone()))->format('Y-m-d H:i:s'),
                         ]);
 
                         // Add once-only crontab entry
@@ -623,17 +616,8 @@ final class ExecutionFinishEndpoint
                             $targets = ['local'];
                         }
 
-                        $tz       = new \DateTimeZone($this->resolveSystemTimezone());
-                        $now      = new \DateTime('now', $tz);
-                        $offset   = (int) $now->format('s') > 50 ? '+2 minutes' : '+1 minute';
-                        $next     = new \DateTime($offset, $tz);
-                        $schedule = sprintf(
-                            '%d %d %d %d *',
-                            (int) $next->format('i'),
-                            (int) $next->format('G'),
-                            (int) $next->format('j'),
-                            (int) $next->format('n'),
-                        );
+                        $triggerDelay = max(0, (int) ($triggered['trigger_delay_minutes'] ?? 0));
+                        $schedule     = OnceSchedule::compute($triggerDelay);
 
                         foreach ($targets as $tgt) {
                             // Write trigger state (predecessor info for ExecutionStartEndpoint)
@@ -844,39 +828,6 @@ final class ExecutionFinishEndpoint
         $value = $stmt->fetchColumn();
 
         return ($value !== false && $value !== null) ? (int) $value : null;
-    }
-
-    /**
-     * Resolve the host system timezone (same logic as ExecuteNowEndpoint).
-     *
-     * @return string A valid timezone identifier.
-     */
-    private function resolveSystemTimezone(): string
-    {
-        $envTz = getenv('TZ');
-        if ($envTz !== false && $envTz !== '') {
-            return $envTz;
-        }
-
-        $link = @readlink('/etc/localtime');
-        if ($link !== false) {
-            $pos = strpos($link, 'zoneinfo/');
-            if ($pos !== false) {
-                $tz = substr($link, $pos + strlen('zoneinfo/'));
-                if ($tz !== '') {
-                    return $tz;
-                }
-            }
-        }
-
-        if (is_readable('/etc/timezone')) {
-            $tz = trim((string) file_get_contents('/etc/timezone'));
-            if ($tz !== '') {
-                return $tz;
-            }
-        }
-
-        return date_default_timezone_get();
     }
 
     /**

@@ -151,10 +151,11 @@ final class CronGetEndpoint
 
         $dep = $this->deps->findByJobId($jobId);
         $job['dependency'] = $dep !== null ? [
-            'predecessor_id'  => (int)    $dep['predecessor_id'],
-            'type'            => (string) $dep['type'],
-            'exit_codes'      => (string) $dep['exit_codes'],
-            'max_age_minutes' => $dep['max_age_minutes'] !== null ? (int) $dep['max_age_minutes'] : null,
+            'predecessor_id'        => (int)    $dep['predecessor_id'],
+            'type'                  => (string) $dep['type'],
+            'exit_codes'            => (string) $dep['exit_codes'],
+            'max_age_minutes'       => $dep['max_age_minutes'] !== null ? (int) $dep['max_age_minutes'] : null,
+            'trigger_delay_minutes' => (int) ($dep['trigger_delay_minutes'] ?? 0),
         ] : null;
 
         jsonResponse(200, $job);

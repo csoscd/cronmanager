@@ -34,12 +34,12 @@ final class DependencyRepository
      *
      * @param int $jobId The dependent job ID.
      *
-     * @return array<string, mixed>|null Row with keys: id, job_id, predecessor_id, type, exit_codes, max_age_minutes, created_at
+     * @return array<string, mixed>|null Row with keys: id, job_id, predecessor_id, type, exit_codes, max_age_minutes, trigger_delay_minutes, created_at
      */
     public function findByJobId(int $jobId): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT id, job_id, predecessor_id, type, exit_codes, max_age_minutes, created_at
+            'SELECT id, job_id, predecessor_id, type, exit_codes, max_age_minutes, trigger_delay_minutes, created_at
                FROM job_dependencies
               WHERE job_id = :job_id'
         );
@@ -58,7 +58,8 @@ final class DependencyRepository
     public function findByPredecessorId(int $predecessorId): array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT jd.id, jd.job_id, jd.predecessor_id, jd.type, jd.exit_codes, jd.max_age_minutes,
+            'SELECT jd.id, jd.job_id, jd.predecessor_id, jd.type, jd.exit_codes,
+                    jd.max_age_minutes, jd.trigger_delay_minutes,
                     c.description AS job_description
                FROM job_dependencies jd
                JOIN cronjobs c ON c.id = jd.job_id
@@ -81,7 +82,7 @@ final class DependencyRepository
     public function findTriggeredByJobs(int $predecessorId, int $exitCode): array
     {
         $stmt = $this->pdo->prepare(
-            "SELECT jd.job_id, jd.exit_codes
+            "SELECT jd.job_id, jd.exit_codes, jd.trigger_delay_minutes
                FROM job_dependencies jd
                JOIN cronjobs c ON c.id = jd.job_id
               WHERE jd.predecessor_id = :predecessor_id
@@ -103,11 +104,12 @@ final class DependencyRepository
     /**
      * Insert or replace the dependency row for a job.
      *
-     * @param int         $jobId          The dependent job ID.
-     * @param int         $predecessorId  The predecessor job ID.
-     * @param string      $type           'requires' or 'triggered_by'.
-     * @param string      $exitCodes      Comma-separated exit codes, e.g. "0,2".
-     * @param int|null    $maxAgeMinutes  Only for 'requires'; NULL defaults to 60 at check time.
+     * @param int         $jobId               The dependent job ID.
+     * @param int         $predecessorId       The predecessor job ID.
+     * @param string      $type                'requires' or 'triggered_by'.
+     * @param string      $exitCodes           Comma-separated exit codes, e.g. "0,2".
+     * @param int|null    $maxAgeMinutes       Only for 'requires'; NULL defaults to 60 at check time.
+     * @param int         $triggerDelayMinutes Only for 'triggered_by'; minutes to wait before scheduling. Default 0.
      *
      * @return void
      */
@@ -117,20 +119,24 @@ final class DependencyRepository
         string $type,
         string $exitCodes,
         ?int   $maxAgeMinutes,
+        int    $triggerDelayMinutes = 0,
     ): void {
         // DELETE + INSERT is simpler than REPLACE INTO because REPLACE assigns a new PK.
         $this->pdo->prepare('DELETE FROM job_dependencies WHERE job_id = :job_id')
             ->execute([':job_id' => $jobId]);
 
         $this->pdo->prepare(
-            'INSERT INTO job_dependencies (job_id, predecessor_id, type, exit_codes, max_age_minutes)
-             VALUES (:job_id, :predecessor_id, :type, :exit_codes, :max_age_minutes)'
+            'INSERT INTO job_dependencies
+                (job_id, predecessor_id, type, exit_codes, max_age_minutes, trigger_delay_minutes)
+             VALUES
+                (:job_id, :predecessor_id, :type, :exit_codes, :max_age_minutes, :trigger_delay_minutes)'
         )->execute([
-            ':job_id'         => $jobId,
-            ':predecessor_id' => $predecessorId,
-            ':type'           => $type,
-            ':exit_codes'     => $exitCodes,
-            ':max_age_minutes'=> $maxAgeMinutes,
+            ':job_id'                => $jobId,
+            ':predecessor_id'        => $predecessorId,
+            ':type'                  => $type,
+            ':exit_codes'            => $exitCodes,
+            ':max_age_minutes'       => $maxAgeMinutes,
+            ':trigger_delay_minutes' => $triggerDelayMinutes,
         ]);
     }
 

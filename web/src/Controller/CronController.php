@@ -388,9 +388,11 @@ class CronController extends BaseController
 
             // Re-render form with error
             try {
-                $tags = $this->agentClient()->get('/tags')['data'] ?? [];
+                $tags          = $this->agentClient()->get('/tags')['data'] ?? [];
+                $allJobsForDep = $this->agentClient()->get('/crons')['data'] ?? [];
             } catch (\RuntimeException) {
-                $tags = [];
+                $tags          = [];
+                $allJobsForDep = [];
             }
 
             [$linuxUsers, $dockerMode, $sshHosts] = $this->fetchLinuxUsersAndSshHosts();
@@ -401,14 +403,15 @@ class CronController extends BaseController
             }
 
             $this->render('cron/form.php', $this->translator()->t('cron_add'), [
-                'job'        => $_POST,
-                'tags'       => $tags,
-                'sshHosts'   => $sshHosts,
-                'linuxUsers' => $linuxUsers,
-                'dockerMode' => $dockerMode,
-                'error'      => $e->getMessage(),
-                'isEdit'     => false,
-                'returnUrl'  => $postReturn,
+                'job'           => $_POST,
+                'tags'          => $tags,
+                'sshHosts'      => $sshHosts,
+                'linuxUsers'    => $linuxUsers,
+                'dockerMode'    => $dockerMode,
+                'allJobsForDep' => $allJobsForDep,
+                'error'         => $e->getMessage(),
+                'isEdit'        => false,
+                'returnUrl'     => $postReturn,
             ], '/crons');
             return;
         }
@@ -605,11 +608,13 @@ class CronController extends BaseController
             ]);
 
             try {
-                $job  = $this->agentClient()->get('/crons/' . rawurlencode($id));
-                $tags = $this->agentClient()->get('/tags')['data'] ?? [];
+                $job           = $this->agentClient()->get('/crons/' . rawurlencode($id));
+                $tags          = $this->agentClient()->get('/tags')['data'] ?? [];
+                $allJobsForDep = $this->agentClient()->get('/crons')['data'] ?? [];
             } catch (\RuntimeException) {
-                $job  = $_POST;
-                $tags = [];
+                $job           = $_POST;
+                $tags          = [];
+                $allJobsForDep = [];
             }
 
             $mergedJob = array_merge((array) $job, $_POST);
@@ -621,14 +626,15 @@ class CronController extends BaseController
             }
 
             $this->render('cron/form.php', $this->translator()->t('cron_edit'), [
-                'job'        => $mergedJob,
-                'tags'       => $tags,
-                'sshHosts'   => $sshHosts,
-                'linuxUsers' => $linuxUsers,
-                'dockerMode' => $dockerMode,
-                'error'      => $e->getMessage(),
-                'isEdit'     => true,
-                'returnUrl'  => $postReturn,
+                'job'           => $mergedJob,
+                'tags'          => $tags,
+                'sshHosts'      => $sshHosts,
+                'linuxUsers'    => $linuxUsers,
+                'dockerMode'    => $dockerMode,
+                'allJobsForDep' => $allJobsForDep,
+                'error'         => $e->getMessage(),
+                'isEdit'        => true,
+                'returnUrl'     => $postReturn,
             ], '/crons');
             return;
         }

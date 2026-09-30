@@ -615,10 +615,12 @@ $hasAnyFilter = $filterSearch !== '' || $hasSecondaryFilter;
                                 <?php if ($dep !== null): ?>
                                     <?php $depPredId = (int) ($dep['predecessor_id'] ?? 0); $depType = (string) ($dep['type'] ?? ''); ?>
                                     <?php if ($depType === 'triggered_by'): ?>
+                                        <?php $predDesc = (string) ($dep['predecessor_description'] ?? ''); ?>
                                         <span class="inline-flex items-center gap-1 text-xs text-purple-700 dark:text-purple-300 font-medium">
                                             <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                                             <a href="/crons/<?= htmlspecialchars(rawurlencode((string)$depPredId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
-                                               class="hover:underline">#<?= htmlspecialchars((string)$depPredId, ENT_QUOTES, 'UTF-8') ?></a>
+                                               class="hover:underline"
+                                               <?= $predDesc !== '' ? 'title="' . htmlspecialchars($predDesc, ENT_QUOTES, 'UTF-8') . '"' : '' ?>>#<?= htmlspecialchars((string)$depPredId, ENT_QUOTES, 'UTF-8') ?></a>
                                         </span>
                                     <?php else: ?>
                                         <span class="font-mono"><?= htmlspecialchars($schedule, ENT_QUOTES, 'UTF-8') ?></span>

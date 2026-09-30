@@ -79,11 +79,12 @@ final class DependencyRepositoryTest extends TestCase
     }
 
     #[Test]
-    public function validateExitCodesRejectsNegativeCode(): void
+    public function validateExitCodesAcceptsNegativeCode(): void
     {
-        $error = DependencyRepository::validateExitCodes('-1');
-        self::assertIsString($error);
-        self::assertNotEmpty($error);
+        // Negative exit codes are valid (e.g. -1, -7 for system/dependency signals)
+        self::assertNull(DependencyRepository::validateExitCodes('-1'));
+        self::assertNull(DependencyRepository::validateExitCodes('-7'));
+        self::assertNull(DependencyRepository::validateExitCodes('0,-1,2'));
     }
 
     #[Test]

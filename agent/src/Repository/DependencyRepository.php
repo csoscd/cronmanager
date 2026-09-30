@@ -249,12 +249,12 @@ final class DependencyRepository
             if ($part === '') {
                 return 'Empty token found; check for consecutive commas.';
             }
-            if (!preg_match('/^\d+$/', $part)) {
-                return sprintf('"%s" is not a valid exit code (must be a non-negative integer 0–255).', $part);
+            if (!preg_match('/^-?\d+$/', $part)) {
+                return sprintf('"%s" is not a valid exit code (must be an integer).', $part);
             }
             $int = (int) $part;
-            if ($int < 0 || $int > 255) {
-                return sprintf('Exit code %d is out of range (must be 0–255).', $int);
+            if ($int > 255) {
+                return sprintf('Exit code %d is out of range (must be ≤ 255).', $int);
             }
         }
 

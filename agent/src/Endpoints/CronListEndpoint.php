@@ -274,7 +274,8 @@ final class CronListEndpoint
                 jd.type                        AS dep_type,
                 jd.exit_codes                  AS dep_exit_codes,
                 jd.max_age_minutes             AS dep_max_age_minutes,
-                jd.trigger_delay_minutes       AS dep_trigger_delay_minutes
+                jd.trigger_delay_minutes       AS dep_trigger_delay_minutes,
+                pred.description               AS dep_predecessor_description
             FROM cronjobs j
             LEFT JOIN cronjob_tags ct ON ct.cronjob_id = j.id
             LEFT JOIN tags t          ON t.id = ct.tag_id
@@ -287,6 +288,7 @@ final class CronListEndpoint
             LEFT JOIN execution_log el_last     ON el_last.id     = j.last_execution_id
             LEFT JOIN execution_log el_last_fin ON el_last_fin.id = j.last_finished_execution_id
             LEFT JOIN job_dependencies jd       ON jd.job_id      = j.id
+            LEFT JOIN cronjobs pred             ON pred.id         = jd.predecessor_id
             WHERE (:user1 IS NULL OR j.linux_user = :user2)
               AND (:tag1 IS NULL OR j.id IN (
                     SELECT ct2.cronjob_id
@@ -350,11 +352,14 @@ final class CronListEndpoint
         }
 
         $dependency = $row['dep_predecessor_id'] !== null ? [
-            'predecessor_id'        => (int)    $row['dep_predecessor_id'],
-            'type'                  => (string) $row['dep_type'],
-            'exit_codes'            => (string) $row['dep_exit_codes'],
-            'max_age_minutes'       => $row['dep_max_age_minutes'] !== null ? (int) $row['dep_max_age_minutes'] : null,
-            'trigger_delay_minutes' => (int) ($row['dep_trigger_delay_minutes'] ?? 0),
+            'predecessor_id'          => (int)    $row['dep_predecessor_id'],
+            'type'                    => (string) $row['dep_type'],
+            'exit_codes'              => (string) $row['dep_exit_codes'],
+            'max_age_minutes'         => $row['dep_max_age_minutes'] !== null ? (int) $row['dep_max_age_minutes'] : null,
+            'trigger_delay_minutes'   => (int) ($row['dep_trigger_delay_minutes'] ?? 0),
+            'predecessor_description' => isset($row['dep_predecessor_description'])
+                ? (string) $row['dep_predecessor_description']
+                : null,
         ] : null;
 
         return [

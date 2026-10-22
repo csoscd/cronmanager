@@ -140,9 +140,9 @@ jobs:
             type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event.inputs.tag != '' }}
             # specific version tag for every release (e.g. 7.0.0 or 7.0.0-r1)
             type=semver,pattern={{version}}
-            # major/minor shorthand tags only for code releases (not rebuild tags like v7.0.0-r1)
-            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref_name, '-r') }}
-            type=semver,pattern={{major}},enable=${{ !contains(github.ref_name, '-r') }}
+            # major/minor shorthand tags – updated on every release (code release and rebuild)
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
             # latest on every published release (code release or base-image rebuild)
             type=raw,value=latest,enable=${{ github.event_name == 'release' }}
 

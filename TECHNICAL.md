@@ -2037,38 +2037,61 @@ these images have all PHP source and Composer dependencies baked in.
 
 The images are built and pushed by `.github/workflows/docker-release.yml` on every published
 GitHub release.  The workflow uses `docker/metadata-action` to produce the following tags
-automatically from the release version (e.g. `v2.1.0`):
+automatically from the release version:
 
-| Tag | Example |
-|---|---|
-| Full semver | `2.1.0` |
-| Major.minor | `2.1` |
-| Major | `2` |
-| Latest | `latest` |
+| Tag | Code release (e.g. `v7.0.1`) | Rebuild release (e.g. `v7.0.1-r3`) |
+|---|---|---|
+| Full version | `7.0.1` | `7.0.1-r3` |
+| Major.minor | `7.0` | `7.0` (via explicit `type=raw`) |
+| Major | `7` | `7` (via explicit `type=raw`) |
+| Latest | `latest` | `latest` |
+
+> **Note:** `docker/metadata-action` skips `{{major}}` and `{{major}}.{{minor}}` for semver
+> pre-release versions (any tag with a `-` suffix, including `-r3`).  The workflow therefore
+> adds explicit `type=raw` entries that extract the base version from the tag name and emit
+> the shorthand tags unconditionally for rebuild releases.
 
 Multi-platform builds target `linux/amd64` and `linux/arm64`.
 
-### Automatic patch releases for base image updates
+### Rebuild releases for base image updates
 
-When the upstream base images (`cs1711/cs_cronmanageragent` or `cs1711/cs_php-nginx-fpm`) are
-rebuilt, the `.github/workflows/auto-patch-release.yml` workflow can be triggered either via
-`workflow_dispatch` (manually from the GitHub Actions UI) or via `repository_dispatch` (from a
-CI machine using `curl` or `gh workflow run`).
+When an upstream base image is rebuilt (e.g. for a PHP security update), a rebuild release
+is created without modifying any source files or VERSION numbers.  This triggers
+`docker-release.yml` via the `release: published` event, which rebuilds and pushes the
+Cronmanager images with the updated base image baked in.
 
-The workflow reads the latest git tag, increments the patch digit (e.g. `2.1.0` → `2.1.1`),
-and creates a new GitHub release.  This in turn fires `docker-release.yml` via the
-`release: published` trigger, which rebuilds and pushes the Cronmanager images with the updated
-base image baked in.
+**Rebuild tag scheme:** `vX.Y.Z-rN` — the same code version, incrementing rebuild counter.
+Example: `v7.0.0` is the code release; `v7.0.0-r1`, `v7.0.0-r2`, … are subsequent rebuilds.
+
+The rebuild is initiated by `bump-rebuild-release.sh` (`/opt/dev/homelab/db/` on build host
+`db`), which is triggered automatically by the Cronmanager job chain:
 
 ```
-base image rebuild
-       │
-       ▼ (workflow_dispatch / repository_dispatch)
-auto-patch-release.yml → gh release create v2.x.(n+1)
+Rebuild cs_php-nginx-fpm (Debian + PHP via official php:8.4-fpm)
+       │ triggered_by
+       ▼
+Rebuild cs_cronmanagerweb
+       │ triggered_by
+       ▼
+Rebuild cs_cronmanageragent (Debian Trixie + PHP via apt)
+       │ triggered_by
+       ▼
+bump-rebuild-release.sh
+  ├─ reads PHP + Debian version from cs_php-nginx-fpm:latest-debian
+  ├─ computes next vX.Y.Z-rN tag
+  ├─ creates lightweight git tag on origin/main + pushes
+  ├─ gh release create → fires docker-release.yml
+  └─ gh workflow run docker-dev.yml → updates :dev tag
        │
        ▼ (release: published trigger)
 docker-release.yml → docker build + push to Docker Hub
+  ├─ cs1711/cronmanager-web:latest / :7 / :7.0 / :7.0.0-rN
+  └─ cs1711/cronmanager-agent:latest / :7 / :7.0 / :7.0.0-rN
 ```
+
+Two independent base image chains feed into a single rebuild release:
+- **Web chain:** `php:8.4-fpm` (Docker Hub) → `cs_php-nginx-fpm` → `cs_cronmanagerweb`
+- **Agent chain:** `debian:trixie-slim` (Docker Hub, PHP via apt) → `cs_cronmanageragent`
 
 ### Config-from-environment pattern
 

@@ -2,6 +2,7 @@ CLAUDE.md
 db.credentials
 deploy.env
 .claude/
+.memory/
 vendor/
 coverage/
 .phpunit.result.cache

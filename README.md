@@ -175,9 +175,15 @@ All persistent data lives in **Docker-managed named volumes** (`db-data`, `agent
 
 | Tag | Built from | Use for |
 |---|---|---|
-| `latest` | `main` branch (on every release) | Production — always stable |
-| `2.5.0`, `2.4.0`, … | Git tag on `main` | Pinning to a specific release |
+| `latest` | Every release (code or rebuild) | Production — always the newest stable image |
+| `7`, `7.0` | Same as `latest` (updated on every release) | Pinning to a major or minor line |
+| `7.0.0` | Code release tag `v7.0.0` | Pinning to an exact code version |
+| `7.0.0-r3` | Rebuild release (same code, updated base image) | Pinning to a specific rebuild |
 | `dev` | Latest development branch push | Testing unreleased features |
+
+Rebuild releases (`vX.Y.Z-rN`) are created automatically when upstream base images are
+rebuilt (e.g. for PHP security updates).  They carry no code changes — only the base image
+layers are updated.
 
 > **Warning:** The `:dev` tag is overwritten on every push to any active development
 > branch. It may contain incomplete features, breaking changes, or unstable code.
@@ -185,8 +191,8 @@ All persistent data lives in **Docker-managed named volumes** (`db-data`, `agent
 
 To use a specific version, replace `:latest` in `docker-compose-full.yml`:
 ```yaml
-image: cs1711/cronmanager-agent:2.5.0
-image: cs1711/cronmanager-web:2.5.0
+image: cs1711/cronmanager-agent:7.0.0
+image: cs1711/cronmanager-web:7.0.0
 ```
 
 ### Updating to a new release

@@ -129,6 +129,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # ── Compute major/minor shorthand for rebuild tags (vX.Y.Z-rN) ─────────
+      # docker/metadata-action skips {{major}} and {{major}}.{{minor}} for semver
+      # pre-release versions (any tag with a - suffix). For rebuild tags we
+      # compute the shorthand versions explicitly so :7 and :7.0 stay current.
+      - name: Compute version shorthand for rebuild releases
+        id: rebuild_ver
+        if: contains(github.ref_name, '-r')
+        run: |
+          base="${GITHUB_REF_NAME#v}"   # e.g. 7.0.0-r3
+          base="${base%%-r*}"           # e.g. 7.0.0
+          echo "minor=${base%.*}"  >> "$GITHUB_OUTPUT"   # e.g. 7.0
+          echo "major=${base%%.*}" >> "$GITHUB_OUTPUT"   # e.g. 7
+
       # ── Generate image tags from the release version ─────────────────────
       - name: Extract Docker metadata
         id: meta
@@ -138,11 +151,15 @@ jobs:
           tags: |
             # use manual override if provided (workflow_dispatch only)
             type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event.inputs.tag != '' }}
-            # specific version tag for every release (e.g. 7.0.0 or 7.0.0-r1)
+            # specific version tag for every release (e.g. 7.0.0 or 7.0.0-r3)
             type=semver,pattern={{version}}
-            # major/minor shorthand tags – updated on every release (code release and rebuild)
+            # major/minor shorthand for code releases (metadata-action handles these natively)
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            # major/minor shorthand for rebuild releases (explicit raw tags because
+            # metadata-action skips these for semver pre-release versions like 7.0.0-r3)
+            type=raw,value=${{ steps.rebuild_ver.outputs.minor }},enable=${{ contains(github.ref_name, '-r') }}
+            type=raw,value=${{ steps.rebuild_ver.outputs.major }},enable=${{ contains(github.ref_name, '-r') }}
             # latest on every published release (code release or base-image rebuild)
             type=raw,value=latest,enable=${{ github.event_name == 'release' }}
 

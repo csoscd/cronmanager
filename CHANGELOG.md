@@ -25,6 +25,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - `GET /api/v1/jobs/{id}/history`: the `unacknowledged_only` parameter was accepted by the API but never forwarded to the agent — it had no effect since v6.2.0 when it was introduced. Fixed by the `acknowledged_state` refactor.
+- **Test suite: `ProfileControllerAuthTest` and `UserControllerAuthTest` caused silent `exit(0)`**: both test classes set `$_SESSION` with a flat structure (`user_id`, `role` etc. as top-level keys) instead of the nested structure `$_SESSION['_cronmanager_user']['id']` that `SessionManager::getUserId()` / `::getRole()` / `::hasRole()` actually read. The mismatch caused `ProfileController::update()` to treat every test run as unauthenticated and call `Response::redirect('/login')` → `exit(0)`, terminating PHPUnit before the remaining test classes could run.
+
+### Tests
+
+- Added `VersionConsistencyTest`: 16 integration tests that verify `web/VERSION` and `agent/VERSION` are in sync, follow semantic versioning, and that `CHANGELOG.md`, `README.md`, and `API.md` each reference the current version — acts as a release gate.
 
 ---
 

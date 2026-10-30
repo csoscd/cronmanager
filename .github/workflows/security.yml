@@ -110,7 +110,6 @@ jobs:
             --config "p/php" \
             --config "p/owasp-top-ten" \
             --error \
-            --quiet \
             .
         env:
           # Optional: set SEMGREP_APP_TOKEN as a repository secret to enable

@@ -289,7 +289,7 @@ final class MailNotifier
             $e = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 
             $mail->Body    = $this->buildRecoveryHtmlBody($jobId, $description, $linuxUser, $schedule,
-                                 $consecutiveFailures, $startedAt, $finishedAt, $target, $baseUrl, $webAgentId, $e);
+                                 $consecutiveFailures, $startedAt, $finishedAt, $target, $baseUrl, $e, $webAgentId);
             $mail->AltBody = $this->buildRecoveryPlainBody($jobId, $description, $linuxUser, $schedule,
                                  $consecutiveFailures, $startedAt, $finishedAt, $target, $baseUrl, $webAgentId);
             $mail->isHTML(true);
@@ -360,7 +360,7 @@ final class MailNotifier
             $e = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 
             $mail->Body    = $this->buildSilenceHtmlBody($jobId, $description, $schedule,
-                                 $lastStartedAt, $expectedLastRun, $silenceSinceMinutes, $target, $baseUrl, $webAgentId, $e);
+                                 $lastStartedAt, $expectedLastRun, $silenceSinceMinutes, $target, $baseUrl, $e, $webAgentId);
             $mail->AltBody = $this->buildSilencePlainBody($jobId, $description, $schedule,
                                  $lastStartedAt, $expectedLastRun, $silenceSinceMinutes, $target, $baseUrl, $webAgentId);
             $mail->isHTML(true);
@@ -833,16 +833,16 @@ HTML;
     }
 
     private function buildSilenceHtmlBody(
-        int     $jobId,
-        string  $description,
-        string  $schedule,
-        ?string $lastStartedAt,
-        string  $expectedLastRun,
-        int     $silenceSinceMinutes,
+        int      $jobId,
+        string   $description,
+        string   $schedule,
+        ?string  $lastStartedAt,
+        string   $expectedLastRun,
+        int      $silenceSinceMinutes,
         string   $target,
         string   $baseUrl,
-        int      $webAgentId = 0,
         callable $e,
+        int      $webAgentId = 0,
     ): string {
         $targetRow = ($target !== '' && $target !== 'local')
             ? "<tr><th>Target</th><td>{$e($target)}</td></tr>"
@@ -912,8 +912,8 @@ HTML;
         string   $finishedAt,
         string   $target,
         string   $baseUrl,
-        int      $webAgentId = 0,
         callable $e,
+        int      $webAgentId = 0,
     ): string {
         $targetRow = ($target !== '' && $target !== 'local')
             ? "<tr><th>Target</th><td>{$e($target)}</td></tr>"

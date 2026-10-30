@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - `GET /api/v1/jobs/{id}/history`: the `unacknowledged_only` parameter was accepted by the API but never forwarded to the agent — it had no effect since v6.2.0 when it was introduced. Fixed by the `acknowledged_state` refactor.
+- **`MailNotifier`: PHP 8.4 deprecation in `buildSilenceHtmlBody()` and `buildRecoveryHtmlBody()`**: both private methods had an optional parameter (`$webAgentId = 0`) declared before a required parameter (`callable $e`), which is deprecated in PHP 8.4. Fixed by moving `callable $e` before `int $webAgentId = 0` in both signatures and their call sites.
 - **Test suite: `ProfileControllerAuthTest` and `UserControllerAuthTest` caused silent `exit(0)`**: both test classes set `$_SESSION` with a flat structure (`user_id`, `role` etc. as top-level keys) instead of the nested structure `$_SESSION['_cronmanager_user']['id']` that `SessionManager::getUserId()` / `::getRole()` / `::hasRole()` actually read. The mismatch caused `ProfileController::update()` to treat every test run as unauthenticated and call `Response::redirect('/login')` → `exit(0)`, terminating PHPUnit before the remaining test classes could run.
 
 ### Tests

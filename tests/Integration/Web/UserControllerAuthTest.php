@@ -168,10 +168,12 @@ final class UserControllerAuthTest extends IntegrationTestCase
     public function viewerRoleIsNotAuthorizedForAdmin(): void
     {
         $_SESSION = [
-            'authenticated' => true,
-            'user_id'       => 99,
-            'username'      => 'vieweruser',
-            'role'          => 'viewer',
+            '_cronmanager_user' => [
+                'id'       => 99,
+                'username' => 'vieweruser',
+                'role'     => 'viewer',
+                'active'   => 1,
+            ],
         ];
 
         $this->assertFalse(
@@ -188,10 +190,12 @@ final class UserControllerAuthTest extends IntegrationTestCase
     public function operatorRoleIsNotAuthorizedForAdmin(): void
     {
         $_SESSION = [
-            'authenticated' => true,
-            'user_id'       => 98,
-            'username'      => 'opuser',
-            'role'          => 'operator',
+            '_cronmanager_user' => [
+                'id'       => 98,
+                'username' => 'opuser',
+                'role'     => 'operator',
+                'active'   => 1,
+            ],
         ];
 
         $this->assertFalse(
@@ -208,10 +212,12 @@ final class UserControllerAuthTest extends IntegrationTestCase
     public function adminRoleIsAuthorizedForAdmin(): void
     {
         $_SESSION = [
-            'authenticated' => true,
-            'user_id'       => 1,
-            'username'      => 'adminuser',
-            'role'          => 'admin',
+            '_cronmanager_user' => [
+                'id'       => 1,
+                'username' => 'adminuser',
+                'role'     => 'admin',
+                'active'   => 1,
+            ],
         ];
 
         $this->assertTrue(
@@ -243,10 +249,12 @@ final class UserControllerAuthTest extends IntegrationTestCase
         $adminId = $this->seedUser(['role' => 'admin']);
 
         $_SESSION = [
-            'authenticated' => true,
-            'user_id'       => $adminId,
-            'username'      => 'adminuser',
-            'role'          => 'admin',
+            '_cronmanager_user' => [
+                'id'       => $adminId,
+                'username' => 'adminuser',
+                'role'     => 'admin',
+                'active'   => 1,
+            ],
         ];
 
         // Verify the two sub-conditions that make the guard trigger

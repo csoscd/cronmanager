@@ -649,6 +649,60 @@ $hasAnyFilter = $filterSearch !== '' || $hasSecondaryFilter;
                                 <?php else: ?>
                                     <?= htmlspecialchars($desc, ENT_QUOTES, 'UTF-8') ?>
                                 <?php endif; ?>
+                                <?php
+                                    // Dependency chain badges (Option A: compact badges + hover tooltip).
+                                    // Predecessor badge shows direct predecessor; tooltip shows full upstream chain.
+                                    // Each successor gets its own badge with description tooltip.
+                                    $_jid      = (int) $jobId;
+                                    $_chainUp  = [];
+                                    $_cur      = $_jid;
+                                    $_visited  = [];
+                                    while (isset($depPredOf[$_cur]) && !in_array($_cur, $_visited, true)) {
+                                        $_visited[]  = $_cur;
+                                        $_chainUp[]   = $depPredOf[$_cur];
+                                        $_cur          = $depPredOf[$_cur]['id'];
+                                    }
+                                    $_chainUp    = array_reverse($_chainUp);
+                                    $_directPred = !empty($_chainUp) ? end($_chainUp) : null;
+                                    $_succList   = $depSuccOf[$_jid] ?? [];
+                                    $_hasChain   = $_directPred !== null || !empty($_succList);
+
+                                    // Build tooltip text showing full chain context
+                                    if ($_hasChain) {
+                                        $_tipParts = [];
+                                        foreach ($_chainUp as $_s) { $_tipParts[] = '#' . $_s['id']; }
+                                        $_tipParts[] = '[#' . $jobId . ']';
+                                        foreach ($_succList as $_s) { $_tipParts[] = '#' . $_s; }
+                                        $_chainTooltip = implode(' → ', $_tipParts);
+                                    }
+                                ?>
+                                <?php if ($_hasChain): ?>
+                                    <div class="mt-0.5 flex flex-wrap items-center gap-1">
+                                        <?php if ($_directPred !== null): ?>
+                                            <?php $_isPurple = ($_directPred['type'] ?? '') === 'triggered_by'; ?>
+                                            <span title="<?= htmlspecialchars($_chainTooltip, ENT_QUOTES, 'UTF-8') ?>"
+                                                  class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium
+                                                         <?= $_isPurple ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' ?>">
+                                                <?php if ($_isPurple): ?>
+                                                    <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                                <?php else: ?>
+                                                    <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                                                <?php endif; ?>
+                                                <a href="/crons/<?= htmlspecialchars(rawurlencode((string) $_directPred['id']), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
+                                                   class="hover:underline">#<?= (int) $_directPred['id'] ?></a>
+                                            </span>
+                                        <?php endif; ?>
+                                        <?php foreach ($_succList as $_succId): ?>
+                                            <span title="<?= htmlspecialchars(($depJobMeta[$_succId]['desc'] ?? "Job #{$_succId}"), ENT_QUOTES, 'UTF-8') ?>"
+                                                  class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium
+                                                         bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                                <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+                                                <a href="/crons/<?= htmlspecialchars(rawurlencode((string) $_succId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
+                                                   class="hover:underline">#<?= (int) $_succId ?></a>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
                             </td>
 
                             <!-- Linux user (hidden when only one user exists) -->
@@ -662,7 +716,7 @@ $hasAnyFilter = $filterSearch !== '' || $hasSecondaryFilter;
                             <td class="px-4 py-3 text-sm">
                                 <div class="flex flex-wrap gap-1">
                                     <?php foreach ($jobTags as $tag): ?>
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300">
                                             <?= htmlspecialchars((string) $tag, ENT_QUOTES, 'UTF-8') ?>
                                         </span>
                                     <?php endforeach; ?>
@@ -702,7 +756,7 @@ $hasAnyFilter = $filterSearch !== '' || $hasSecondaryFilter;
                             <td class="px-4 py-3 text-sm">
                                 <div class="flex flex-col gap-1">
                                 <?php if ($isActive): ?>
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
                                         <?= htmlspecialchars($t('cron_active'), ENT_QUOTES, 'UTF-8') ?>
                                     </span>
                                     <?php if (!$crontabOk): ?>
@@ -715,7 +769,7 @@ $hasAnyFilter = $filterSearch !== '' || $hasSecondaryFilter;
                                         </span>
                                     <?php endif; ?>
                                 <?php else: ?>
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
                                         <?= htmlspecialchars($t('cron_inactive'), ENT_QUOTES, 'UTF-8') ?>
                                     </span>
                                 <?php endif; ?>
@@ -740,7 +794,7 @@ $hasAnyFilter = $filterSearch !== '' || $hasSecondaryFilter;
                                 </div>
                                 <?php if ($lastAckAt !== null && $exitCode !== null && $exitCode !== 0 && $exitCode !== -4 && $exitCode !== -5): ?>
                                     <div class="mt-1">
-                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300">
                                             <?= htmlspecialchars($t('execution_acknowledged_badge'), ENT_QUOTES, 'UTF-8') ?>
                                         </span>
                                     </div>

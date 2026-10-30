@@ -341,4 +341,86 @@ final class HistoryEndpointTest extends AgentEndpointTestCase
         $bodyZero = $this->callHistory(['status' => 'failed', 'unacknowledged_only' => '0']);
         $this->assertSame(1, (int) ($bodyZero['total'] ?? -1));
     }
+
+    // =========================================================================
+    // 3. acknowledged_state filter (Issue #133)
+    // =========================================================================
+
+    #[Test]
+    public function acknowledgedStateOpenReturnsOnlyUnacknowledgedExecutions(): void
+    {
+        $jobId = $this->seedJob();
+
+        $unacked = $this->seedFinishedExecution($jobId, [
+            'exit_code'       => 1,
+            'started_at'      => '2026-01-15 08:00:00',
+            'acknowledged_at' => null,
+        ]);
+        $this->seedFinishedExecution($jobId, [
+            'exit_code'       => 2,
+            'started_at'      => '2026-01-15 09:00:00',
+            'acknowledged_at' => '2026-01-15 09:05:00',
+        ]);
+
+        $body = $this->callHistory(['acknowledged_state' => 'open']);
+
+        $this->assertSame(1, (int) ($body['total'] ?? -1));
+        $this->assertSame($unacked, (int) $body['data'][0]['execution_id']);
+        $this->assertNull($body['data'][0]['acknowledged_at']);
+    }
+
+    #[Test]
+    public function acknowledgedStateClosedReturnsOnlyAcknowledgedExecutions(): void
+    {
+        $jobId = $this->seedJob();
+
+        $this->seedFinishedExecution($jobId, [
+            'exit_code'       => 1,
+            'started_at'      => '2026-01-15 08:00:00',
+            'acknowledged_at' => null,
+        ]);
+        $acked = $this->seedFinishedExecution($jobId, [
+            'exit_code'       => 2,
+            'started_at'      => '2026-01-15 09:00:00',
+            'acknowledged_at' => '2026-01-15 09:05:00',
+        ]);
+
+        $body = $this->callHistory(['acknowledged_state' => 'closed']);
+
+        $this->assertSame(1, (int) ($body['total'] ?? -1));
+        $this->assertSame($acked, (int) $body['data'][0]['execution_id']);
+        $this->assertNotNull($body['data'][0]['acknowledged_at']);
+    }
+
+    #[Test]
+    public function acknowledgedStateOverridesDeprecatedUnacknowledgedOnly(): void
+    {
+        $jobId = $this->seedJob();
+
+        // acknowledged_state=closed must win over unacknowledged_only=1
+        $acked = $this->seedFinishedExecution($jobId, [
+            'exit_code'       => 1,
+            'started_at'      => '2026-01-15 08:00:00',
+            'acknowledged_at' => '2026-01-15 08:05:00',
+        ]);
+        $this->seedFinishedExecution($jobId, [
+            'exit_code'       => 2,
+            'started_at'      => '2026-01-15 09:00:00',
+            'acknowledged_at' => null,
+        ]);
+
+        $body = $this->callHistory(['acknowledged_state' => 'closed', 'unacknowledged_only' => '1']);
+
+        $this->assertSame(1, (int) ($body['total'] ?? -1));
+        $this->assertSame($acked, (int) $body['data'][0]['execution_id']);
+    }
+
+    #[Test]
+    public function acknowledgedStateInvalidValueReturns400(): void
+    {
+        $body = $this->callHistory(['acknowledged_state' => 'invalid']);
+
+        $this->assertSame(400, AgentResponse::$statusCode);
+        $this->assertStringContainsString('acknowledged_state', (string) ($body['message'] ?? ''));
+    }
 }

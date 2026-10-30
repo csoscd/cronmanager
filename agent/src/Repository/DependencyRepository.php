@@ -228,6 +228,59 @@ final class DependencyRepository
     }
 
     /**
+     * Validate a dependency input array from a Create or Update request.
+     *
+     * Centralises validation that was previously duplicated between
+     * CronCreateEndpoint and CronUpdateEndpoint. Returns an array of field-path
+     * → error-message pairs; an empty array means the input is valid.
+     *
+     * @param array<string, mixed> $dep   Decoded dependency sub-object from the request body.
+     * @param int                  $jobId 0 on create (self-reference check skipped), existing ID on update.
+     *
+     * @return array<string, string> Field-path => error message.
+     */
+    public function validateDependency(array $dep, int $jobId): array
+    {
+        $errors = [];
+
+        if (!isset($dep['predecessor_id']) || !is_int($dep['predecessor_id']) || $dep['predecessor_id'] <= 0) {
+            $errors['dependency.predecessor_id'] = 'Must be a positive integer.';
+        } elseif ($jobId > 0 && (int) $dep['predecessor_id'] === $jobId) {
+            $errors['dependency.predecessor_id'] = 'A job cannot depend on itself.';
+        } else {
+            $stmt = $this->pdo->prepare('SELECT 1 FROM cronjobs WHERE id = :id LIMIT 1');
+            $stmt->execute([':id' => $dep['predecessor_id']]);
+            if ($stmt->fetchColumn() === false) {
+                $errors['dependency.predecessor_id'] = sprintf(
+                    'Job with ID %d does not exist.',
+                    (int) $dep['predecessor_id']
+                );
+            }
+        }
+
+        if (!isset($dep['type']) || !in_array($dep['type'], ['requires', 'triggered_by'], true)) {
+            $errors['dependency.type'] = "Must be 'requires' or 'triggered_by'.";
+        }
+
+        if (isset($dep['exit_codes']) && is_string($dep['exit_codes'])) {
+            $err = self::validateExitCodes($dep['exit_codes']);
+            if ($err !== null) {
+                $errors['dependency.exit_codes'] = $err;
+            }
+        }
+
+        if (isset($dep['max_age_minutes']) && (!is_int($dep['max_age_minutes']) || $dep['max_age_minutes'] <= 0)) {
+            $errors['dependency.max_age_minutes'] = 'Must be a positive integer.';
+        }
+
+        if (isset($dep['trigger_delay_minutes']) && (!is_int($dep['trigger_delay_minutes']) || $dep['trigger_delay_minutes'] < 0)) {
+            $errors['dependency.trigger_delay_minutes'] = 'Must be a non-negative integer.';
+        }
+
+        return $errors;
+    }
+
+    /**
      * Validate a comma-separated exit-code string (e.g. "0", "0,2", "1,2,3").
      *
      * Each segment must be an integer. Returns an error message or null on success.
@@ -253,6 +306,9 @@ final class DependencyRepository
                 return sprintf('"%s" is not a valid exit code (must be an integer).', $part);
             }
             $int = (int) $part;
+            if ($int < 0) {
+                return sprintf('Exit code %d is out of range (must be ≥ 0).', $int);
+            }
             if ($int > 255) {
                 return sprintf('Exit code %d is out of range (must be ≤ 255).', $int);
             }

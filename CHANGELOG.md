@@ -6,6 +6,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [7.1.0] – branch: `feature/v7.1.0`
+
+### Added
+
+- **Dependency visualization in job list and detail page** (Issue #123):
+  - Job list (`/crons`): jobs that are part of a dependency chain now show compact dependency badges below their name. A coloured predecessor badge (purple = triggered\_by, indigo = requires) links to the direct predecessor; its hover tooltip shows the full chain context (`#1 → #3 → [this] → #8, #9`). Each successor gets its own grey badge linking to that job, with the job description as tooltip.
+  - Job detail page: a new **Abhängigkeiten** section appears when the job is part of a chain. It shows the full upstream predecessor chain (from root to this job) and an indented downstream successor tree built from the entire job set.
+  - Implemented without a new agent endpoint: the bidirectional graph (`predOf` / `succOf`) is derived from the full job list already fetched by both controllers. A cycle guard prevents infinite traversal.
+
+- **`acknowledged_state` filter for history and timeline API endpoints** (Issue #133):
+  - `GET /api/v1/jobs/{id}/history` and `GET /api/v1/timeline` now accept `?acknowledged_state=open|closed`.
+  - `open` returns only unacknowledged executions (`acknowledged_at IS NULL`).
+  - `closed` returns only acknowledged executions (`acknowledged_at IS NOT NULL`).
+  - Omitting the parameter returns all executions (default, backwards-compatible).
+  - The existing `unacknowledged_only=1` parameter is kept as a **deprecated alias** for `acknowledged_state=open`.
+
+### Fixed
+
+- `GET /api/v1/jobs/{id}/history`: the `unacknowledged_only` parameter was accepted by the API but never forwarded to the agent — it had no effect since v6.2.0 when it was introduced. Fixed by the `acknowledged_state` refactor.
+- **`MailNotifier`: PHP 8.4 deprecation in `buildSilenceHtmlBody()` and `buildRecoveryHtmlBody()`**: both private methods had an optional parameter (`$webAgentId = 0`) declared before a required parameter (`callable $e`), which is deprecated in PHP 8.4. Fixed by moving `callable $e` before `int $webAgentId = 0` in both signatures and their call sites.
+- **Test suite: `ProfileControllerAuthTest` and `UserControllerAuthTest` caused silent `exit(0)`**: both test classes set `$_SESSION` with a flat structure (`user_id`, `role` etc. as top-level keys) instead of the nested structure `$_SESSION['_cronmanager_user']['id']` that `SessionManager::getUserId()` / `::getRole()` / `::hasRole()` actually read. The mismatch caused `ProfileController::update()` to treat every test run as unauthenticated and call `Response::redirect('/login')` → `exit(0)`, terminating PHPUnit before the remaining test classes could run.
+
+### Tests
+
+- Added `VersionConsistencyTest`: 16 integration tests that verify `web/VERSION` and `agent/VERSION` are in sync, follow semantic versioning, and that `CHANGELOG.md`, `README.md`, and `API.md` each reference the current version — acts as a release gate.
+- Added integration tests for all Issue #128 fixes:
+  - `ExecutionFinishEndpointTest::triggeredByDispatchIsSkippedForRetryExecutions` (Fix #1): verifies trigger-state is not written for `retry_attempt > 0` executions.
+  - `ExecutionStartEndpointTest::triggerStateRowIsConsumedAtomicallyAndSecondCallFallsBackToScheduled` (Fix #2): verifies the `DELETE … RETURNING` atomicity — trigger-state is claimed exactly once; a subsequent call falls back to `trigger_type='scheduled'`.
+  - `DependencyCheckEndpointTest::dbErrorInCheckRequiresReturns500FailClosed` (Fix #3): verifies HTTP 500 (fail-closed) when `checkRequires()` encounters a `PDOException`. Also adds happy-path and unsatisfied-dependency coverage for `DependencyCheckEndpoint` (5 tests total in new `DependencyCheckEndpointTest`).
+  - `ExecuteNowEndpointTest::scheduledAtInResponseMatchesCronScheduleTime` (Fix #5): verifies `scheduled_at` time matches the cron schedule fields.
+  - `CronCreateEndpointTest::createJobWithTriggeredByDependencyIncludesTriggerDelayMinutesInResponse` (Fix #6): verifies `dependency.trigger_delay_minutes` is present in `POST /crons` response.
+  - `DependencyRepositoryTest`: 6 new unit tests for `validateDependency()` (Fix #8): invalid type, self-reference, negative/zero field values, negative exit codes.
+
+### Fixed (Issue #128 – Code Review v7.0.0: Job Dependencies)
+
+- **#128-1 `triggered_by`-jobs fired on every retry** (`ExecutionFinishEndpoint`): downstream jobs now only trigger when `retry_attempt = 0` (root execution). Retries within a chain no longer cause N+1 duplicate downstream executions.
+- **#128-2 Race condition in trigger-state claim** (`ExecutionStartEndpoint`): the non-atomic SELECT + DELETE pair is replaced with a single `DELETE … RETURNING` statement (MariaDB 10.3+). Only one concurrent caller can now claim a trigger-state row; the other falls back to `trigger_type='scheduled'`.
+- **#128-3 Fail-open on DB error in dependency check** (`DependencyCheckEndpoint`): a `PDOException` in `checkRequires()` now returns HTTP 500 instead of `satisfied=true`. The cron-wrapper's existing 5xx retry loop (v2.9.3) will re-check once the DB recovers.
+- **#128-4 Inverted null-check in `json_get_nested()`** (`cron-wrapper.sh`): `!\$v !== null` (always `true`) corrected to `\$v !== null`, so fields with an explicit `null` value are correctly suppressed.
+- **#128-5 `scheduledAt` display time off-by-one** (`ExecuteNowEndpoint`): the UI confirmation timestamp now mirrors `OnceSchedule::compute()`'s safety-margin logic (adds 2 min after second :50) instead of always adding 1 min, so the displayed time matches the actual crontab fire time.
+- **#128-6 `trigger_delay_minutes` missing from POST /crons response** (`CronCreateEndpoint::fetchCreatedJob()`): the field is now included in the `dependency` object of create responses, consistent with GET and PUT.
+- **#128-7 `validateExitCodes` accepted negative values** (`DependencyRepository`): exit codes below 0 are now rejected with a clear error message. Internal sentinels (−4, −7) are not valid user-configurable dependency criteria.
+- **#128-8 `validateDependency()` duplicated in Create and Update endpoints**: the ~50-line method was ported to `DependencyRepository::validateDependency()` and both endpoints now delegate to it. A single maintenance point prevents the divergence that caused the v4.4.4 HMAC incident.
+
+### Changed
+
+- **Dark mode: Tailwind CSS now responds to the `.theme-dark` class** (nav-bar toggle) instead of the OS-level `prefers-color-scheme` media query. `tailwind.config.js` updated from the implicit `media` default to `darkMode: ['class', '.theme-dark']`; Tailwind CSS rebuilt.
+- **Dark-mode badge contrast** fixed in job list, timeline and detail history:
+  - „Inaktiv" status badge: added missing `dark:bg-gray-700 dark:text-gray-300`.
+  - „Aktiv" status badge: added missing `dark:bg-green-900 dark:text-green-300`.
+  - Tag badges: added missing `dark:bg-purple-900 dark:text-purple-300`.
+  - „Bestätigt" (acknowledged) badges (list, timeline, detail history rows): improved contrast from `dark:text-gray-400` to `dark:text-gray-300`.
+
+---
+
 ## [7.0.0] – branch: `feature/job-dependencies`
 
 ### Added

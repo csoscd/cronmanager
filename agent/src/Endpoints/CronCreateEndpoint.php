@@ -472,53 +472,7 @@ final class CronCreateEndpoint
      */
     private function validateDependency(array $dep, int $jobId): array
     {
-        $errors = [];
-
-        // predecessor_id: required positive integer
-        if (!isset($dep['predecessor_id']) || !is_int($dep['predecessor_id']) || $dep['predecessor_id'] <= 0) {
-            $errors['dependency.predecessor_id'] = 'Must be a positive integer.';
-        } elseif ($jobId > 0 && (int) $dep['predecessor_id'] === $jobId) {
-            $errors['dependency.predecessor_id'] = 'A job cannot depend on itself.';
-        } else {
-            // Verify predecessor exists
-            $stmt = $this->pdo->prepare('SELECT 1 FROM cronjobs WHERE id = :id LIMIT 1');
-            $stmt->execute([':id' => $dep['predecessor_id']]);
-            if ($stmt->fetchColumn() === false) {
-                $errors['dependency.predecessor_id'] = sprintf(
-                    'Job with ID %d does not exist.',
-                    (int) $dep['predecessor_id']
-                );
-            }
-        }
-
-        // type: required, must be 'requires' or 'triggered_by'
-        if (!isset($dep['type']) || !in_array($dep['type'], ['requires', 'triggered_by'], true)) {
-            $errors['dependency.type'] = "Must be 'requires' or 'triggered_by'.";
-        }
-
-        // exit_codes: optional, defaults to '0' – validate when present
-        if (isset($dep['exit_codes']) && is_string($dep['exit_codes'])) {
-            $exitErr = DependencyRepository::validateExitCodes($dep['exit_codes']);
-            if ($exitErr !== null) {
-                $errors['dependency.exit_codes'] = $exitErr;
-            }
-        }
-
-        // max_age_minutes: optional, only for 'requires', must be positive int
-        if (isset($dep['max_age_minutes'])) {
-            if (!is_int($dep['max_age_minutes']) || $dep['max_age_minutes'] <= 0) {
-                $errors['dependency.max_age_minutes'] = 'Must be a positive integer.';
-            }
-        }
-
-        // trigger_delay_minutes: optional, only for 'triggered_by', must be non-negative int
-        if (isset($dep['trigger_delay_minutes'])) {
-            if (!is_int($dep['trigger_delay_minutes']) || $dep['trigger_delay_minutes'] < 0) {
-                $errors['dependency.trigger_delay_minutes'] = 'Must be a non-negative integer.';
-            }
-        }
-
-        return $errors;
+        return $this->deps->validateDependency($dep, $jobId);
     }
 
     /**
@@ -754,10 +708,11 @@ final class CronCreateEndpoint
             'created_at'               => (string) $row['created_at'],
             'tags'                     => $tags,
             'dependency'               => $dep !== null ? [
-                'predecessor_id'   => (int)    $dep['predecessor_id'],
-                'type'             => (string) $dep['type'],
-                'exit_codes'       => (string) $dep['exit_codes'],
-                'max_age_minutes'  => $dep['max_age_minutes'] !== null ? (int) $dep['max_age_minutes'] : null,
+                'predecessor_id'        => (int)    $dep['predecessor_id'],
+                'type'                  => (string) $dep['type'],
+                'exit_codes'            => (string) $dep['exit_codes'],
+                'max_age_minutes'       => $dep['max_age_minutes'] !== null ? (int) $dep['max_age_minutes'] : null,
+                'trigger_delay_minutes' => $dep['trigger_delay_minutes'] !== null ? (int) $dep['trigger_delay_minutes'] : null,
             ] : null,
         ];
     }

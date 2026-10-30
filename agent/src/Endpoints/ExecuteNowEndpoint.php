@@ -147,9 +147,14 @@ final class ExecuteNowEndpoint
         // 3. Compute full-date schedule for next minute via OnceSchedule::compute()
         // ------------------------------------------------------------------
 
-        $tz          = OnceSchedule::timezone();
-        $schedule    = OnceSchedule::compute();
-        $scheduledAt = (new \DateTime('+1 minute', $tz))->format('H:i') . ' on ' . (new \DateTime('now', $tz))->format('d.m.Y');
+        $tz           = OnceSchedule::timezone();
+        $now          = new \DateTime('now', $tz);
+        $schedule     = OnceSchedule::compute();
+        // Mirror OnceSchedule::compute()'s safety-margin logic so the display time
+        // matches the actual crontab fire time (compute() adds 2 min after second :50).
+        $safetyMargin = (int) $now->format('s') > 50 ? 2 : 1;
+        $scheduledAt  = (clone $now)->modify('+' . $safetyMargin . ' minutes')->format('H:i')
+            . ' on ' . $now->format('d.m.Y');
 
         // ------------------------------------------------------------------
         // 4. Add once-only crontab entries

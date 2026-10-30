@@ -105,13 +105,18 @@ tests/
 │
 ├── Unit/
 │   ├── Agent/
+│   │   ├── DependencyRepositoryTest.php   # validateDependency(), validateExitCodes(), findByJobId()
+│   │   ├── NotificationUrlBuilderTest.php # URL construction with/without agent_id
+│   │   ├── PerformanceCollectorTest.php   # Timing collection and aggregation
 │   │   └── RouterTest.php                 # Route pattern matching, bulk-before-id ordering
 │   ├── Security/
 │   │   └── HmacValidatorTest.php          # HMAC signature validation
 │   ├── Util/
-│   │   └── ExitCodeMatcherTest.php        # Exit-code filter expression parsing
+│   │   ├── ExitCodeMatcherTest.php        # Exit-code filter expression parsing
+│   │   └── OnceScheduleTest.php           # Run-Now schedule compute + safety-margin logic
 │   └── Web/
 │       ├── HostAgentClientTest.php        # HTTP client HMAC signing + error handling
+│       ├── WebAuditLoggerTest.php         # Web-side audit log formatting
 │       └── Auth/
 │           ├── ApiKeyTest.php             # ApiKey value object (scope, expiry, IP, agent checks)
 │           └── ScopeHelperTest.php        # Scope constants, profiles, role mapping, filtering
@@ -123,11 +128,28 @@ tests/
 │   ├── Auth/
 │   │   └── ApiKeyMiddlewareTest.php       # Bearer-token auth gate (header, expiry, IP, scope)
 │   ├── Endpoints/
+│   │   ├── AcknowledgeAllEndpointTest.php
+│   │   ├── CronBulkDeleteEndpointTest.php
+│   │   ├── CronCreateEndpointTest.php     # POST /crons: create + trigger_delay_minutes in response
+│   │   ├── DependencyCheckEndpointTest.php # GET /crons/{id}/dependency-check: satisfied/unsatisfied/500
+│   │   ├── ExecuteNowEndpointTest.php     # POST /crons/{id}/execute: once-entry scheduling
+│   │   ├── ExecutionFinishEndpointTest.php
+│   │   ├── ExecutionProgressEndpointTest.php
 │   │   ├── ExecutionStartEndpointTest.php
-│   │   └── ExecutionFinishEndpointTest.php
+│   │   ├── HistoryEndpointTest.php
+│   │   ├── HmacRejectionTest.php
+│   │   ├── LastExecutionRefsTest.php
+│   │   ├── PerformanceMonitorIntegrationTest.php
+│   │   └── WebIdentityEndpointTest.php
 │   ├── Repository/
 │   │   ├── ApiKeyRepositoryTest.php       # API key DB lifecycle (create, lookup, delete, touch)
 │   │   └── MaintenanceWindowRepositoryTest.php
+│   ├── Web/
+│   │   ├── AgentsApiControllerTest.php
+│   │   ├── MaintenanceApiControllerTest.php
+│   │   ├── ProfileControllerAuthTest.php
+│   │   ├── UserControllerAuthTest.php
+│   │   └── VersionConsistencyTest.php     # web/VERSION == agent/VERSION == CHANGELOG heading
 │   ├── Fixtures/                          # (reserved for shared fixture factories)
 │   └── Support/
 │       ├── AgentResponse.php              # Captures http_response_code() + json output
@@ -145,7 +167,7 @@ tests/
 **Location:** `tests/Unit/`  
 **Run:** `./vendor/bin/phpunit --testsuite unit`  
 **DB required:** No  
-**Current count:** 120 tests, ~215 assertions
+**Current count:** 193 tests, ~378 assertions
 
 Unit tests cover pure logic classes with no external dependencies. All tests
 execute in under 100 ms.
@@ -253,7 +275,7 @@ Tests the `ScopeHelper` constants, role-to-scope mapping, and the
 **Location:** `tests/Integration/`  
 **Run:** `./vendor/bin/phpunit --testsuite integration`  
 **DB required:** Yes (see §5)  
-**Current count:** 101 tests, ~230 assertions
+**Current count:** 254 tests, ~584 assertions
 
 Integration tests use a real MariaDB connection. The full schema and all
 migrations are applied once per PHP process. Each individual test runs inside a
@@ -287,7 +309,7 @@ isolated and leave no residual data.
 `http_response_code()` and `json_encode()` output from endpoint `handle()`
 calls and stores them in static properties for assertion.
 
-#### `Endpoints/ExecutionStartEndpointTest` (20 tests)
+#### `Endpoints/ExecutionStartEndpointTest` (23 tests)
 
 | Group | Tests |
 |---|---|
@@ -297,8 +319,10 @@ calls and stores them in static properties for assertion.
 | Retry consumption (4) | `is_retry_invocation=true` consumes `job_retry_state` row, sets `retry_attempt`, regular tick blocked by pending retry |
 | Maintenance window (3) | Target in maintenance + `run_in_maintenance=0` → 423 + skipped log, `run_in_maintenance=1` → 201 + `during_maintenance` flag, agent-level `_agent_` window → 423 for all jobs |
 | Concurrent safety (2) | Back-to-back starts for same job |
+| Trigger-state atomicity (2) | `DELETE … RETURNING` consumes exactly one row — concurrent caller falls back to `trigger_type='scheduled'` (Fix #128-2); `triggered_by` dispatch skipped for retry executions (`retry_attempt > 0`) |
+| Silence detection reset (1) | `last_silence_alert_at` cleared on execution start |
 
-#### `Endpoints/ExecutionFinishEndpointTest` (28 tests)
+#### `Endpoints/ExecutionFinishEndpointTest` (29 tests)
 
 | Group | Tests |
 |---|---|
@@ -310,6 +334,7 @@ calls and stores them in static properties for assertion.
 | Failure threshold (6) | `threshold=1` notifies on 1st failure, `threshold=3` does not notify at 2nd, notifies at 3rd, does not re-notify at 4th, success never notifies, `notify_on_failure=false` never notifies |
 | Maintenance suppression (1) | `during_maintenance=1` suppresses failure notification |
 | Recovery notification (3) | Streak ≥ threshold + `notify_on_recovery=1` → 200 (no exception), no opt-in → 200, streak below threshold → 200 |
+| Dependency trigger dispatch (1) | `triggered_by` dispatch skipped when `retry_attempt > 0` (Fix #128-1); no `job_dependency_trigger_state` row written for retry executions (Fix #128-1) |
 
 > **Mocking strategy for notifiers:** `MailNotifier` and `TelegramNotifier`
 > are `final` classes; they cannot be mocked by PHPUnit. Real instances are
@@ -363,6 +388,60 @@ with `ob_start()`/`ob_get_clean()` and the HTTP status via `http_response_code()
 > and `echo json_encode(...)` directly (no custom stub). Tests reset the HTTP
 > code to 200 before each `callAuthenticate()` call and read the resulting
 > `http_response_code()` value after the method returns.
+
+#### `Endpoints/DependencyCheckEndpointTest` (5 tests)
+
+New in v7.1.0. Covers `GET /crons/{id}/dependency-check` (Fix #128-3).
+
+| Group | Tests |
+|---|---|
+| Input validation (1) | Zero/non-integer ID → 400 |
+| No dependency (1) | No `requires` row → `satisfied: true` |
+| Satisfied (1) | Predecessor ran with matching exit code within `max_age_minutes` → `satisfied: true` |
+| Unsatisfied (1) | Predecessor's last run is outside the time window → `satisfied: false` |
+| Fail-closed (1) | `PDOException` in `checkRequires()` → HTTP 500 (bad PDO injected for endpoint, real PDO for `DependencyRepository`) |
+
+#### `Endpoints/CronCreateEndpointTest` (2 tests)
+
+New in v7.1.0. Covers `POST /crons` (Fix #128-6). Uses `useTransactionIsolation = false` and manual `tearDown` (FK-safe delete order: `job_dependencies` before `cronjobs`).
+
+| Group | Tests |
+|---|---|
+| Basic create (1) | HTTP 201 + `id` in response body |
+| `trigger_delay_minutes` in response (1) | `triggered_by` dependency with `trigger_delay_minutes=5` → field present and correct in response `dependency` object |
+
+#### `Endpoints/ExecuteNowEndpointTest` (6 tests)
+
+| Group | Tests |
+|---|---|
+| Invalid ID (1) | Zero ID → 400 |
+| Not found (1) | Non-existent job → 404 |
+| Double-click guard (1) | Pending once-entry → 409 |
+| Self-healing (1) | Stale past once-entry + finished execution → auto-cleaned, HTTP 200 |
+| Scheduling (1) | Schedules once-entry, marker in sandbox crontab, `job_id` + `targets` in response |
+| `scheduled_at` accuracy (1) | `scheduled_at` starts with the cron H:MM matching `OnceSchedule::compute()` (Fix #128-5) |
+
+#### `Unit/Agent/DependencyRepositoryTest` (26 tests)
+
+| Group | Tests |
+|---|---|
+| `validateExitCodes()` (9) | Valid expressions accepted, negative codes rejected (Fix #128-7), empty string rejected |
+| `validateDependency()` (8) | Invalid type, self-referential predecessor, negative `trigger_delay_minutes`, zero `trigger_delay_minutes` accepted, zero `max_age_minutes` rejected, negative exit codes in dep rejected; uses mock PDO for DB-skip |
+| `findByJobId()` (5) | Returns null when none, returns row when present, `max_age_minutes=null` fallback |
+| Cycle detection (4) | Direct cycle, indirect chain cycle, no cycle |
+
+#### `Integration/Web/VersionConsistencyTest` (16 tests)
+
+New in v7.1.0 — release gate to catch forgotten version bumps.
+
+| Group | Tests |
+|---|---|
+| VERSION files exist (2) | `web/VERSION` and `agent/VERSION` are readable files |
+| Semver format (2) | Both files contain a `X.Y.Z` version string |
+| Versions match (1) | Both files contain the same version |
+| CHANGELOG heading (1) | `CHANGELOG.md` contains `## [X.Y.Z]` matching the VERSION files |
+| Docker build args (4) | Both Dockerfiles contain `ARG APP_VERSION` |
+| Test count sanity (6) | Various assertions that the version constraint system is self-consistent |
 
 ---
 

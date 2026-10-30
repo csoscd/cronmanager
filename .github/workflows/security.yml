@@ -91,10 +91,10 @@ jobs:
       - name: Set up Python (for Semgrep CLI)
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.12'
 
       - name: Install Semgrep
-        run: pip install semgrep --quiet
+        run: pip install semgrep==1.183.0 --quiet
 
       # Rules used:
       #   p/php          – PHP-specific security rules (injection, XSS, open redirect, …)

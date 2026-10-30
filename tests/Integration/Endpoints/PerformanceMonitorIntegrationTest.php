@@ -27,6 +27,7 @@ namespace Tests\Integration\Endpoints;
 use Cronmanager\Agent\Cron\CrontabManager;
 use Cronmanager\Agent\Endpoints\CronListEndpoint;
 use Cronmanager\Agent\Endpoints\HistoryEndpoint;
+use Cronmanager\Agent\Repository\DependencyRepository;
 use PDO;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Integration\Base\AgentEndpointTestCase;
@@ -55,7 +56,7 @@ final class PerformanceMonitorIntegrationTest extends AgentEndpointTestCase
             'UPDATE cronjobs SET last_execution_id = :e, last_finished_execution_id = :f WHERE id = :id'
         )->execute([':e' => $latest, ':f' => $latest, ':id' => $jobId]);
 
-        $endpoint = new CronListEndpoint($this->pdo, $this->createNullLogger(), $this->makeCrontabManager());
+        $endpoint = new CronListEndpoint($this->pdo, $this->createNullLogger(), $this->makeCrontabManager(), new DependencyRepository($this->pdo));
         $endpoint->handle([]);
 
         $body = \Tests\Support\AgentResponse::$body;
@@ -76,7 +77,7 @@ final class PerformanceMonitorIntegrationTest extends AgentEndpointTestCase
         $jobId = $this->seedJob();
         $this->seedJobTarget($jobId);
 
-        $endpoint = new CronListEndpoint($this->pdo, $this->createNullLogger(), $this->makeCrontabManager());
+        $endpoint = new CronListEndpoint($this->pdo, $this->createNullLogger(), $this->makeCrontabManager(), new DependencyRepository($this->pdo));
         $endpoint->handle([]);
 
         $jobs = \Tests\Support\AgentResponse::$body['data'] ?? [];

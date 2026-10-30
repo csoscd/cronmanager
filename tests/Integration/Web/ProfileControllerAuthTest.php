@@ -136,12 +136,16 @@ final class ProfileControllerAuthTest extends IntegrationTestCase
         // Seed a viewer user: role='viewer', active=1 (DB default)
         $userId = $this->seedUser(['role' => 'viewer']);
 
-        // Simulate a logged-in session for this user
+        // Simulate a logged-in session for this user.
+        // SessionManager::getUserId() reads $_SESSION['_cronmanager_user']['id'],
+        // so the nested structure is required here.
         $_SESSION = [
-            'authenticated' => true,
-            'user_id'       => $userId,
-            'username'      => 'vieweruser',
-            'role'          => 'viewer',
+            '_cronmanager_user' => [
+                'id'       => $userId,
+                'username' => 'vieweruser',
+                'role'     => 'viewer',
+                'active'   => 1,
+            ],
         ];
 
         // Attacker-like POST: includes role=admin and active=0 alongside an

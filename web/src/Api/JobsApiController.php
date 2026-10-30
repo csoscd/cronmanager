@@ -447,11 +447,17 @@ final class JobsApiController extends BaseApiController
 
         ['limit' => $limit, 'offset' => $offset] = $this->pagination();
 
+        $acknowledgedState = $this->resolveAcknowledgedState();
+        if ($acknowledgedState === false) {
+            return;
+        }
+
         $query = array_filter([
-            'job_id' => (string) $id,
-            'status' => $_GET['status'] ?? null,
-            'limit'  => (string) $limit,
-            'offset' => (string) $offset,
+            'job_id'              => (string) $id,
+            'status'              => isset($_GET['status']) && $_GET['status'] !== '' ? (string) $_GET['status'] : null,
+            'acknowledged_state'  => $acknowledgedState,
+            'limit'               => (string) $limit,
+            'offset'              => (string) $offset,
         ], fn($v) => $v !== null);
 
         $response = $this->agentGet($agent, '/history', $query);
@@ -602,11 +608,17 @@ final class JobsApiController extends BaseApiController
             return;
         }
 
+        $acknowledgedState = $this->resolveAcknowledgedState();
+        if ($acknowledgedState === false) {
+            return;
+        }
+
         $query = array_filter([
-            'status' => $status,
-            'tag'    => $_GET['tag'] ?? null,
-            'limit'  => (string) $limit,
-            'offset' => (string) $offset,
+            'status'             => $status,
+            'tag'                => isset($_GET['tag']) && $_GET['tag'] !== '' ? (string) $_GET['tag'] : null,
+            'acknowledged_state' => $acknowledgedState,
+            'limit'              => (string) $limit,
+            'offset'             => (string) $offset,
         ], fn($v) => $v !== null);
 
         $response = $this->agentGet($agent, '/history', $query);
@@ -618,5 +630,31 @@ final class JobsApiController extends BaseApiController
         $count = $response['count'] ?? count((array) $data);
 
         $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $this->paginated((array) $data, (int) $count, $limit, $offset)));
+    }
+
+    /**
+     * Resolve the acknowledged_state query parameter for history/timeline endpoints.
+     *
+     * Accepts the semantic `acknowledged_state=open|closed` parameter and the
+     * deprecated `unacknowledged_only=1` alias. Returns the resolved state string
+     * to forward to the agent, null when no filter is requested, or false when
+     * validation fails (response has already been sent).
+     *
+     * @return string|null|false  "open"|"closed"|null on success; false on validation error.
+     */
+    private function resolveAcknowledgedState(): string|null|false
+    {
+        $stateRaw           = isset($_GET['acknowledged_state']) && $_GET['acknowledged_state'] !== ''
+            ? (string) $_GET['acknowledged_state']
+            : null;
+        $unacknowledgedOnly = isset($_GET['unacknowledged_only']) && $_GET['unacknowledged_only'] === '1';
+
+        if ($stateRaw !== null && !in_array($stateRaw, ['open', 'closed'], strict: true)) {
+            $this->jsonError(400, 'Bad Request', 'Parameter "acknowledged_state" must be one of: open, closed.');
+            return false;
+        }
+
+        // acknowledged_state takes precedence; fall back to deprecated alias
+        return $stateRaw ?? ($unacknowledgedOnly ? 'open' : null);
     }
 }

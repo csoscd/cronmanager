@@ -397,7 +397,7 @@ Check whether a job's dependency is currently satisfied.  No scope required (int
 { "satisfied": false, "reason": "No qualifying predecessor execution found within 60 minutes" }
 ```
 
-Fails open: returns `satisfied: true` when the job has no dependency, has a `triggered_by` dependency, or when the database is unreachable.
+Returns `satisfied: true` when the job has no dependency or has a `triggered_by` dependency (no runtime gate). Returns HTTP 500 (fail-closed) when the database is unreachable during a `requires`-dependency check — the cron-wrapper's retry loop (v2.9.3) will retry and succeed once the DB recovers.
 
 ---
 
@@ -552,7 +552,8 @@ Execution history for a specific job.
 | `limit` | Page size (default: 50, max: 500) |
 | `offset` | Pagination offset |
 | `status` | Filter: `success`, `failed`, `running`, `skipped`. `failed` excludes maintenance-skipped entries (exit_code -4); use `skipped` to retrieve those. |
-| `unacknowledged_only` | `1` = only return executions where `acknowledged_at` is null |
+| `acknowledged_state` | `open` = only unacknowledged (`acknowledged_at IS NULL`); `closed` = only acknowledged (`acknowledged_at IS NOT NULL`); omitted = all (default). |
+| `unacknowledged_only` | **Deprecated.** `1` is an alias for `acknowledged_state=open`. Ignored when `acknowledged_state` is also present. |
 
 **Response 200:**
 
@@ -990,6 +991,7 @@ Execution history across all jobs.
 | `offset` | Pagination offset |
 | `status` | Filter: `success`, `failed`, `running`, `skipped`. `failed` excludes maintenance-skipped entries (exit_code -4); use `skipped` to retrieve those. |
 | `tag` | Filter by job tag |
+| `acknowledged_state` | `open` = only unacknowledged (`acknowledged_at IS NULL`); `closed` = only acknowledged (`acknowledged_at IS NOT NULL`); omitted = all (default). |
 
 **Response 200:**
 
@@ -1219,6 +1221,7 @@ to 60 seconds of delay before the daemon picks up the entry.
 
 | Version | Change |
 |---|---|
+| 7.1.0 | Added `acknowledged_state=open\|closed` query parameter to `GET /api/v1/jobs/{id}/history` (§8) and `GET /api/v1/timeline` (§13); `unacknowledged_only=1` is now a deprecated alias for `acknowledged_state=open`; fixed: `unacknowledged_only` was previously accepted but never forwarded to the agent. Fixed: `POST /api/v1/jobs` (create) response now includes `trigger_delay_minutes` in the `dependency` object (was absent; #128-6). Fixed: `dependency.exit_codes` validation now rejects negative values (was silently accepted; #128-7). |
 | 6.2.0 | Added `unacknowledged_only` query parameter to `GET /api/v1/jobs/{id}/history` (§8); filters to executions where `acknowledged_at IS NULL` |
 | 6.0.0 | Added `POST /api/v1/executions/{id}/acknowledge` and `DELETE /api/v1/executions/{id}/acknowledge` (§16); new scope `executions:acknowledge` (operator profile and above); `acknowledged_at` and `acknowledged_by_user_id` fields added to execution history objects; two new audit-log event types `execution.acknowledged` / `execution.unacknowledged` |
 | 4.8.0 | Added `GET /api/v1/targets` (§9) — distinct execution targets with job counts; optional `?active=` filter. Added `GET /api/v1/linux-users` (§9) — available Linux users for cron scheduling; includes `docker_mode` flag. Added three maintenance operation endpoints (§11): `POST /api/v1/maintenance/logs/purge`, `POST /api/v1/maintenance/history/cleanup` (optional `older_than_days`), `POST /api/v1/maintenance/once/cleanup`. All require `maintenance:write` scope. |

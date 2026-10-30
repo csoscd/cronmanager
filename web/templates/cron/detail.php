@@ -34,6 +34,9 @@ $user          = (string) ($job['linux_user']     ?? '');
 $sched         = $job['schedule'] !== null ? (string) $job['schedule'] : '';
 $scheduleHuman = isset($scheduleHuman) ? (string) $scheduleHuman : '';
 $dep           = (isset($job['dependency']) && is_array($job['dependency'])) ? $job['dependency'] : null;
+$upstreamChain  = isset($upstreamChain)  && is_array($upstreamChain)  ? $upstreamChain  : [];
+$downstreamTree = isset($downstreamTree) && is_array($downstreamTree) ? $downstreamTree : [];
+$depJobMeta     = isset($depJobMeta)     && is_array($depJobMeta)     ? $depJobMeta     : [];
 $command       = (string) ($job['command']        ?? '');
 $jobTags       = (array)  ($job['tags']            ?? []);
 $jobTargets    = (array)  ($job['targets']         ?? ['local']);
@@ -455,6 +458,50 @@ $ackErrorKey   = \Cronmanager\Web\Session\SessionManager::flash('_flash_ack_erro
 
     </div>
 </div>
+
+<!-- ======================================================================
+     Dependency visualization section (#123)
+     Only rendered when the job is part of a dependency chain.
+     ====================================================================== -->
+<?php if (!empty($upstreamChain) || !empty($downstreamTree)): ?>
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
+    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-200">Abhängigkeiten</h2>
+    </div>
+    <div class="px-6 py-4 space-y-5">
+
+        <?php if (!empty($upstreamChain)): ?>
+        <div>
+            <h3 class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Vorgänger-Kette</h3>
+            <div class="flex flex-wrap items-center gap-x-1 gap-y-1 text-sm">
+                <?php foreach ($upstreamChain as $_step): ?>
+                    <a href="/crons/<?= htmlspecialchars(rawurlencode((string) $_step['id']), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
+                       class="<?= ($_step['type'] ?? '') === 'triggered_by' ? 'text-purple-600 dark:text-purple-400' : 'text-indigo-600 dark:text-indigo-400' ?> hover:underline font-medium">#<?= (int) $_step['id'] ?><?php if (($_step['desc'] ?? '') !== '' && $_step['desc'] !== "Job #{$_step['id']}"): ?> <span class="font-normal text-xs text-gray-400 dark:text-gray-500"><?= htmlspecialchars($_step['desc'], ENT_QUOTES, 'UTF-8') ?></span><?php endif; ?></a>
+                    <span class="text-gray-400 dark:text-gray-500 select-none">→</span>
+                <?php endforeach; ?>
+                <span class="font-semibold text-gray-800 dark:text-gray-200">#<?= htmlspecialchars($jobId, ENT_QUOTES, 'UTF-8') ?> <span class="font-normal text-xs text-gray-400 dark:text-gray-500">(dieser Job)</span></span>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <?php if (!empty($downstreamTree)): ?>
+        <div>
+            <h3 class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Nachfolger</h3>
+            <ul class="space-y-1 text-sm">
+                <?php foreach ($downstreamTree as $_node): ?>
+                <li class="flex items-center gap-1" style="padding-left: <?= (($_node['depth'] - 1) * 1.5) ?>rem">
+                    <span class="text-gray-400 dark:text-gray-500 flex-shrink-0 select-none">└─</span>
+                    <a href="/crons/<?= htmlspecialchars(rawurlencode((string) $_node['id']), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
+                       class="text-blue-600 hover:underline">#<?= (int) $_node['id'] ?><?php if (($_node['desc'] ?? '') !== '' && $_node['desc'] !== "Job #{$_node['id']}"): ?> <span class="text-gray-500 dark:text-gray-400 text-xs"><?= htmlspecialchars($_node['desc'], ENT_QUOTES, 'UTF-8') ?></span><?php endif; ?></a>
+                </li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+        <?php endif; ?>
+
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- ======================================================================
      Execution history section

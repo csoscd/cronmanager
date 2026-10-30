@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Dependency visualization in job list and detail page** (Issue #123):
+  - Job list (`/crons`): jobs that are part of a dependency chain now show compact dependency badges below their name. A coloured predecessor badge (purple = triggered\_by, indigo = requires) links to the direct predecessor; its hover tooltip shows the full chain context (`#1 → #3 → [this] → #8, #9`). Each successor gets its own grey badge linking to that job, with the job description as tooltip.
+  - Job detail page: a new **Abhängigkeiten** section appears when the job is part of a chain. It shows the full upstream predecessor chain (from root to this job) and an indented downstream successor tree built from the entire job set.
+  - Implemented without a new agent endpoint: the bidirectional graph (`predOf` / `succOf`) is derived from the full job list already fetched by both controllers. A cycle guard prevents infinite traversal.
+
 - **`acknowledged_state` filter for history and timeline API endpoints** (Issue #133):
   - `GET /api/v1/jobs/{id}/history` and `GET /api/v1/timeline` now accept `?acknowledged_state=open|closed`.
   - `open` returns only unacknowledged executions (`acknowledged_at IS NULL`).

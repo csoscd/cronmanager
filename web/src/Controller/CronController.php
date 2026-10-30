@@ -254,6 +254,37 @@ class CronController extends BaseController
         }
         unset($job);
 
+        // Build bidirectional dependency graph from ALL jobs (not just the current page)
+        // so the chain display in the list template can walk predecessor/successor links.
+        $depPredOf  = [];  // job_id => ['id', 'desc', 'type']
+        $depSuccOf  = [];  // job_id => [successor_job_id, ...]
+        $depJobMeta = [];  // job_id => ['desc']
+        foreach ($allJobs as $_dj) {
+            $_djid = (int) ($_dj['id'] ?? 0);
+            if ($_djid <= 0) {
+                continue;
+            }
+            $depJobMeta[$_djid] = ['desc' => (string) ($_dj['description'] ?? "Job #{$_djid}")];
+            if (!isset($depSuccOf[$_djid])) {
+                $depSuccOf[$_djid] = [];
+            }
+            $_dep = is_array($_dj['dependency'] ?? null) ? $_dj['dependency'] : null;
+            if ($_dep !== null) {
+                $_pid = (int) ($_dep['predecessor_id'] ?? 0);
+                if ($_pid > 0) {
+                    $depPredOf[$_djid] = [
+                        'id'   => $_pid,
+                        'desc' => (string) ($_dep['predecessor_description'] ?? "Job #{$_pid}"),
+                        'type' => (string) ($_dep['type'] ?? ''),
+                    ];
+                    if (!isset($depSuccOf[$_pid])) {
+                        $depSuccOf[$_pid] = [];
+                    }
+                    $depSuccOf[$_pid][] = $_djid;
+                }
+            }
+        }
+
         $this->render('cron/list.php', $this->translator()->t('crons_title'), [
             'jobs'                  => $pagedJobs,
             'tags'                  => $tags,
@@ -273,6 +304,9 @@ class CronController extends BaseController
             'totalJobs'             => $totalJobs,
             'totalPages'            => $totalPages,
             'targetsInMaintenance'  => $targetsInMaintenance,
+            'depPredOf'             => $depPredOf,
+            'depSuccOf'             => $depSuccOf,
+            'depJobMeta'            => $depJobMeta,
         ], '/crons');
     }
 
@@ -488,13 +522,15 @@ class CronController extends BaseController
         }
 
         try {
-            // One parallel batch instead of two sequential roundtrips
+            // One parallel batch: current job, recent history, all jobs (for dependency graph)
             $results = $agent->getMultiple([
                 'job'     => ['path' => '/crons/' . rawurlencode($id)],
                 'history' => ['path' => '/history', 'query' => ['job_id' => $id, 'limit' => 20]],
+                'alljobs' => ['path' => '/crons'],
             ]);
-            $job     = $results['job'];
-            $history = $results['history']['data'] ?? [];
+            $job         = $results['job'];
+            $history     = $results['history']['data'] ?? [];
+            $allJobsList = $results['alljobs']['data'] ?? [];
         } catch (\RuntimeException $e) {
             $this->logger->error('CronController::show: agent request failed', [
                 'id'      => $id,
@@ -509,12 +545,79 @@ class CronController extends BaseController
             return;
         }
 
+        // Build bidirectional dependency graph for the detail-page dependency section.
+        $depPredOf  = [];
+        $depSuccOf  = [];
+        $depJobMeta = [];
+        foreach ($allJobsList as $_dj) {
+            $_djid = (int) ($_dj['id'] ?? 0);
+            if ($_djid <= 0) {
+                continue;
+            }
+            $depJobMeta[$_djid] = ['desc' => (string) ($_dj['description'] ?? "Job #{$_djid}")];
+            if (!isset($depSuccOf[$_djid])) {
+                $depSuccOf[$_djid] = [];
+            }
+            $_dep = is_array($_dj['dependency'] ?? null) ? $_dj['dependency'] : null;
+            if ($_dep !== null) {
+                $_pid = (int) ($_dep['predecessor_id'] ?? 0);
+                if ($_pid > 0) {
+                    $depPredOf[$_djid] = [
+                        'id'   => $_pid,
+                        'desc' => (string) ($_dep['predecessor_description'] ?? "Job #{$_pid}"),
+                        'type' => (string) ($_dep['type'] ?? ''),
+                    ];
+                    if (!isset($depSuccOf[$_pid])) {
+                        $depSuccOf[$_pid] = [];
+                    }
+                    $depSuccOf[$_pid][] = $_djid;
+                }
+            }
+        }
+
+        // Walk predOf back to root to build the upstream chain (linear, max one predecessor per job).
+        $upstreamChain = [];
+        $cur           = (int) $id;
+        $visitedUp     = [];
+        while (isset($depPredOf[$cur]) && !in_array($cur, $visitedUp, true)) {
+            $visitedUp[]    = $cur;
+            $upstreamChain[] = $depPredOf[$cur];
+            $cur             = $depPredOf[$cur]['id'];
+        }
+        $upstreamChain = array_reverse($upstreamChain);
+
+        // BFS over succOf to build the downstream tree as a flat depth-annotated list.
+        $downstreamTree = [];
+        $queue          = [[(int) $id, 0]];
+        $visitedDown    = [];
+        while (!empty($queue)) {
+            [$nodeId, $depth] = array_shift($queue);
+            if ($depth > 0) {
+                $downstreamTree[] = [
+                    'id'    => $nodeId,
+                    'desc'  => $depJobMeta[$nodeId]['desc'] ?? "Job #{$nodeId}",
+                    'depth' => $depth,
+                ];
+            }
+            if (!in_array($nodeId, $visitedDown, true)) {
+                $visitedDown[] = $nodeId;
+                foreach ($depSuccOf[$nodeId] ?? [] as $_succId) {
+                    if (!in_array($_succId, $visitedDown, true)) {
+                        $queue[] = [$_succId, $depth + 1];
+                    }
+                }
+            }
+        }
+
         $sched = $job['schedule'] !== null ? (string) $job['schedule'] : '';
         $this->render('cron/detail.php', (string) ($job['description'] ?? "Job #{$id}"), [
-            'job'           => $job,
-            'scheduleHuman' => $sched !== '' ? $this->translateCron($sched) : '',
-            'history'       => $history,
-            'isAdmin'       => SessionManager::hasRole('admin'),
+            'job'            => $job,
+            'scheduleHuman'  => $sched !== '' ? $this->translateCron($sched) : '',
+            'history'        => $history,
+            'isAdmin'        => SessionManager::hasRole('admin'),
+            'upstreamChain'  => $upstreamChain,
+            'downstreamTree' => $downstreamTree,
+            'depJobMeta'     => $depJobMeta,
         ], '/crons');
     }
 

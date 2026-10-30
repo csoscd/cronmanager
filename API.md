@@ -397,7 +397,7 @@ Check whether a job's dependency is currently satisfied.  No scope required (int
 { "satisfied": false, "reason": "No qualifying predecessor execution found within 60 minutes" }
 ```
 
-Fails open: returns `satisfied: true` when the job has no dependency, has a `triggered_by` dependency, or when the database is unreachable.
+Returns `satisfied: true` when the job has no dependency or has a `triggered_by` dependency (no runtime gate). Returns HTTP 500 (fail-closed) when the database is unreachable during a `requires`-dependency check — the cron-wrapper's retry loop (v2.9.3) will retry and succeed once the DB recovers.
 
 ---
 

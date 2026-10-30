@@ -833,7 +833,8 @@ Paginated execution history.
 | `to` | string | End date (`YYYY-MM-DD`) |
 | `limit` | int | Page size (default: 50, max: 500) |
 | `offset` | int | Pagination offset (default: 0) |
-| `unacknowledged_only` | `0\|1` | `1` = only return executions where `acknowledged_at IS NULL` |
+| `acknowledged_state` | `open\|closed` | `open` = only unacknowledged (`acknowledged_at IS NULL`); `closed` = only acknowledged; omitted = all (default) |
+| `unacknowledged_only` | `0\|1` | **Deprecated.** `1` is an alias for `acknowledged_state=open`. Ignored when `acknowledged_state` is also present. |
 
 **Response:**
 ```json
@@ -1496,6 +1497,7 @@ UNIQUE KEY: `(job_id, target)`
 | `type` | ENUM | `"requires"` (pre-run check) or `"triggered_by"` (event-driven) |
 | `exit_codes` | VARCHAR(255) | Comma-separated exit codes that satisfy the dependency, e.g. `"0"` or `"0,2"` (range 0–255 only) |
 | `max_age_minutes` | INT UNSIGNED NULL | Only for `requires`: predecessor must have finished within this many minutes; NULL = 60 |
+| `trigger_delay_minutes` | INT UNSIGNED NOT NULL DEFAULT 0 | Only for `triggered_by`: minutes to wait after predecessor finishes before scheduling the successor; 0 = next cron-minute |
 
 ### `job_dependency_trigger_state`
 

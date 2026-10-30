@@ -109,7 +109,7 @@ foreach ($history as $idx => $entry):
             <?php endif; ?>
             <?php if ($acknowledgedAt !== null): ?>
                 <div class="mt-1">
-                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300">
                         <?= htmlspecialchars($t('execution_acknowledged_badge'), ENT_QUOTES, 'UTF-8') ?>
                     </span>
                 </div>

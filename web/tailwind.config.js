@@ -20,6 +20,7 @@
  * @license GNU General Public License version 3 or later
  */
 module.exports = {
+    darkMode: ['class', '.theme-dark'],
     content: [
         './templates/**/*.php',
         './assets/js/**/*.js',

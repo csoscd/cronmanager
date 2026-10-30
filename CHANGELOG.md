@@ -32,6 +32,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Added `VersionConsistencyTest`: 16 integration tests that verify `web/VERSION` and `agent/VERSION` are in sync, follow semantic versioning, and that `CHANGELOG.md`, `README.md`, and `API.md` each reference the current version — acts as a release gate.
 
+### Changed
+
+- **Dark mode: Tailwind CSS now responds to the `.theme-dark` class** (nav-bar toggle) instead of the OS-level `prefers-color-scheme` media query. `tailwind.config.js` updated from the implicit `media` default to `darkMode: ['class', '.theme-dark']`; Tailwind CSS rebuilt.
+- **Dark-mode badge contrast** fixed in job list, timeline and detail history:
+  - „Inaktiv" status badge: added missing `dark:bg-gray-700 dark:text-gray-300`.
+  - „Aktiv" status badge: added missing `dark:bg-green-900 dark:text-green-300`.
+  - Tag badges: added missing `dark:bg-purple-900 dark:text-purple-300`.
+  - „Bestätigt" (acknowledged) badges (list, timeline, detail history rows): improved contrast from `dark:text-gray-400` to `dark:text-gray-300`.
+
 ---
 
 ## [7.0.0] – branch: `feature/job-dependencies`

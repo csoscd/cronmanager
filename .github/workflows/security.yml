@@ -110,6 +110,9 @@ jobs:
             --config "p/php" \
             --config "p/owasp-top-ten" \
             --error \
+            --quiet \
+            --jobs 1 \
+            --max-memory 500 \
             .
         env:
           # Optional: set SEMGREP_APP_TOKEN as a repository secret to enable

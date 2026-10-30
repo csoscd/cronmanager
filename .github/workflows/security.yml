@@ -91,7 +91,7 @@ jobs:
       - name: Set up Python (for Semgrep CLI)
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.12'
 
       - name: Install Semgrep
         run: pip install semgrep==1.183.0 --quiet
@@ -111,8 +111,6 @@ jobs:
             --config "p/owasp-top-ten" \
             --error \
             --quiet \
-            --jobs 1 \
-            --max-memory 500 \
             .
         env:
           # Optional: set SEMGREP_APP_TOKEN as a repository secret to enable

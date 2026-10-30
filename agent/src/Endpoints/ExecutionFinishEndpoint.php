@@ -594,7 +594,7 @@ final class ExecutionFinishEndpoint
         // Failures are logged but must not prevent the finish response.
         // ------------------------------------------------------------------
 
-        if (!$alreadyFinished && $exitCode !== -4 && $exitCode !== -7) {
+        if (!$alreadyFinished && $exitCode !== -4 && $exitCode !== -7 && $this->fetchRetryAttempt($executionId) === 0) {
             try {
                 $triggeredJobs = $this->deps->findTriggeredByJobs($jobId, $exitCode);
 

@@ -373,40 +373,7 @@ final class CronUpdateEndpoint
      */
     private function validateDependency(array $dep, int $jobId): array
     {
-        $errors = [];
-
-        if (!isset($dep['predecessor_id']) || !is_int($dep['predecessor_id']) || $dep['predecessor_id'] <= 0) {
-            $errors['dependency.predecessor_id'] = 'Must be a positive integer.';
-        } elseif ((int) $dep['predecessor_id'] === $jobId) {
-            $errors['dependency.predecessor_id'] = 'A job cannot depend on itself.';
-        } else {
-            $stmt = $this->pdo->prepare('SELECT 1 FROM cronjobs WHERE id = :id LIMIT 1');
-            $stmt->execute([':id' => $dep['predecessor_id']]);
-            if ($stmt->fetchColumn() === false) {
-                $errors['dependency.predecessor_id'] = sprintf('Job with ID %d does not exist.', (int) $dep['predecessor_id']);
-            }
-        }
-
-        if (!isset($dep['type']) || !in_array($dep['type'], ['requires', 'triggered_by'], true)) {
-            $errors['dependency.type'] = "Must be 'requires' or 'triggered_by'.";
-        }
-
-        if (isset($dep['exit_codes']) && is_string($dep['exit_codes'])) {
-            $err = DependencyRepository::validateExitCodes($dep['exit_codes']);
-            if ($err !== null) {
-                $errors['dependency.exit_codes'] = $err;
-            }
-        }
-
-        if (isset($dep['max_age_minutes']) && (!is_int($dep['max_age_minutes']) || $dep['max_age_minutes'] <= 0)) {
-            $errors['dependency.max_age_minutes'] = 'Must be a positive integer.';
-        }
-
-        if (isset($dep['trigger_delay_minutes']) && (!is_int($dep['trigger_delay_minutes']) || $dep['trigger_delay_minutes'] < 0)) {
-            $errors['dependency.trigger_delay_minutes'] = 'Must be a non-negative integer.';
-        }
-
-        return $errors;
+        return $this->deps->validateDependency($dep, $jobId);
     }
 
     /**

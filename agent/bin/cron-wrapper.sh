@@ -298,7 +298,7 @@ json_get_nested() {
             if (!is_array(\$v) || !array_key_exists(\$p, \$v)) { exit; }
             \$v = \$v[\$p];
         }
-        if (!\$v !== null) { echo (string)\$v; }
+        if (\$v !== null) { echo (string)\$v; }
     " 2>/dev/null || true
     rm -f "${tmp_json}"
 }

@@ -349,11 +349,14 @@ final class ExecutionStartEndpoint
             $triggerType             = 'scheduled';
             $predecessorExecutionId  = null;
 
+            // Atomic read-and-delete: DELETE...RETURNING ensures only one concurrent
+            // ExecutionStart call can claim the trigger-state row. A plain SELECT+DELETE
+            // pair is not atomic and would let two parallel calls both read the row and
+            // both mark their execution as dependency-triggered. (MariaDB 10.3+)
             $depTriggerStmt = $this->pdo->prepare(
-                'SELECT predecessor_execution_id
-                   FROM job_dependency_trigger_state
+                'DELETE FROM job_dependency_trigger_state
                   WHERE job_id = :job_id AND target = :target
-                  LIMIT 1'
+                  RETURNING predecessor_execution_id'
             );
             $depTriggerStmt->execute([':job_id' => $jobId, ':target' => $effectiveTargetForRetry]);
             $depTriggerRow = $depTriggerStmt->fetch(\PDO::FETCH_ASSOC);
@@ -363,11 +366,6 @@ final class ExecutionStartEndpoint
                 $predecessorExecutionId = $depTriggerRow['predecessor_execution_id'] !== null
                     ? (int) $depTriggerRow['predecessor_execution_id']
                     : null;
-
-                // Consume the trigger state row
-                $this->pdo->prepare(
-                    'DELETE FROM job_dependency_trigger_state WHERE job_id = :job_id AND target = :target'
-                )->execute([':job_id' => $jobId, ':target' => $effectiveTargetForRetry]);
 
                 $this->logger->info('ExecutionStartEndpoint: starting dependency-triggered execution', [
                     'job_id'                  => $jobId,

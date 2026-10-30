@@ -82,12 +82,14 @@ final class DependencyRepositoryTest extends TestCase
     }
 
     #[Test]
-    public function validateExitCodesAcceptsNegativeCode(): void
+    public function validateExitCodesRejectsNegativeCode(): void
     {
-        // Negative exit codes are valid (e.g. -1, -7 for system/dependency signals)
-        self::assertNull(DependencyRepository::validateExitCodes('-1'));
-        self::assertNull(DependencyRepository::validateExitCodes('-7'));
-        self::assertNull(DependencyRepository::validateExitCodes('0,-1,2'));
+        // Negative exit codes are rejected; internal sentinels (-4, -7) are not
+        // user-configurable dependency criteria — a user typing -7 would get no
+        // match because the exit-code sentinel is never stored in exit_codes.
+        self::assertIsString(DependencyRepository::validateExitCodes('-1'));
+        self::assertIsString(DependencyRepository::validateExitCodes('-7'));
+        self::assertIsString(DependencyRepository::validateExitCodes('0,-1,2'));
     }
 
     #[Test]

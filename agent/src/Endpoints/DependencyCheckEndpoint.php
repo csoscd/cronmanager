@@ -130,10 +130,12 @@ final class DependencyCheckEndpoint
                 'predecessor_id' => $predecessorId,
                 'message'        => $e->getMessage(),
             ]);
-            // Fail open: if we cannot check, allow the job to run
-            jsonResponse(200, [
-                'satisfied' => true,
-                'reason'    => 'Dependency check failed (DB error) – proceeding.',
+            // Fail closed: if we cannot check, block the job. The cron-wrapper's
+            // retry loop (v2.9.3) will retry on 5xx and succeed once the DB recovers.
+            jsonResponse(500, [
+                'error'   => 'Internal Server Error',
+                'message' => 'Dependency check failed (DB error) – cannot proceed.',
+                'code'    => 500,
             ]);
             return;
         }

@@ -32,6 +32,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Added `VersionConsistencyTest`: 16 integration tests that verify `web/VERSION` and `agent/VERSION` are in sync, follow semantic versioning, and that `CHANGELOG.md`, `README.md`, and `API.md` each reference the current version — acts as a release gate.
 
+### Fixed (Issue #128 – Code Review v7.0.0: Job Dependencies)
+
+- **#128-1 `triggered_by`-jobs fired on every retry** (`ExecutionFinishEndpoint`): downstream jobs now only trigger when `retry_attempt = 0` (root execution). Retries within a chain no longer cause N+1 duplicate downstream executions.
+- **#128-2 Race condition in trigger-state claim** (`ExecutionStartEndpoint`): the non-atomic SELECT + DELETE pair is replaced with a single `DELETE … RETURNING` statement (MariaDB 10.3+). Only one concurrent caller can now claim a trigger-state row; the other falls back to `trigger_type='scheduled'`.
+- **#128-3 Fail-open on DB error in dependency check** (`DependencyCheckEndpoint`): a `PDOException` in `checkRequires()` now returns HTTP 500 instead of `satisfied=true`. The cron-wrapper's existing 5xx retry loop (v2.9.3) will re-check once the DB recovers.
+- **#128-4 Inverted null-check in `json_get_nested()`** (`cron-wrapper.sh`): `!\$v !== null` (always `true`) corrected to `\$v !== null`, so fields with an explicit `null` value are correctly suppressed.
+- **#128-5 `scheduledAt` display time off-by-one** (`ExecuteNowEndpoint`): the UI confirmation timestamp now mirrors `OnceSchedule::compute()`'s safety-margin logic (adds 2 min after second :50) instead of always adding 1 min, so the displayed time matches the actual crontab fire time.
+- **#128-6 `trigger_delay_minutes` missing from POST /crons response** (`CronCreateEndpoint::fetchCreatedJob()`): the field is now included in the `dependency` object of create responses, consistent with GET and PUT.
+- **#128-7 `validateExitCodes` accepted negative values** (`DependencyRepository`): exit codes below 0 are now rejected with a clear error message. Internal sentinels (−4, −7) are not valid user-configurable dependency criteria.
+- **#128-8 `validateDependency()` duplicated in Create and Update endpoints**: the ~50-line method was ported to `DependencyRepository::validateDependency()` and both endpoints now delegate to it. A single maintenance point prevents the divergence that caused the v4.4.4 HMAC incident.
+
 ### Changed
 
 - **Dark mode: Tailwind CSS now responds to the `.theme-dark` class** (nav-bar toggle) instead of the OS-level `prefers-color-scheme` media query. `tailwind.config.js` updated from the implicit `media` default to `darkMode: ['class', '.theme-dark']`; Tailwind CSS rebuilt.

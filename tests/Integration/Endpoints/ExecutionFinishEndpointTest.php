@@ -31,6 +31,7 @@ use Cronmanager\Agent\Cron\CrontabManager;
 use Cronmanager\Agent\Endpoints\ExecutionFinishEndpoint;
 use Cronmanager\Agent\Notification\MailNotifier;
 use Cronmanager\Agent\Notification\TelegramNotifier;
+use Cronmanager\Agent\Repository\DependencyRepository;
 use Noodlehaus\ConfigInterface;
 use PDO;
 use PHPUnit\Framework\Attributes\Test;
@@ -55,6 +56,7 @@ final class ExecutionFinishEndpointTest extends AgentEndpointTestCase
             telegramNotifier: new TelegramNotifier($this->createNullLogger(), $configStub),
             crontabManager:   new CrontabManager($this->createNullLogger(), '/dev/null'),
             wrapperScript:    '/dev/null',
+            deps:             new DependencyRepository($this->pdo),
         );
     }
 

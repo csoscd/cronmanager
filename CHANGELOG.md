@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [7.1.0] – branch: `feature/v7.1.0`
+
+### Added
+
+- **`acknowledged_state` filter for history and timeline API endpoints** (Issue #133):
+  - `GET /api/v1/jobs/{id}/history` and `GET /api/v1/timeline` now accept `?acknowledged_state=open|closed`.
+  - `open` returns only unacknowledged executions (`acknowledged_at IS NULL`).
+  - `closed` returns only acknowledged executions (`acknowledged_at IS NOT NULL`).
+  - Omitting the parameter returns all executions (default, backwards-compatible).
+  - The existing `unacknowledged_only=1` parameter is kept as a **deprecated alias** for `acknowledged_state=open`.
+
+### Fixed
+
+- `GET /api/v1/jobs/{id}/history`: the `unacknowledged_only` parameter was accepted by the API but never forwarded to the agent — it had no effect since v6.2.0 when it was introduced. Fixed by the `acknowledged_state` refactor.
+
+---
+
 ## [7.0.0] – branch: `feature/job-dependencies`
 
 ### Added

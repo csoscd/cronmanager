@@ -22,7 +22,12 @@ declare(strict_types=1);
  *   - from               (YYYY-MM-DD) Only executions started on or after this date.
  *   - to                 (YYYY-MM-DD) Only executions started on or before this date.
  *   - target             (string) Filter by execution target (e.g. "local" or SSH host alias).
- *   - unacknowledged_only (0|1)   When "1", only return executions where acknowledged_at IS NULL.
+ *   - unacknowledged_only (0|1)        When "1", only return executions where acknowledged_at IS NULL.
+ *                                     Deprecated: use acknowledged_state=open instead.
+ *   - acknowledged_state (open|closed) "open" = acknowledged_at IS NULL only;
+ *                                     "closed" = acknowledged_at IS NOT NULL only;
+ *                                     omitted = no filter (default, backwards-compatible).
+ *                                     Overrides unacknowledged_only when both are present.
  *
  * This class relies on the global `jsonResponse()` function being available
  * in the calling scope (defined in agent.php).
@@ -126,7 +131,23 @@ final class HistoryEndpoint
         $offset            = $this->parseOffset($_GET['offset'] ?? null);
         $from              = $this->parseDate($_GET['from'] ?? null);
         $to                = $this->parseDate($_GET['to']   ?? null);
-        $unacknowledgedOnly = isset($_GET['unacknowledged_only']) && $_GET['unacknowledged_only'] === '1';
+        $unacknowledgedOnly   = isset($_GET['unacknowledged_only']) && $_GET['unacknowledged_only'] === '1';
+        $acknowledgedStateRaw = isset($_GET['acknowledged_state']) && $_GET['acknowledged_state'] !== ''
+            ? (string) $_GET['acknowledged_state']
+            : null;
+
+        // Validate acknowledged_state value
+        if ($acknowledgedStateRaw !== null && !in_array($acknowledgedStateRaw, ['open', 'closed'], true)) {
+            jsonResponse(400, [
+                'error'   => 'Bad Request',
+                'message' => 'Parameter "acknowledged_state" must be one of: open, closed.',
+                'code'    => 400,
+            ]);
+            return;
+        }
+
+        // acknowledged_state overrides the deprecated unacknowledged_only alias
+        $acknowledgedState = $acknowledgedStateRaw ?? ($unacknowledgedOnly ? 'open' : null);
 
         // Validate status value
         if ($status !== null && !in_array($status, self::VALID_STATUSES, true)) {
@@ -226,8 +247,10 @@ final class HistoryEndpoint
             $queryParams[':to'] = $to . ' 23:59:59';
         }
 
-        if ($unacknowledgedOnly) {
+        if ($acknowledgedState === 'open') {
             $conditions[] = 'el.acknowledged_at IS NULL';
+        } elseif ($acknowledgedState === 'closed') {
+            $conditions[] = 'el.acknowledged_at IS NOT NULL';
         }
 
         $whereClause = $conditions !== []

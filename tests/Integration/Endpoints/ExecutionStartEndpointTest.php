@@ -488,4 +488,49 @@ final class ExecutionStartEndpointTest extends AgentEndpointTestCase
         // 'local' is not in maintenance → should start normally
         $this->assertStatus(201);
     }
+
+    // =========================================================================
+    // trigger_state consumption (Fix #128 #2)
+    // =========================================================================
+
+    #[Test]
+    public function triggerStateRowIsConsumedAtomicallyAndSecondCallFallsBackToScheduled(): void
+    {
+        $predecessorId = $this->seedJob();
+        $successorId   = $this->seedJob(['schedule' => null]);
+        $this->seedJobTarget($successorId, 'local');
+
+        // Simulate the trigger-state row that ExecutionFinishEndpoint would write
+        $predExecId = $this->seedFinishedExecution($predecessorId, ['exit_code' => 0, 'target' => 'local']);
+        $this->pdo->prepare(
+            'INSERT INTO job_dependency_trigger_state
+                 (job_id, target, predecessor_execution_id)
+             VALUES (:jid, :tgt, :peid)'
+        )->execute([':jid' => $successorId, ':tgt' => 'local', ':peid' => $predExecId]);
+
+        // First call: trigger-state row is present → trigger_type must be 'dependency'
+        $this->callHandle($this->makeEndpoint(), [
+            'job_id'     => $successorId,
+            'started_at' => '2026-01-15T10:00:00Z',
+            'target'     => 'local',
+        ]);
+        $this->assertStatus(201);
+
+        $firstRow = $this->latestExecution($successorId);
+        $this->assertNotNull($firstRow);
+        $this->assertSame('dependency', $firstRow['trigger_type'], 'First call must claim trigger_type=dependency');
+
+        // Second call (same job, new execution): trigger-state row was already consumed
+        $this->callHandle($this->makeEndpoint(), [
+            'job_id'     => $successorId,
+            'started_at' => '2026-01-15T10:05:00Z',
+            'target'     => 'local',
+        ]);
+        $this->assertStatus(201);
+
+        $secondRow = $this->latestExecution($successorId);
+        $this->assertNotNull($secondRow);
+        $this->assertNotSame($firstRow['id'], $secondRow['id'], 'Second call must create a separate execution row');
+        $this->assertSame('scheduled', $secondRow['trigger_type'], 'Second call must fall back to trigger_type=scheduled');
+    }
 }

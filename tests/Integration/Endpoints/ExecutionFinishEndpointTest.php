@@ -740,4 +740,51 @@ final class ExecutionFinishEndpointTest extends AgentEndpointTestCase
         // prevFailures (1) < threshold (3) → recovery gate not triggered
         $this->assertStatus(200);
     }
+
+    // =========================================================================
+    // triggered_by dispatch guard (Fix #128 #1)
+    // =========================================================================
+
+    #[Test]
+    public function triggeredByDispatchIsSkippedForRetryExecutions(): void
+    {
+        // Predecessor job that has a triggered_by successor
+        $predecessorId = $this->seedJob();
+        $successorId   = $this->seedJob(['schedule' => null, 'active' => 1]);
+        $this->seedJobTarget($successorId, 'local');
+
+        $this->pdo->prepare(
+            'INSERT INTO job_dependencies
+                 (job_id, predecessor_id, type, exit_codes, trigger_delay_minutes)
+             VALUES (:jid, :pid, :type, :ec, 0)'
+        )->execute([
+            ':jid'  => $successorId,
+            ':pid'  => $predecessorId,
+            ':type' => 'triggered_by',
+            ':ec'   => '0',
+        ]);
+
+        // This execution is a retry (retry_attempt = 1) — dispatch must be suppressed
+        $executionId = $this->seedRunningExecution($predecessorId, [
+            'target'        => 'local',
+            'retry_attempt' => 1,
+        ]);
+
+        $this->callHandle($this->makeEndpoint(), [
+            'execution_id' => $executionId,
+            'job_id'       => $predecessorId,
+            'exit_code'    => 0,
+            'finished_at'  => '2026-01-15T10:00:05Z',
+            'target'       => 'local',
+        ]);
+
+        $this->assertStatus(200);
+
+        // No trigger-state row must have been written for the successor
+        $stmt = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM job_dependency_trigger_state WHERE job_id = :jid'
+        );
+        $stmt->execute([':jid' => $successorId]);
+        $this->assertSame(0, (int) $stmt->fetchColumn(), 'Trigger-state must not be written for retry executions');
+    }
 }

@@ -256,4 +256,39 @@ final class ExecuteNowEndpointTest extends AgentEndpointTestCase
             'Job ID must appear in the crontab entry'
         );
     }
+
+    // =========================================================================
+    // Fix #128 #5 – scheduled_at mirrors OnceSchedule safety-margin
+    // =========================================================================
+
+    #[Test]
+    public function scheduledAtInResponseMatchesCronScheduleTime(): void
+    {
+        $jobId = $this->seedJob(['linux_user' => 'root']);
+        $this->seedJobTarget($jobId, 'local');
+
+        AgentResponse::reset();
+        $this->makeEndpoint()->handle(['id' => (string) $jobId]);
+
+        $this->assertStatus(200);
+
+        $body = AgentResponse::$body ?? [];
+        $this->assertArrayHasKey('scheduled_at', $body, 'Response must contain scheduled_at');
+        $this->assertArrayHasKey('schedule', $body, 'Response must contain schedule');
+
+        // schedule is a full-date cron expression: "M H d m *" (e.g. "37 14 26 3 *")
+        $parts = explode(' ', (string) $body['schedule']);
+        $this->assertCount(5, $parts, 'schedule must be a 5-field cron expression');
+
+        $cronMinute = (int) $parts[0];
+        $cronHour   = (int) $parts[1];
+        $expectedHM = sprintf('%02d:%02d', $cronHour, $cronMinute);
+
+        // scheduled_at is "HH:MM on DD.MM.YYYY" — the leading time must match the cron fields
+        $this->assertStringStartsWith(
+            $expectedHM,
+            (string) $body['scheduled_at'],
+            'scheduled_at must start with the hour:minute from the cron schedule',
+        );
+    }
 }

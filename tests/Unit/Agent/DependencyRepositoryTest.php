@@ -122,6 +122,99 @@ final class DependencyRepositoryTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // validateDependency – field-level validation (no DB needed for these cases)
+    //
+    // Tests use an invalid predecessor_id (0) so the method returns an error
+    // before reaching the SELECT query, keeping these as pure unit tests.
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function validateDependencyRejectsInvalidType(): void
+    {
+        $pdo  = $this->createMock(\PDO::class);
+        $repo = new DependencyRepository($pdo);
+
+        // predecessor_id = 0 fails the positive-integer guard, type is also invalid
+        $errors = $repo->validateDependency(['predecessor_id' => 0, 'type' => 'unknown'], 99);
+
+        self::assertArrayHasKey('dependency.predecessor_id', $errors);
+        self::assertArrayHasKey('dependency.type', $errors);
+    }
+
+    #[Test]
+    public function validateDependencyRejectsSelfReferentialDependency(): void
+    {
+        $pdo  = $this->createMock(\PDO::class);
+        $repo = new DependencyRepository($pdo);
+
+        // predecessor_id === jobId → self-reference error (no DB query, guarded before SELECT)
+        $errors = $repo->validateDependency(['predecessor_id' => 5, 'type' => 'requires'], 5);
+
+        self::assertArrayHasKey('dependency.predecessor_id', $errors);
+    }
+
+    #[Test]
+    public function validateDependencyRejectsNegativeTriggerDelayMinutes(): void
+    {
+        $pdo  = $this->createMock(\PDO::class);
+        $repo = new DependencyRepository($pdo);
+
+        $errors = $repo->validateDependency([
+            'predecessor_id'        => 0, // invalid → no DB query
+            'type'                  => 'triggered_by',
+            'trigger_delay_minutes' => -1,
+        ], 0);
+
+        self::assertArrayHasKey('dependency.trigger_delay_minutes', $errors);
+    }
+
+    #[Test]
+    public function validateDependencyAcceptsZeroTriggerDelayMinutes(): void
+    {
+        $pdo  = $this->createMock(\PDO::class);
+        $repo = new DependencyRepository($pdo);
+
+        $errors = $repo->validateDependency([
+            'predecessor_id'        => 0, // invalid → no DB query
+            'type'                  => 'triggered_by',
+            'trigger_delay_minutes' => 0,
+        ], 0);
+
+        // trigger_delay_minutes = 0 is valid; only predecessor_id should error
+        self::assertArrayNotHasKey('dependency.trigger_delay_minutes', $errors);
+    }
+
+    #[Test]
+    public function validateDependencyRejectsZeroMaxAgeMinutes(): void
+    {
+        $pdo  = $this->createMock(\PDO::class);
+        $repo = new DependencyRepository($pdo);
+
+        $errors = $repo->validateDependency([
+            'predecessor_id'  => 0, // invalid → no DB query
+            'type'            => 'requires',
+            'max_age_minutes' => 0,
+        ], 0);
+
+        self::assertArrayHasKey('dependency.max_age_minutes', $errors);
+    }
+
+    #[Test]
+    public function validateDependencyRejectsNegativeExitCodesInDepField(): void
+    {
+        $pdo  = $this->createMock(\PDO::class);
+        $repo = new DependencyRepository($pdo);
+
+        $errors = $repo->validateDependency([
+            'predecessor_id' => 0, // invalid → no DB query
+            'type'           => 'requires',
+            'exit_codes'     => '-1',
+        ], 0);
+
+        self::assertArrayHasKey('dependency.exit_codes', $errors);
+    }
+
+    // -------------------------------------------------------------------------
     // detectCycle: pure static graph walk (no DB needed for simple cases)
     // The DB-backed cycle detection tests live in Integration/.
     // -------------------------------------------------------------------------

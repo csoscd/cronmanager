@@ -31,6 +31,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Tests
 
 - Added `VersionConsistencyTest`: 16 integration tests that verify `web/VERSION` and `agent/VERSION` are in sync, follow semantic versioning, and that `CHANGELOG.md`, `README.md`, and `API.md` each reference the current version — acts as a release gate.
+- Added integration tests for all Issue #128 fixes:
+  - `ExecutionFinishEndpointTest::triggeredByDispatchIsSkippedForRetryExecutions` (Fix #1): verifies trigger-state is not written for `retry_attempt > 0` executions.
+  - `ExecutionStartEndpointTest::triggerStateRowIsConsumedAtomicallyAndSecondCallFallsBackToScheduled` (Fix #2): verifies the `DELETE … RETURNING` atomicity — trigger-state is claimed exactly once; a subsequent call falls back to `trigger_type='scheduled'`.
+  - `DependencyCheckEndpointTest::dbErrorInCheckRequiresReturns500FailClosed` (Fix #3): verifies HTTP 500 (fail-closed) when `checkRequires()` encounters a `PDOException`. Also adds happy-path and unsatisfied-dependency coverage for `DependencyCheckEndpoint` (5 tests total in new `DependencyCheckEndpointTest`).
+  - `ExecuteNowEndpointTest::scheduledAtInResponseMatchesCronScheduleTime` (Fix #5): verifies `scheduled_at` time matches the cron schedule fields.
+  - `CronCreateEndpointTest::createJobWithTriggeredByDependencyIncludesTriggerDelayMinutesInResponse` (Fix #6): verifies `dependency.trigger_delay_minutes` is present in `POST /crons` response.
+  - `DependencyRepositoryTest`: 6 new unit tests for `validateDependency()` (Fix #8): invalid type, self-reference, negative/zero field values, negative exit codes.
 
 ### Fixed (Issue #128 – Code Review v7.0.0: Job Dependencies)
 

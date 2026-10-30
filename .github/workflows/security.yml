@@ -94,7 +94,7 @@ jobs:
           python-version: '3.x'
 
       - name: Install Semgrep
-        run: pip install semgrep --quiet
+        run: pip install semgrep==1.183.0 --quiet
 
       # Rules used:
       #   p/php          – PHP-specific security rules (injection, XSS, open redirect, …)

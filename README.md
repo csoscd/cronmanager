@@ -177,8 +177,8 @@ All persistent data lives in **Docker-managed named volumes** (`db-data`, `agent
 |---|---|---|
 | `latest` | Every release (code or rebuild) | Production — always the newest stable image |
 | `7`, `7.1` | Same as `latest` (updated on every release) | Pinning to a major or minor line |
-| `7.1.0` | Code release tag `v7.1.0` | Pinning to an exact code version |
-| `7.1.0-r3` | Rebuild release (same code, updated base image) | Pinning to a specific rebuild |
+| `7.1.1` | Code release tag `v7.1.1` | Pinning to an exact code version |
+| `7.1.1-r3` | Rebuild release (same code, updated base image) | Pinning to a specific rebuild |
 | `dev` | Latest development branch push | Testing unreleased features |
 
 Rebuild releases (`vX.Y.Z-rN`) are created automatically when upstream base images are
@@ -191,8 +191,8 @@ layers are updated.
 
 To use a specific version, replace `:latest` in `docker-compose-full.yml`:
 ```yaml
-image: cs1711/cronmanager-agent:7.1.0
-image: cs1711/cronmanager-web:7.1.0
+image: cs1711/cronmanager-agent:7.1.1
+image: cs1711/cronmanager-web:7.1.1
 ```
 
 ### Updating to a new release

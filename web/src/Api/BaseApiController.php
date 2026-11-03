@@ -153,10 +153,13 @@ abstract class BaseApiController
             return null;
         }
 
-        // Determine requested agent
-        $requestedId = isset($_SERVER['HTTP_X_AGENT_ID'])
-            ? (int) $_SERVER['HTTP_X_AGENT_ID']
-            : null;
+        // Determine requested agent: X-Agent-Id header takes precedence over ?agent_id= query parameter
+        $requestedId = null;
+        if (isset($_SERVER['HTTP_X_AGENT_ID'])) {
+            $requestedId = (int) $_SERVER['HTTP_X_AGENT_ID'];
+        } elseif (isset($_GET['agent_id']) && $_GET['agent_id'] !== '') {
+            $requestedId = (int) $_GET['agent_id'];
+        }
 
         if ($requestedId !== null) {
             $agentRow = null;

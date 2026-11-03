@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [7.1.1] – branch: `feature/v7.1.1`
+
+### Added
+
+- **REST API: `?agent_id=` query parameter for agent selection**: all external API endpoints (`/api/v1/*`) now accept an optional `?agent_id=<id>` query parameter in addition to the existing `X-Agent-Id` request header. The header takes precedence when both are supplied; omitting both selects the first enabled agent (default, unchanged). This makes multi-agent API calls easier to test and invoke without custom headers — e.g. `POST /api/v1/jobs/155/execute?agent_id=1`.
+
+---
+
 ## [7.1.0] – branch: `feature/v7.1.0`
 
 ### Added

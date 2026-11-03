@@ -143,8 +143,13 @@ target a different agent return:
 { "error": "Agent not permitted", "code": 403 }
 ```
 
-The current agent is determined by the `X-Agent-Id` request header (optional).
-If omitted, the default agent is used.
+The current agent is determined by (in order of precedence):
+
+1. **`X-Agent-Id` request header** — preferred for scripts and integrations.
+2. **`?agent_id=<id>` query parameter** — convenient for quick tests and URL-based invocations (e.g. `POST /api/v1/jobs/155/execute?agent_id=1`).
+3. **Default** — first enabled agent, when neither is supplied.
+
+Agent-scope restrictions from the API key (`agent_ids`) are enforced regardless of which mechanism is used.
 
 ---
 
@@ -1221,6 +1226,7 @@ to 60 seconds of delay before the daemon picks up the entry.
 
 | Version | Change |
 |---|---|
+| 7.1.1 | All agent-specific endpoints now accept `?agent_id=<id>` as an alternative to the `X-Agent-Id` header for agent selection (§4). Header takes precedence when both are supplied. |
 | 7.1.0 | Added `acknowledged_state=open\|closed` query parameter to `GET /api/v1/jobs/{id}/history` (§8) and `GET /api/v1/timeline` (§13); `unacknowledged_only=1` is now a deprecated alias for `acknowledged_state=open`; fixed: `unacknowledged_only` was previously accepted but never forwarded to the agent. Fixed: `POST /api/v1/jobs` (create) response now includes `trigger_delay_minutes` in the `dependency` object (was absent; #128-6). Fixed: `dependency.exit_codes` validation now rejects negative values (was silently accepted; #128-7). |
 | 6.2.0 | Added `unacknowledged_only` query parameter to `GET /api/v1/jobs/{id}/history` (§8); filters to executions where `acknowledged_at IS NULL` |
 | 6.0.0 | Added `POST /api/v1/executions/{id}/acknowledge` and `DELETE /api/v1/executions/{id}/acknowledge` (§16); new scope `executions:acknowledge` (operator profile and above); `acknowledged_at` and `acknowledged_by_user_id` fields added to execution history objects; two new audit-log event types `execution.acknowledged` / `execution.unacknowledged` |

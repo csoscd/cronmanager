@@ -31,7 +31,6 @@ namespace Cronmanager\Web\Api;
 use Cronmanager\Web\Auth\ApiKey;
 use Cronmanager\Web\Auth\ApiKeyMiddleware;
 use Cronmanager\Web\Auth\ScopeHelper;
-use Cronmanager\Web\Database\Connection;
 
 /**
  * Class JobsApiController
@@ -51,7 +50,7 @@ final class JobsApiController extends BaseApiController
      */
     public function index(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_READ);
 
         if ($apiKey === null) {
@@ -95,7 +94,7 @@ final class JobsApiController extends BaseApiController
      */
     public function show(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_READ);
 
         if ($apiKey === null) {
@@ -131,7 +130,7 @@ final class JobsApiController extends BaseApiController
      */
     public function store(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_WRITE);
 
         if ($apiKey === null) {
@@ -165,7 +164,7 @@ final class JobsApiController extends BaseApiController
      */
     public function update(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_WRITE);
 
         if ($apiKey === null) {
@@ -206,7 +205,7 @@ final class JobsApiController extends BaseApiController
      */
     public function destroy(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_WRITE);
 
         if ($apiKey === null) {
@@ -242,7 +241,7 @@ final class JobsApiController extends BaseApiController
      */
     public function execute(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_EXECUTE);
 
         if ($apiKey === null) {
@@ -278,7 +277,7 @@ final class JobsApiController extends BaseApiController
      */
     public function kill(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_EXECUTE);
 
         if ($apiKey === null) {
@@ -313,7 +312,7 @@ final class JobsApiController extends BaseApiController
      */
     public function acknowledge(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_EXECUTIONS_ACKNOWLEDGE);
 
         if ($apiKey === null) {
@@ -348,7 +347,7 @@ final class JobsApiController extends BaseApiController
      */
     public function unacknowledge(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_EXECUTIONS_ACKNOWLEDGE);
 
         if ($apiKey === null) {
@@ -386,7 +385,7 @@ final class JobsApiController extends BaseApiController
      */
     public function acknowledgeAll(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_EXECUTIONS_ACKNOWLEDGE);
 
         if ($apiKey === null) {
@@ -426,7 +425,7 @@ final class JobsApiController extends BaseApiController
      */
     public function history(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_READ);
 
         if ($apiKey === null) {
@@ -480,7 +479,7 @@ final class JobsApiController extends BaseApiController
      */
     public function tags(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_READ);
 
         if ($apiKey === null) {
@@ -512,7 +511,7 @@ final class JobsApiController extends BaseApiController
      */
     public function targets(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_READ);
 
         if ($apiKey === null) {
@@ -548,7 +547,7 @@ final class JobsApiController extends BaseApiController
      */
     public function linuxUsers(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_READ);
 
         if ($apiKey === null) {
@@ -586,7 +585,7 @@ final class JobsApiController extends BaseApiController
      */
     public function timeline(array $params): void
     {
-        $pdo    = Connection::getInstance()->getPdo();
+        $pdo    = $this->pdo;
         $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_READ);
 
         if ($apiKey === null) {

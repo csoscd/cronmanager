@@ -425,10 +425,10 @@ New in v7.1.0. Covers `POST /crons` (Fix #128-6). Uses `useTransactionIsolation 
 
 | Group | Tests |
 |---|---|
-| `validateExitCodes()` (9) | Valid expressions accepted, negative codes rejected (Fix #128-7), empty string rejected |
-| `validateDependency()` (8) | Invalid type, self-referential predecessor, negative `trigger_delay_minutes`, zero `trigger_delay_minutes` accepted, zero `max_age_minutes` rejected, negative exit codes in dep rejected; uses mock PDO for DB-skip |
-| `findByJobId()` (5) | Returns null when none, returns row when present, `max_age_minutes=null` fallback |
-| Cycle detection (4) | Direct cycle, indirect chain cycle, no cycle |
+| `exitCodeMatches()` standalone (5) | Exact match (single/multiple codes), false for non-match, whitespace tolerance, empty list = match-any |
+| `exitCodeMatchesDataDriven` (8 data cases via `#[DataProvider]`) | Full truth table: zero/non-zero exact, list membership, whitespace, empty list, negative system codes (-7, -4) |
+| `validateExitCodes()` (7) | Valid single code, valid list, negative code rejected (Fix #128-7), out-of-range (256) rejected, non-numeric rejected, empty string accepted, empty token rejected |
+| `validateDependency()` (6) | Invalid type, self-referential predecessor, negative `trigger_delay_minutes`, zero `trigger_delay_minutes` accepted, zero `max_age_minutes` rejected, negative exit codes in dep rejected; uses mock PDO for DB-skip |
 | `findActiveSuccessorsRecursive()` (6) | New in v7.2.0 — BFS logic via mocked PDO: empty input → `[]`, direct successor, transitive chain (depth 2), cycle guard (visited set prevents infinite loop), job with no successors, multiple root jobs |
 
 #### `Endpoints/NotesAndSuccessorConflictTest` (7 tests)

@@ -196,20 +196,23 @@ try {
         // Audit log
         $apiRouter->addPublicRoute('GET',    '/api/v1/audit',                  [$auditApi, 'index']);
 
-        // Jobs – read
-        $apiRouter->addPublicRoute('GET',    '/api/v1/jobs',                   [$jobsApi, 'index']);
-        $apiRouter->addPublicRoute('GET',    '/api/v1/jobs/{id}',              [$jobsApi, 'show']);
-        $apiRouter->addPublicRoute('GET',    '/api/v1/jobs/{id}/history',      [$jobsApi, 'history']);
-        $apiRouter->addPublicRoute('GET',    '/api/v1/tags',                   [$jobsApi, 'tags']);
-        $apiRouter->addPublicRoute('GET',    '/api/v1/targets',                [$jobsApi, 'targets']);
-        $apiRouter->addPublicRoute('GET',    '/api/v1/linux-users',            [$jobsApi, 'linuxUsers']);
-        $apiRouter->addPublicRoute('GET',    '/api/v1/timeline',               [$jobsApi, 'timeline']);
-        // Jobs – write
-        $apiRouter->addPublicRoute('POST',   '/api/v1/jobs',                   [$jobsApi, 'store']);
-        $apiRouter->addPublicRoute('PUT',    '/api/v1/jobs/{id}',              [$jobsApi, 'update']);
-        $apiRouter->addPublicRoute('DELETE', '/api/v1/jobs/{id}',              [$jobsApi, 'destroy']);
+        // Jobs – read; bulk routes must be before {id} routes
+        $apiRouter->addPublicRoute('GET',    '/api/v1/jobs',                       [$jobsApi, 'index']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/jobs/{id}/successors',        [$jobsApi, 'successors']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/jobs/{id}/history',           [$jobsApi, 'history']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/jobs/{id}',                   [$jobsApi, 'show']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/tags',                        [$jobsApi, 'tags']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/targets',                     [$jobsApi, 'targets']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/linux-users',                 [$jobsApi, 'linuxUsers']);
+        $apiRouter->addPublicRoute('GET',    '/api/v1/timeline',                    [$jobsApi, 'timeline']);
+        // Jobs – write; bulk routes must be before {id} routes
+        $apiRouter->addPublicRoute('POST',   '/api/v1/jobs/bulk/status',            [$jobsApi, 'bulkStatus']);
+        $apiRouter->addPublicRoute('POST',   '/api/v1/jobs/bulk/successors',        [$jobsApi, 'bulkSuccessors']);
+        $apiRouter->addPublicRoute('POST',   '/api/v1/jobs',                        [$jobsApi, 'store']);
+        $apiRouter->addPublicRoute('PUT',    '/api/v1/jobs/{id}',                   [$jobsApi, 'update']);
+        $apiRouter->addPublicRoute('DELETE', '/api/v1/jobs/{id}',                   [$jobsApi, 'destroy']);
         // Jobs – execute
-        $apiRouter->addPublicRoute('POST',   '/api/v1/jobs/{id}/execute',      [$jobsApi, 'execute']);
+        $apiRouter->addPublicRoute('POST',   '/api/v1/jobs/{id}/execute',           [$jobsApi, 'execute']);
         $apiRouter->addPublicRoute('POST',   '/api/v1/executions/{id}/kill',          [$jobsApi, 'kill']);
         $apiRouter->addPublicRoute('POST',   '/api/v1/executions/{id}/acknowledge',   [$jobsApi, 'acknowledge']);
         $apiRouter->addPublicRoute('DELETE', '/api/v1/executions/{id}/acknowledge',   [$jobsApi, 'unacknowledge']);

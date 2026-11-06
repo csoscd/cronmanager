@@ -463,7 +463,104 @@ Update a cron job.  Scope: **`jobs:write`**
 Request body: same structure as POST (all fields optional except those noted).
 Only fields present in the body are updated.
 
+Additional fields (v7.2.0):
+
+| Field | Type | Description |
+|---|---|---|
+| `notes` | string\|null | Optional free-text notes (plain text) |
+| `force` | bool | Skip the successor-conflict check |
+| `cascade` | bool | Also deactivate all transitive active successors |
+
+When deactivating a job (`active: false`) that has active successor jobs, the endpoint returns **HTTP 409 Conflict** unless `force: true` or `cascade: true` is set.
+
 **Response 200:** Updated job object.
+
+**Response 409 – successor conflict:**
+```json
+{
+  "error": "Conflict",
+  "code": 409,
+  "affected_successors": [
+    { "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }
+  ]
+}
+```
+
+---
+
+### GET /api/v1/jobs/{id}/successors
+
+Returns active successor jobs reachable from this job via the dependency graph. Use this for a pre-check before deactivation.  Scope: **`jobs:read`**
+
+**Response 200:**
+```json
+{
+  "agent_id": 1,
+  "has_active_successors": true,
+  "successors": [
+    { "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }
+  ]
+}
+```
+
+---
+
+### POST /api/v1/jobs/bulk/status
+
+Activate or deactivate multiple jobs in one call.  Scope: **`jobs:write`**
+
+When deactivating jobs with active successors, returns **HTTP 409 Conflict** unless `force: true` or `cascade: true` is set.
+
+**Request body:**
+```json
+{ "ids": [1, 4, 7], "active": false, "force": true }
+```
+
+**Response 200:**
+```json
+{ "agent_id": 1, "updated": 3 }
+```
+
+**Response 409 – successor conflict:**
+```json
+{
+  "error": "Conflict",
+  "code": 409,
+  "affected_jobs": [
+    {
+      "job_id": 1,
+      "description": "...",
+      "successors": [{ "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }]
+    }
+  ]
+}
+```
+
+---
+
+### POST /api/v1/jobs/bulk/successors
+
+Returns active successors for a set of jobs.  Scope: **`jobs:read`**
+
+**Request body:**
+```json
+{ "ids": [1, 4, 7] }
+```
+
+**Response 200:**
+```json
+{
+  "agent_id": 1,
+  "has_active_successors": true,
+  "jobs": [
+    {
+      "job_id": 1,
+      "description": "...",
+      "successors": [{ "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }]
+    }
+  ]
+}
+```
 
 ---
 

@@ -8,19 +8,22 @@ declare(strict_types=1);
  * Handles all /api/v1/jobs/* and /api/v1/executions/* REST endpoints.
  *
  * Routes:
- *   GET    /api/v1/jobs                  jobs:read
- *   GET    /api/v1/jobs/{id}             jobs:read
- *   POST   /api/v1/jobs                  jobs:write
- *   PUT    /api/v1/jobs/{id}             jobs:write
- *   DELETE /api/v1/jobs/{id}             jobs:write
- *   POST   /api/v1/jobs/{id}/execute     jobs:execute
- *   POST   /api/v1/executions/{id}/kill             jobs:execute
- *   POST   /api/v1/executions/{id}/acknowledge     executions:acknowledge
- *   DELETE /api/v1/executions/{id}/acknowledge     executions:acknowledge
- *   GET    /api/v1/jobs/{id}/history               jobs:read
- *   GET    /api/v1/tags                  jobs:read
- *   GET    /api/v1/targets               jobs:read
- *   GET    /api/v1/linux-users           jobs:read
+ *   GET    /api/v1/jobs                       jobs:read
+ *   GET    /api/v1/jobs/{id}                  jobs:read
+ *   GET    /api/v1/jobs/{id}/successors        jobs:read
+ *   POST   /api/v1/jobs                       jobs:write
+ *   POST   /api/v1/jobs/bulk/status           jobs:write
+ *   POST   /api/v1/jobs/bulk/successors       jobs:read
+ *   PUT    /api/v1/jobs/{id}                  jobs:write
+ *   DELETE /api/v1/jobs/{id}                  jobs:write
+ *   POST   /api/v1/jobs/{id}/execute          jobs:execute
+ *   POST   /api/v1/executions/{id}/kill                   jobs:execute
+ *   POST   /api/v1/executions/{id}/acknowledge            executions:acknowledge
+ *   DELETE /api/v1/executions/{id}/acknowledge            executions:acknowledge
+ *   GET    /api/v1/jobs/{id}/history                      jobs:read
+ *   GET    /api/v1/tags                       jobs:read
+ *   GET    /api/v1/targets                    jobs:read
+ *   GET    /api/v1/linux-users                jobs:read
  *
  * @author  Christian Schulz <technik@meinetechnikwelt.rocks>
  * @license GNU General Public License version 3 or later
@@ -630,6 +633,134 @@ final class JobsApiController extends BaseApiController
         $count = $response['count'] ?? count((array) $data);
 
         $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $this->paginated((array) $data, (int) $count, $limit, $offset)));
+    }
+
+    /**
+     * POST /api/v1/jobs/bulk/status
+     *
+     * Activate or deactivate multiple jobs in one call.
+     * Accepts force:true or cascade:true to handle active-successor conflicts.
+     * Returns 409 Conflict when any selected job has active successors and neither flag is set.
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function bulkStatus(array $params): void
+    {
+        $pdo    = $this->pdo;
+        $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_WRITE);
+
+        if ($apiKey === null) {
+            return;
+        }
+
+        $body = $this->parseJsonBody();
+        if ($body === null) {
+            return;
+        }
+
+        if (!isset($body['ids']) || !is_array($body['ids'])) {
+            $this->jsonError(400, 'Bad Request', 'Field "ids" must be an array of job IDs.');
+            return;
+        }
+
+        if (!isset($body['active']) || !is_bool($body['active'])) {
+            $this->jsonError(400, 'Bad Request', 'Field "active" must be a boolean.');
+            return;
+        }
+
+        $agent = $this->agentClient($apiKey);
+        if ($agent === null) {
+            return;
+        }
+
+        $response = $this->agentPost($agent, '/crons/bulk/status', $body);
+        if ($response === null) {
+            return;
+        }
+
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $response));
+    }
+
+    /**
+     * GET /api/v1/jobs/{id}/successors
+     *
+     * Returns active successors reachable from this job via the dependency graph.
+     * Used for pre-check before deactivation.
+     *
+     * @param array<string, string> $params Path parameters: id.
+     *
+     * @return void
+     */
+    public function successors(array $params): void
+    {
+        $pdo    = $this->pdo;
+        $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_READ);
+
+        if ($apiKey === null) {
+            return;
+        }
+
+        $id = (int) ($params['id'] ?? 0);
+
+        if ($id <= 0) {
+            $this->jsonError(400, 'Bad Request', 'Job ID must be a positive integer.');
+            return;
+        }
+
+        $agent = $this->agentClient($apiKey);
+        if ($agent === null) {
+            return;
+        }
+
+        $response = $this->agentGet($agent, "/crons/{$id}/successors");
+        if ($response === null) {
+            return;
+        }
+
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $response));
+    }
+
+    /**
+     * POST /api/v1/jobs/bulk/successors
+     *
+     * Returns active successors for a set of jobs. Used for pre-check before bulk deactivation.
+     *
+     * @param array<string, string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function bulkSuccessors(array $params): void
+    {
+        $pdo    = $this->pdo;
+        $apiKey = (new ApiKeyMiddleware($pdo, $this->logger))->authenticate(ScopeHelper::SCOPE_JOBS_READ);
+
+        if ($apiKey === null) {
+            return;
+        }
+
+        $body = $this->parseJsonBody();
+        if ($body === null) {
+            return;
+        }
+
+        if (!isset($body['ids']) || !is_array($body['ids'])) {
+            $this->jsonError(400, 'Bad Request', 'Field "ids" must be an array of job IDs.');
+            return;
+        }
+
+        $agent = $this->agentClient($apiKey);
+        if ($agent === null) {
+            return;
+        }
+
+        $response = $this->agentPost($agent, '/crons/bulk/successors', $body);
+        if ($response === null) {
+            return;
+        }
+
+        $this->jsonOk(array_merge(['agent_id' => $this->resolvedAgentId], $response));
     }
 
     /**

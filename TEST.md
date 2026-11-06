@@ -444,6 +444,16 @@ New in v7.2.0. Uses `useTransactionIsolation = false` and manual `tearDown`.
 | Bulk 409 (1) | `POST /crons/bulk/status` with active-successor job returns HTTP 409 with `affected_jobs` |
 | Bulk `force: true` (1) | Bulk deactivation proceeds; successors remain active |
 
+#### `Web/JobsApiControllerBulkAndSuccessorsTest` (10 tests)
+
+New in v7.2.0. Covers auth/input-validation/agent-resolution for the three new external REST endpoints added to `JobsApiController`. No running agent required — 4xx responses are emitted before any agent HTTP call.
+
+| Group | Tests |
+|---|---|
+| `POST /api/v1/jobs/bulk/status` (4) | Missing auth → 401; missing `ids` field → 400; missing `active` field → 400; unknown agent → 404 |
+| `GET /api/v1/jobs/{id}/successors` (3) | Missing auth → 401; non-positive ID → 400; unknown agent → 404 |
+| `POST /api/v1/jobs/bulk/successors` (3) | Missing auth → 401; missing `ids` field → 400; unknown agent → 404 |
+
 #### `Endpoints/CronListFiltersAndSuccessorsEndpointTest` (11 tests)
 
 New in v7.2.0. Covers server-side SQL filters in `CronListEndpoint` and both handlers in `SuccessorsEndpoint`.

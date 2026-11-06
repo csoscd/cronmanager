@@ -16,7 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Three options: **Cancel** (abort), **Force** (deactivate the selected jobs only, leave successors active), **Cascade** (deactivate the selected jobs and all their transitive successors).
   - Predecessor badge in the job list shows an amber ⚠ icon when the predecessor is currently inactive.
   - New agent endpoints: `GET /crons/{id}/successors` and `POST /crons/bulk/successors` for pre-check AJAX calls from the web UI and external API.
-  - External REST API (`PUT /api/v1/jobs/{id}`, `POST /api/v1/jobs/bulk/status`): forwards `force` and `cascade` flags; passes through the 409 Conflict response body unchanged.
+  - External REST API: `PUT /api/v1/jobs/{id}` accepts `force` and `cascade` flags and passes through the 409 Conflict response body unchanged.
+  - New external REST API endpoint `POST /api/v1/jobs/bulk/status` (`jobs:write`): activate/deactivate multiple jobs; supports `force`/`cascade`; returns 409 Conflict with `affected_jobs` when active successors block deactivation.
+  - New external REST API endpoint `GET /api/v1/jobs/{id}/successors` (`jobs:read`): returns BFS-reachable active successors for a single job.
+  - New external REST API endpoint `POST /api/v1/jobs/bulk/successors` (`jobs:read`): returns active successors for a set of jobs (pre-check for bulk deactivation).
 
 - **Free-text notes field** (`notes`) on jobs:
   - Optional plain-text textarea in the job edit form (new "Notizen" tab).
@@ -38,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 6 new unit tests (`DependencyRepositoryTest`): `findActiveSuccessorsRecursive` BFS logic — empty input, direct successor, transitive chain, cycle guard, job with no successors, multiple roots.
 - 7 new integration tests (`NotesAndSuccessorConflictTest`): notes store/clear and 409/force/cascade for `CronUpdateEndpoint` and `CronBulkStatusEndpoint`.
 - 11 new integration tests (`CronListFiltersAndSuccessorsEndpointTest`): `CronListEndpoint` q/notes/active/exec_type filters (incl. combination), and `SuccessorsEndpoint` single + bulk for has/has-no successors.
+- 10 new integration tests (`JobsApiControllerBulkAndSuccessorsTest`): auth (401), input validation (400), and agent resolution (404) for `POST /api/v1/jobs/bulk/status`, `GET /api/v1/jobs/{id}/successors`, and `POST /api/v1/jobs/bulk/successors`.
 
 ---
 

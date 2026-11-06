@@ -36,6 +36,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Tests
 
 - 6 new unit tests (`DependencyRepositoryTest`): `findActiveSuccessorsRecursive` BFS logic — empty input, direct successor, transitive chain, cycle guard, job with no successors, multiple roots.
+- 7 new integration tests (`NotesAndSuccessorConflictTest`): notes store/clear and 409/force/cascade for `CronUpdateEndpoint` and `CronBulkStatusEndpoint`.
+- 11 new integration tests (`CronListFiltersAndSuccessorsEndpointTest`): `CronListEndpoint` q/notes/active/exec_type filters (incl. combination), and `SuccessorsEndpoint` single + bulk for has/has-no successors.
 
 ---
 

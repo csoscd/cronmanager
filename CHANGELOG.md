@@ -33,6 +33,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `config.json`: `agent.web_port` and `agent.web_workers` are written only when
     `AGENT_WEB_PORT` is set.
 
+### Tests
+
+- 13 new integration tests (`DualPoolConfigTest`): structural checks on `entrypoint.sh` (AGENT_WEB_PORT handling, background startup, config.json keys, env-var documentation); structural checks on `start-agent.sh` (web_port config read, dual-pool branch, trap pattern, single-pool exec path retained); functional verification of the PHP config-generation snippet (web_port/web_workers present/absent based on AGENT_WEB_PORT); README.md env-var documentation checks.
+
 ---
 
 ## [7.2.0] – branch: `feature/v7.2.0`

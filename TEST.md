@@ -477,6 +477,19 @@ New in v7.2.0. Covers server-side SQL filters in `CronListEndpoint` and both han
 | `GET /crons/{id}/successors` (2) | `has_active_successors: false` when no deps; `true` with successor list |
 | `POST /crons/bulk/successors` (2) | `has_active_successors: false` for no-dep jobs; `true` with `affected_jobs` list |
 
+#### `Integration/Infrastructure/DualPoolConfigTest` (13 tests)
+
+New in v7.3.0 — structural and functional tests for the dual-pool agent feature.
+
+| Group | Tests |
+|---|---|
+| `entrypoint.sh` structure (4) | Contains `AGENT_WEB_PORT` handling; starts web pool in background on `0.0.0.0`; writes `agent.web_port` and `agent.web_workers` to config.json; documents `PHP_CLI_WEB_SERVER_WORKERS` |
+| `start-agent.sh` structure (4) | Reads `web_port` from config; has dual-pool branch on `WEB_PORT`; has `trap` for cleanup; keeps original `exec` path for single-pool mode |
+| Config generation snippet (3) | Web-pool env set → `web_port`/`web_workers` present in generated JSON; default workers=6; env absent → both keys omitted from config |
+| README.md documentation (2) | `AGENT_WEB_PORT` and `PHP_CLI_WEB_SERVER_WORKERS` are documented in the env-var reference table |
+
+---
+
 #### `Integration/Web/VersionConsistencyTest` (16 tests)
 
 New in v7.1.0 — release gate to catch forgotten version bumps.

@@ -334,10 +334,14 @@ try {
     $router->addProtectedRoute('POST', '/crons/import',        [$cronCtrl, 'importStore'], 'admin');
     $router->addProtectedRoute('GET',  '/crons/new',           [$cronCtrl, 'create'],  'admin');
     $router->addProtectedRoute('POST', '/crons',               [$cronCtrl, 'store'],   'admin');
+    // /crons/bulk/successors must come before /crons/{id}
+    $router->addProtectedRoute('POST', '/crons/bulk/successors',  [$cronCtrl, 'bulkSuccessors']);
     // /crons/translate and /crons/{id}/monitor must come before /crons/{id} so
     // that the router does not accidentally match these paths as job IDs.
     $router->addProtectedRoute('GET',  '/crons/translate',     [$cronCtrl, 'translateExpr']);
     $router->addProtectedRoute('GET',  '/crons/{id}/monitor',  [$cronCtrl, 'monitor']);
+    // /crons/{id}/successors must come before /crons/{id}
+    $router->addProtectedRoute('GET',  '/crons/{id}/successors', [$cronCtrl, 'successors']);
     $router->addProtectedRoute('GET',  '/crons/{id}',          [$cronCtrl, 'show']);
     $router->addProtectedRoute('GET',  '/crons/{id}/edit',     [$cronCtrl, 'edit'],    'admin');
     $router->addProtectedRoute('POST', '/crons/{id}/edit',     [$cronCtrl, 'update'],  'admin');

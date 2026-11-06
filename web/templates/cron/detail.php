@@ -460,6 +460,23 @@ $ackErrorKey   = \Cronmanager\Web\Session\SessionManager::flash('_flash_ack_erro
 </div>
 
 <!-- ======================================================================
+     Notes section – only rendered when the job has notes
+     ====================================================================== -->
+<?php $jobNotes = isset($job['notes']) && $job['notes'] !== null ? (string) $job['notes'] : ''; ?>
+<?php if ($jobNotes !== ''): ?>
+<div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
+    <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-gray-200">
+            <?= htmlspecialchars($t('notes_label'), ENT_QUOTES, 'UTF-8') ?>
+        </h2>
+    </div>
+    <div class="px-6 py-4">
+        <pre class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words font-mono bg-gray-50 dark:bg-gray-900/40 rounded-lg p-4"><?= htmlspecialchars($jobNotes, ENT_QUOTES, 'UTF-8') ?></pre>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- ======================================================================
      Dependency visualization section (#123)
      Only rendered when the job is part of a dependency chain.
      ====================================================================== -->

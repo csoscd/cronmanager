@@ -1226,6 +1226,7 @@ to 60 seconds of delay before the daemon picks up the entry.
 
 | Version | Change |
 |---|---|
+| 7.2.0 | Added `notes` field (string\|null) to job objects (create, update, detail, CSV export); `GET /api/v1/jobs` now accepts `?q=` (full-text search, alias `search` kept for compatibility) and `?exec_type=schedule\|requires\|triggered_by` query parameters; `PUT /api/v1/jobs/{id}` and `POST /api/v1/jobs/bulk/status` accept `force: true` and `cascade: true` to handle active-successor conflicts; a 409 Conflict response is returned (and forwarded unchanged by the API) when a job has active successors and neither flag is set. |
 | 7.1.1 | All agent-specific endpoints now accept `?agent_id=<id>` as an alternative to the `X-Agent-Id` header for agent selection (§4). Header takes precedence when both are supplied. |
 | 7.1.0 | Added `acknowledged_state=open\|closed` query parameter to `GET /api/v1/jobs/{id}/history` (§8) and `GET /api/v1/timeline` (§13); `unacknowledged_only=1` is now a deprecated alias for `acknowledged_state=open`; fixed: `unacknowledged_only` was previously accepted but never forwarded to the agent. Fixed: `POST /api/v1/jobs` (create) response now includes `trigger_delay_minutes` in the `dependency` object (was absent; #128-6). Fixed: `dependency.exit_codes` validation now rejects negative values (was silently accepted; #128-7). |
 | 6.2.0 | Added `unacknowledged_only` query parameter to `GET /api/v1/jobs/{id}/history` (§8); filters to executions where `acknowledged_at IS NULL` |

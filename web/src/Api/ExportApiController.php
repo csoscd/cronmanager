@@ -113,7 +113,7 @@ final class ExportApiController extends BaseApiController
         }
 
         fputcsv($out, [
-            'id', 'linux_user', 'schedule', 'command', 'description',
+            'id', 'linux_user', 'schedule', 'command', 'description', 'notes',
             'active', 'tags', 'targets', 'notify_on_failure',
             'execution_limit_seconds', 'retry_count', 'retry_delay_minutes',
             'singleton', 'run_in_maintenance', 'retention_days', 'created_at',
@@ -126,6 +126,7 @@ final class ExportApiController extends BaseApiController
                 $job['schedule']                 ?? '',
                 $job['command']                  ?? '',
                 $job['description']              ?? '',
+                $job['notes']                    ?? '',
                 isset($job['active']) ? ((bool) $job['active'] ? '1' : '0') : '',
                 implode('|', (array) ($job['tags']    ?? [])),
                 implode('|', (array) ($job['targets'] ?? [])),

@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS cronjobs (
     schedule          VARCHAR(100) NULL    DEFAULT NULL COMMENT 'Standard cron schedule expression; NULL for dependency-triggered jobs',
     command           TEXT         NOT NULL           COMMENT 'Full command string to execute',
     description       VARCHAR(255)                   COMMENT 'Human-readable job description',
+    notes             TEXT         NULL    DEFAULT NULL COMMENT 'Optional free-text notes; plain text, not shown in list responses',
     active            TINYINT(1)   DEFAULT 1          COMMENT '1 = enabled, 0 = disabled',
     notify_on_failure        TINYINT(1)   DEFAULT 1          COMMENT '1 = send alert mail on non-zero exit',
     notify_on_recovery       TINYINT(1)   NOT NULL DEFAULT 0  COMMENT '1 = send recovery notification when job succeeds after a notified failure streak',

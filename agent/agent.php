@@ -256,18 +256,20 @@ try {
 
     $cronUnmanaged   = new \Cronmanager\Agent\Endpoints\CronUnmanagedEndpoint($logger, $crontabManager);
     $cronUsers       = new \Cronmanager\Agent\Endpoints\CronUsersEndpoint($logger, $crontabManager);
-    $cronBulkStatus  = new \Cronmanager\Agent\Endpoints\CronBulkStatusEndpoint($pdo, $logger, $crontabManager, $wrapperScript, $auditLogger);
-    $cronBulkDelete  = new \Cronmanager\Agent\Endpoints\CronBulkDeleteEndpoint($pdo, $logger, $crontabManager, $auditLogger);
-    $cronBulkTag     = new \Cronmanager\Agent\Endpoints\CronBulkTagEndpoint($pdo, $logger, $auditLogger);
+    $cronBulkStatus     = new \Cronmanager\Agent\Endpoints\CronBulkStatusEndpoint($pdo, $logger, $crontabManager, $wrapperScript, $auditLogger, $dependencyRepo);
+    $cronBulkDelete     = new \Cronmanager\Agent\Endpoints\CronBulkDeleteEndpoint($pdo, $logger, $crontabManager, $auditLogger);
+    $cronBulkTag        = new \Cronmanager\Agent\Endpoints\CronBulkTagEndpoint($pdo, $logger, $auditLogger);
+    $cronSuccessors     = new \Cronmanager\Agent\Endpoints\SuccessorsEndpoint($pdo, $logger, $dependencyRepo);
 
     $router->addRoute('GET',    '/crons',                [$cronList,      'handle']);
     $router->addRoute('GET',    '/crons/users',          [$cronUsers,     'handle']);
     $router->addRoute('GET',    '/crons/unmanaged',      [$cronUnmanaged, 'handle']);
     // Bulk endpoints must be registered before /crons/{id} so the static path
     // segments are matched first and not consumed as an ID parameter.
-    $router->addRoute('POST',   '/crons/bulk/status',    [$cronBulkStatus, 'handle']);
-    $router->addRoute('POST',   '/crons/bulk/delete',    [$cronBulkDelete, 'handle']);
-    $router->addRoute('POST',   '/crons/bulk/tag',       [$cronBulkTag,    'handle']);
+    $router->addRoute('POST',   '/crons/bulk/status',       [$cronBulkStatus,  'handle']);
+    $router->addRoute('POST',   '/crons/bulk/delete',       [$cronBulkDelete,  'handle']);
+    $router->addRoute('POST',   '/crons/bulk/tag',          [$cronBulkTag,     'handle']);
+    $router->addRoute('POST',   '/crons/bulk/successors',   [$cronSuccessors,  'handleBulk']);
     // /crons/{id}/monitor must be registered before /crons/{id} so the router
     // tries the more specific pattern first and does not mis-route the request.
     $executeNow     = new \Cronmanager\Agent\Endpoints\ExecuteNowEndpoint($pdo, $logger, $crontabManager, $wrapperScript, $auditLogger);
@@ -281,8 +283,10 @@ try {
     // /crons/{id}/dependency-check and /crons/{id}/acknowledge-all must be registered before /crons/{id}
     $depCheck      = new \Cronmanager\Agent\Endpoints\DependencyCheckEndpoint($pdo, $logger, $dependencyRepo);
     $ackAll        = new \Cronmanager\Agent\Endpoints\AcknowledgeAllEndpoint($pdo, $logger, $auditLogger, $auditUserId);
-    $router->addRoute('GET',    '/crons/{id}/dependency-check', [$depCheck,      'handle']);
-    $router->addRoute('POST',   '/crons/{id}/acknowledge-all',  [$ackAll,        'handle']);
+    $router->addRoute('GET',    '/crons/{id}/dependency-check', [$depCheck,       'handle']);
+    $router->addRoute('POST',   '/crons/{id}/acknowledge-all',  [$ackAll,         'handle']);
+    // /crons/{id}/successors must be registered before /crons/{id}
+    $router->addRoute('GET',    '/crons/{id}/successors',       [$cronSuccessors, 'handleSingle']);
     $router->addRoute('GET',    '/crons/{id}',                  [$cronGet,       'handle']);
     $router->addRoute('POST',   '/crons',                       [$cronCreate,    'handle']);
     $router->addRoute('PUT',    '/crons/{id}',                  [$cronUpdate,    'handle']);

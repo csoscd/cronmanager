@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [7.2.0] – branch: `feature/v7.2.0`
+
+### Added
+
+- **Successor warning on job deactivation** (Issue #124): deactivating a job that has active successor jobs in a dependency chain now triggers a confirmation dialog instead of silently deactivating.
+  - Agent returns HTTP 409 Conflict with an `affected_successors` array when a job is deactivated without `force: true` or `cascade: true`.
+  - Bulk deactivation (`POST /crons/bulk/status`) returns HTTP 409 with an `affected_jobs` array when any selected job has active successors.
+  - Three options: **Cancel** (abort), **Force** (deactivate the selected jobs only, leave successors active), **Cascade** (deactivate the selected jobs and all their transitive successors).
+  - Predecessor badge in the job list shows an amber ⚠ icon when the predecessor is currently inactive.
+  - New agent endpoints: `GET /crons/{id}/successors` and `POST /crons/bulk/successors` for pre-check AJAX calls from the web UI and external API.
+  - External REST API (`PUT /api/v1/jobs/{id}`, `POST /api/v1/jobs/bulk/status`): forwards `force` and `cascade` flags; passes through the 409 Conflict response body unchanged.
+
+- **Free-text notes field** (`notes`) on jobs:
+  - Optional plain-text textarea in the job edit form (new "Notizen" tab).
+  - Shown in the job detail view only (not in the job list).
+  - Included in full-text server-side search (`?q=`).
+  - Audit-logged as `notes_changed: true` on change (content is never logged).
+  - Included in CSV export (`notes` column after `description`).
+  - New database migration: `023_job_notes.sql` (`ALTER TABLE cronjobs ADD COLUMN notes TEXT NULL DEFAULT NULL`).
+
+- **Server-side filtering for job list** (agent `GET /crons`): previously all filtering was done client-side in PHP; it is now delegated to SQL in the agent. Supported query parameters: `q` (full-text search on description, command, notes, and id), `active` (0/1), `exec_type` (schedule/requires/triggered_by), `tag`, `user`, `target`. The `search` parameter remains a backwards-compatible alias for `q` in the external REST API.
+
+### Changed
+
+- `GET /api/v1/jobs`: the `search` query parameter is now mapped to the agent's `q` parameter (previously mismatched and had no effect); `exec_type` added.
+- 409 responses from the agent are now forwarded unchanged by `BaseApiController::handleAgentException()` instead of being converted to 502.
+
+### Tests
+
+- 6 new unit tests (`DependencyRepositoryTest`): `findActiveSuccessorsRecursive` BFS logic — empty input, direct successor, transitive chain, cycle guard, job with no successors, multiple roots.
+
+---
+
 ## [7.1.1] – branch: `feature/v7.1.1`
 
 ### Added

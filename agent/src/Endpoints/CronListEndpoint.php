@@ -7,9 +7,21 @@ declare(strict_types=1);
  *
  * Handles GET /crons requests.
  *
- * Returns a JSON list of all cronmanager jobs, optionally filtered by the
- * `linux_user` query parameter. Each job includes its associated tags,
+ * Returns a JSON list of all cronmanager jobs, server-side filtered by the
+ * query parameters listed below. Each job includes its associated tags,
  * aggregated via GROUP_CONCAT to avoid multiple result rows per job.
+ * The `notes` column is intentionally excluded from the list response for
+ * payload efficiency; it is returned only by GET /crons/{id}.
+ *
+ * Supported query parameters:
+ *   user       string   Filter to jobs belonging to this Linux user.
+ *   tag        string   Filter to jobs that carry this tag.
+ *   target     string   Filter to jobs that run on this target.
+ *   q          string   Free-text search on description, command, notes and
+ *                       job ID (exact numeric match).
+ *   active     0|1      Filter to inactive (0) or active (1) jobs only.
+ *   exec_type  string   Filter by dependency type: "schedule" (no dependency),
+ *                       "requires", or "triggered_by".
  *
  * This class relies on the global `jsonResponse()` function being available
  * in the calling scope (defined in agent.php).
@@ -29,30 +41,7 @@ use PDOException;
 /**
  * Class CronListEndpoint
  *
- * Handles GET /crons API requests.
- *
- * Supported query parameters:
- *   - user (string, optional): Filter results to jobs belonging to this Linux user.
- *
- * Response on success (HTTP 200):
- * ```json
- * {
- *   "data": [
- *     {
- *       "id": 1,
- *       "linux_user": "deploy",
- *       "schedule": "* /5 * * * *",
- *       "command": "/opt/scripts/backup.sh",
- *       "description": "Backup database",
- *       "active": true,
- *       "notify_on_failure": true,
- *       "created_at": "2026-03-15T10:00:00",
- *       "tags": ["backup", "daily"]
- *     }
- *   ],
- *   "count": 1
- * }
- * ```
+ * Handles GET /crons API requests with server-side filtering.
  */
 final class CronListEndpoint
 {
@@ -94,23 +83,40 @@ final class CronListEndpoint
     public function handle(array $params): void
     {
         // Read optional filters from the query string
-        $userFilter   = isset($_GET['user'])   && $_GET['user']   !== '' ? (string) $_GET['user']   : null;
-        $tagFilter    = isset($_GET['tag'])    && $_GET['tag']    !== '' ? (string) $_GET['tag']    : null;
-        $targetFilter = isset($_GET['target']) && $_GET['target'] !== '' ? (string) $_GET['target'] : null;
+        $userFilter     = isset($_GET['user'])      && $_GET['user']      !== '' ? (string) $_GET['user']      : null;
+        $tagFilter      = isset($_GET['tag'])       && $_GET['tag']       !== '' ? (string) $_GET['tag']       : null;
+        $targetFilter   = isset($_GET['target'])    && $_GET['target']    !== '' ? (string) $_GET['target']    : null;
+        $searchFilter   = isset($_GET['q'])         && $_GET['q']         !== '' ? (string) $_GET['q']         : null;
+        $execTypeFilter = isset($_GET['exec_type']) && $_GET['exec_type'] !== '' ? (string) $_GET['exec_type'] : null;
+
+        // active filter: '1' = active only, '0' = inactive only, absent = all
+        $activeFilter = null;
+        if (isset($_GET['active']) && $_GET['active'] !== '') {
+            $activeFilter = $_GET['active'] === '0' ? false : true;
+        }
 
         // Backward compat: accept ssh_host filter from older web app versions
         if ($targetFilter === null && isset($_GET['ssh_host']) && $_GET['ssh_host'] !== '') {
             $targetFilter = (string) $_GET['ssh_host'];
         }
 
+        // Validate exec_type
+        if ($execTypeFilter !== null && !in_array($execTypeFilter, ['schedule', 'requires', 'triggered_by'], true)) {
+            jsonResponse(400, ['error' => 'Bad Request', 'message' => 'exec_type must be one of: schedule, requires, triggered_by.', 'code' => 400]);
+            return;
+        }
+
         $this->logger->debug('CronListEndpoint: handling GET /crons', [
-            'user_filter'   => $userFilter,
-            'tag_filter'    => $tagFilter,
-            'target_filter' => $targetFilter,
+            'user_filter'      => $userFilter,
+            'tag_filter'       => $tagFilter,
+            'target_filter'    => $targetFilter,
+            'search_filter'    => $searchFilter,
+            'active_filter'    => $activeFilter,
+            'exec_type_filter' => $execTypeFilter,
         ]);
 
         try {
-            $jobs = $this->fetchJobs($userFilter, $tagFilter, $targetFilter);
+            $jobs = $this->fetchJobs($userFilter, $tagFilter, $targetFilter, $searchFilter, $activeFilter, $execTypeFilter);
             $jobs = $this->attachCrontabStatus($jobs);
 
             jsonResponse(200, [
@@ -229,16 +235,28 @@ final class CronListEndpoint
     /**
      * Execute the jobs query and return a normalised result array.
      *
-     * @param string|null $userFilter   When non-null, limit results to this Linux user.
-     * @param string|null $tagFilter    When non-null, limit results to jobs with this tag.
-     * @param string|null $targetFilter When non-null, limit results to jobs with this target.
+     * @param string|null $userFilter     Limit to this Linux user.
+     * @param string|null $tagFilter      Limit to jobs carrying this tag.
+     * @param string|null $targetFilter   Limit to jobs running on this target.
+     * @param string|null $searchFilter   Free-text search on description/command/notes/id.
+     * @param bool|null   $activeFilter   true = active only, false = inactive only, null = all.
+     * @param string|null $execTypeFilter 'schedule', 'requires', or 'triggered_by'.
      *
      * @return array<int, array<string, mixed>> Array of job records.
      *
      * @throws PDOException On database errors.
      */
-    private function fetchJobs(?string $userFilter, ?string $tagFilter, ?string $targetFilter): array
-    {
+    private function fetchJobs(
+        ?string $userFilter,
+        ?string $tagFilter,
+        ?string $targetFilter,
+        ?string $searchFilter   = null,
+        ?bool   $activeFilter   = null,
+        ?string $execTypeFilter = null,
+    ): array {
+        // Build LIKE pattern once for free-text search
+        $likePattern = $searchFilter !== null ? '%' . $searchFilter . '%' : null;
+
         $sql = <<<SQL
             SELECT
                 j.id,
@@ -301,18 +319,43 @@ final class CronListEndpoint
                     FROM job_targets jt2
                     WHERE jt2.target = :target2
               ))
+              AND (:active1 IS NULL OR j.active = :active2)
+              AND (:q1 IS NULL OR (
+                    j.description LIKE :q2
+                    OR j.command     LIKE :q3
+                    OR j.notes       LIKE :q4
+                    OR CAST(j.id AS CHAR) = :q5
+              ))
+              AND (:exec_type1 IS NULL OR (
+                    (:exec_type2 = 'schedule'    AND jd.job_id IS NULL)
+                 OR (:exec_type3 = 'requires'    AND jd.type = 'requires')
+                 OR (:exec_type4 = 'triggered_by' AND jd.type = 'triggered_by')
+              ))
             GROUP BY j.id
             ORDER BY j.linux_user, j.id
             SQL;
 
+        $activeInt = $activeFilter !== null ? (int) $activeFilter : null;
+
         $stmt = $this->pdo->prepare($sql);
         \Cronmanager\Agent\Database\Connection::timedExecute($stmt, [
-            ':user1'    => $userFilter,
-            ':user2'    => $userFilter,
-            ':tag1'     => $tagFilter,
-            ':tag2'     => $tagFilter,
-            ':target1'  => $targetFilter,
-            ':target2'  => $targetFilter,
+            ':user1'       => $userFilter,
+            ':user2'       => $userFilter,
+            ':tag1'        => $tagFilter,
+            ':tag2'        => $tagFilter,
+            ':target1'     => $targetFilter,
+            ':target2'     => $targetFilter,
+            ':active1'     => $activeInt,
+            ':active2'     => $activeInt,
+            ':q1'          => $likePattern,
+            ':q2'          => $likePattern,
+            ':q3'          => $likePattern,
+            ':q4'          => $likePattern,
+            ':q5'          => $searchFilter,
+            ':exec_type1'  => $execTypeFilter,
+            ':exec_type2'  => $execTypeFilter,
+            ':exec_type3'  => $execTypeFilter,
+            ':exec_type4'  => $execTypeFilter,
         ]);
 
         $rows = $stmt->fetchAll();

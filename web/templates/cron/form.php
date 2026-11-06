@@ -169,6 +169,12 @@ foreach ($tags as $tag) {
                                <?= $tabInactiveClass ?>">
                     <?= htmlspecialchars($t('form_tab_notify'), ENT_QUOTES, 'UTF-8') ?>
                 </button>
+                <button type="button" id="tab-btn-notes"
+                        onclick="switchTab('notes')"
+                        class="px-4 py-2.5 text-sm transition-colors focus:outline-none
+                               <?= $tabInactiveClass ?>">
+                    <?= htmlspecialchars($t('form_tab_notes'), ENT_QUOTES, 'UTF-8') ?>
+                </button>
             </div>
 
             <!-- ── Basic tab ─────────────────────────────────────────────────── -->
@@ -775,6 +781,31 @@ foreach ($tags as $tag) {
 
             </div><!-- /tab-panel-notify -->
 
+            <!-- ── Notes tab ─────────────────────────────────────────────────── -->
+            <div id="tab-panel-notes" class="hidden">
+
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                    <?= htmlspecialchars($t('notes_hint'), ENT_QUOTES, 'UTF-8') ?>
+                </p>
+
+                <div class="mb-4">
+                    <label for="notes"
+                           class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <?= htmlspecialchars($t('notes_label'), ENT_QUOTES, 'UTF-8') ?>
+                    </label>
+                    <textarea id="notes" name="notes" rows="8"
+                              class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm
+                                     bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                     focus:outline-none focus:ring-2 focus:ring-blue-500
+                                     focus:border-blue-500 transition font-mono"
+                              placeholder="<?= htmlspecialchars($t('notes_placeholder'), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($val('notes', ''), ENT_QUOTES, 'UTF-8') ?></textarea>
+                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        <?= htmlspecialchars($t('notes_format_hint'), ENT_QUOTES, 'UTF-8') ?>
+                    </p>
+                </div>
+
+            </div><!-- /tab-panel-notes -->
+
             <!-- Action buttons -->
             <div class="flex items-center gap-3">
                 <button type="submit"
@@ -802,7 +833,7 @@ foreach ($tags as $tag) {
  * @param {'basic'|'advanced'} tab  Tab to activate.
  */
 function switchTab(tab) {
-    const tabs    = ['basic', 'advanced', 'notify'];
+    const tabs    = ['basic', 'advanced', 'notify', 'notes'];
     const active  = 'border-b-2 border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-semibold';
     const inactive = 'border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600';
 
@@ -834,7 +865,7 @@ function switchTab(tab) {
 // the defaults (edit/copy mode).
 (function () {
     const stored = sessionStorage.getItem('cronform_active_tab');
-    if (stored === 'advanced' || stored === 'notify') {
+    if (stored === 'advanced' || stored === 'notify' || stored === 'notes') {
         switchTab(stored);
     } else if (!stored) {
         <?php if ($notifyOpen): ?>
@@ -1116,3 +1147,125 @@ function updateDepFields() {
     updateDepFields();
 })();
 </script>
+
+<?php if ($isEdit && $isActiveVal && $jobId !== ''): ?>
+<!-- Successor warning dialog for single-job deactivation in the edit form -->
+<div id="cm-form-successor-modal"
+     class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 p-6 max-w-lg w-full mx-4">
+        <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
+            <svg class="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+            <?= htmlspecialchars($t('successor_dialog_title'), ENT_QUOTES, 'UTF-8') ?>
+        </h2>
+        <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">
+            <?= htmlspecialchars($t('successor_dialog_intro'), ENT_QUOTES, 'UTF-8') ?>
+        </p>
+        <ul id="cm-form-successor-list"
+            class="mb-4 max-h-48 overflow-y-auto text-sm text-gray-700 dark:text-gray-300 space-y-1 bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3"></ul>
+        <div class="flex flex-wrap justify-end gap-3">
+            <button type="button" id="cm-form-succ-cancel"
+                    class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600
+                           text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                <?= htmlspecialchars($t('cancel'), ENT_QUOTES, 'UTF-8') ?>
+            </button>
+            <button type="button" id="cm-form-succ-force"
+                    class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600
+                           text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                <?= htmlspecialchars($t('successor_dialog_force'), ENT_QUOTES, 'UTF-8') ?>
+            </button>
+            <button type="button" id="cm-form-succ-cascade"
+                    class="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white transition">
+                <?= htmlspecialchars($t('successor_dialog_cascade'), ENT_QUOTES, 'UTF-8') ?>
+            </button>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    'use strict';
+
+    var JOB_ID       = <?= json_encode($jobId) ?>;
+    var AG_SUFFIX    = <?= json_encode($agSuffix) ?>;
+    var modal        = document.getElementById('cm-form-successor-modal');
+    var succList     = document.getElementById('cm-form-successor-list');
+    var form         = document.getElementById('cron-form') || document.querySelector('form[method="post"]');
+    var activeChk    = document.getElementById('active');
+    var forceInp     = null;
+    var cascadeInp   = null;
+
+    if (!modal || !form || !activeChk) { return; }
+
+    form.addEventListener('submit', function (e) {
+        // Only intercept when the user is deactivating the job
+        if (activeChk.checked) { return; }
+        // If force/cascade already set (second submit after dialog confirm), proceed
+        if (forceInp && forceInp.value === '1') { return; }
+        if (cascadeInp && cascadeInp.value === '1') { return; }
+
+        e.preventDefault();
+
+        var suffix = AG_SUFFIX ? AG_SUFFIX.replace(/^\?/, '&') : '';
+        fetch('/crons/' + encodeURIComponent(JOB_ID) + '/successors' + (AG_SUFFIX || ''), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.has_active_successors) {
+                form.submit();
+                return;
+            }
+
+            succList.innerHTML = '';
+            (data.successors || []).forEach(function (s) {
+                var li = document.createElement('li');
+                li.textContent = '#' + s.id + (s.description ? ' ' + s.description : '') + ' (' + s.dependency_type + ')';
+                succList.appendChild(li);
+            });
+
+            modal.classList.remove('hidden');
+        })
+        .catch(function () { form.submit(); });
+    });
+
+    document.getElementById('cm-form-succ-cancel').onclick = function () {
+        modal.classList.add('hidden');
+        // Re-check active so user can decide
+        activeChk.checked = true;
+    };
+
+    document.getElementById('cm-form-succ-force').onclick = function () {
+        modal.classList.add('hidden');
+        if (!forceInp) {
+            forceInp = document.createElement('input');
+            forceInp.type  = 'hidden';
+            forceInp.name  = 'force';
+            form.appendChild(forceInp);
+        }
+        forceInp.value = '1';
+        form.submit();
+    };
+
+    document.getElementById('cm-form-succ-cascade').onclick = function () {
+        modal.classList.add('hidden');
+        if (!cascadeInp) {
+            cascadeInp = document.createElement('input');
+            cascadeInp.type  = 'hidden';
+            cascadeInp.name  = 'cascade';
+            form.appendChild(cascadeInp);
+        }
+        cascadeInp.value = '1';
+        form.submit();
+    };
+
+    modal.addEventListener('click', function (e) {
+        if (e.target === modal) { activeChk.checked = true; modal.classList.add('hidden'); }
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+            activeChk.checked = true;
+            modal.classList.add('hidden');
+        }
+    });
+}());
+</script>
+<?php endif; ?>

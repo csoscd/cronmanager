@@ -65,19 +65,20 @@ final class JobsApiController extends BaseApiController
         ['limit' => $limit, 'offset' => $offset] = $this->pagination();
 
         $query = array_filter([
-            'tag'    => $_GET['tag']    ?? null,
-            'user'   => $_GET['user']   ?? null,
-            'target' => $_GET['target'] ?? null,
-            'search' => $_GET['search'] ?? null,
-            'active' => isset($_GET['active']) ? (string) (int) $_GET['active'] : null,
-        ], fn($v) => $v !== null);
+            'tag'       => $_GET['tag']       ?? null,
+            'user'      => $_GET['user']      ?? null,
+            'target'    => $_GET['target']    ?? null,
+            'q'         => $_GET['q']         ?? ($_GET['search'] ?? null),  // 'search' kept as alias
+            'active'    => isset($_GET['active']) ? (string) (int) $_GET['active'] : null,
+            'exec_type' => $_GET['exec_type'] ?? null,
+        ], fn($v) => $v !== null && $v !== '');
 
         $response = $this->agentGet($agent, '/crons', $query);
         if ($response === null) {
             return;
         }
 
-        $all  = $response['data'] ?? $response;
+        $all   = $response['data'] ?? $response;
         $total = count($all);
 
         $page = array_slice((array) $all, $offset, $limit);

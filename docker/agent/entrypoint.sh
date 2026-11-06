@@ -20,6 +20,13 @@
 # Optional environment variables (shown with their defaults):
 #   AGENT_BIND_ADDRESS  0.0.0.0
 #   AGENT_PORT          8865
+#   AGENT_WEB_PORT      (unset) When set, a second PHP built-in server instance is
+#                               started on this port (plain HTTP, 0.0.0.0) alongside
+#                               the main exec pool. The web UI should then point its
+#                               AGENT_URL at this port so UI reads are isolated from
+#                               critical cron-wrapper writes on the main port.
+#                               Example: AGENT_WEB_PORT=8866
+#   PHP_CLI_WEB_SERVER_WORKERS  6  Worker count for the optional web pool
 #   DB_HOST             cronmanager-db
 #   DB_PORT             3306
 #   DB_NAME             cronmanager
@@ -93,12 +100,14 @@ mkdir -p "${AGENT_DIR}/config"
 
 php -r "
 \$config = [
-    'agent' => [
+    'agent' => array_filter([
         'bind_address' => getenv('AGENT_BIND_ADDRESS') ?: '0.0.0.0',
         'port'         => (int)(getenv('AGENT_PORT') ?: 8865),
         'hmac_secret'  => getenv('AGENT_HMAC_SECRET'),
         'tls_enabled'  => filter_var(getenv('AGENT_TLS_ENABLED') ?: 'true', FILTER_VALIDATE_BOOLEAN),
-    ],
+        'web_port'     => getenv('AGENT_WEB_PORT') ? (int)getenv('AGENT_WEB_PORT') : null,
+        'web_workers'  => getenv('AGENT_WEB_PORT') ? (int)(getenv('PHP_CLI_WEB_SERVER_WORKERS') ?: 6) : null,
+    ], fn(\$v) => \$v !== null),
     'database' => [
         'host'     => getenv('DB_HOST') ?: 'cronmanager-db',
         'port'     => (int)(getenv('DB_PORT') ?: 3306),
@@ -518,6 +527,29 @@ log_info "Starting cron daemon..."
 cron -f &
 CRON_PID=$!
 log_info "Cron daemon started (PID ${CRON_PID})."
+
+# =============================================================================
+# 5d. Start optional web pool (background)
+#     When AGENT_WEB_PORT is set, a second PHP built-in server instance is
+#     started on that port for web UI traffic.  This keeps cron-wrapper calls
+#     (always on AGENT_PORT) isolated from busy UI reads.  The web pool binds
+#     on 0.0.0.0 with plain HTTP – TLS termination is not needed for
+#     Docker-internal traffic.  Set AGENT_URL in the web container to
+#     http://cronmanager-agent:<AGENT_WEB_PORT> to route UI reads to this pool.
+# =============================================================================
+
+AGENT_WEB_PORT="${AGENT_WEB_PORT:-}"
+if [[ -n "${AGENT_WEB_PORT}" ]]; then
+    WEB_WORKERS="${PHP_CLI_WEB_SERVER_WORKERS:-6}"
+    log_info "Starting web pool on 0.0.0.0:${AGENT_WEB_PORT} (${WEB_WORKERS} workers)..."
+    PHP_CLI_SERVER_WORKERS="${WEB_WORKERS}" php \
+        -d opcache.enable=1 \
+        -d opcache.enable_cli=1 \
+        -d opcache.jit=off \
+        -S "0.0.0.0:${AGENT_WEB_PORT}" "${AGENT_PHP}" &
+    WEB_PHP_PID=$!
+    log_info "Web pool started (PID ${WEB_PHP_PID})."
+fi
 
 # =============================================================================
 # 6. Start PHP built-in server (foreground – becomes main process)

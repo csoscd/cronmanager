@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [7.3.0] – branch: `feature/v7.3.0`
+
+### Added
+
+- **Dual-pool agent mode** (`AGENT_WEB_PORT`): a second PHP built-in server instance can
+  be started inside the agent container by setting the `AGENT_WEB_PORT` environment
+  variable (e.g. `AGENT_WEB_PORT=8866`). Both instances run the same `agent.php` codebase
+  with no code changes — separation is purely at the deployment level.
+  - The main pool (always-on, `AGENT_PORT`) is reserved for `cron-wrapper.sh` calls
+    (`/execution/start`, `/execution/finish`, `GET /crons/{id}`, etc.) — the
+    operationally critical path that must never be starved.
+  - The optional web pool (`AGENT_WEB_PORT`) handles all browser/API reads (job list,
+    history, timeline, export, settings). Point the web container at this pool by setting
+    `AGENT_URL=http://cronmanager-agent:<AGENT_WEB_PORT>`.
+  - Worker count is controlled independently: `PHP_CLI_SERVER_WORKERS` for the main pool
+    (default 8), `PHP_CLI_WEB_SERVER_WORKERS` for the web pool (default 6).
+  - Fully backwards-compatible: without `AGENT_WEB_PORT` the behaviour is identical to
+    all prior versions (single pool on `AGENT_PORT`).
+  - `docker/agent/entrypoint.sh`: starts the web pool in the background (before the main
+    `exec` that becomes the foreground process). `tini` (PID 1) reaps both pools on
+    container stop.
+  - `agent/bin/start-agent.sh`: dual-pool mode uses a `trap EXIT/TERM/INT` to terminate
+    both PHP processes when systemd stops the service; single-pool mode is unchanged
+    (`exec` → systemd tracks the PHP PID directly).
+  - `config.json`: `agent.web_port` and `agent.web_workers` are written only when
+    `AGENT_WEB_PORT` is set.
+
+---
+
 ## [7.2.0] – branch: `feature/v7.2.0`
 
 ### Added

@@ -1836,6 +1836,54 @@ any requests are processed.
 
 ## Performance
 
+### Dual-pool agent mode (v7.3.0)
+
+The PHP CLI built-in server uses a shared worker pool (`PHP_CLI_SERVER_WORKERS`).
+Under sustained UI load (long history queries, timeline, export) all workers can be
+occupied by read requests, leaving no capacity for `cron-wrapper.sh` write calls
+(`/execution/start`, `/execution/finish`).  Starvation causes the wrapper to retry
+its finish call in a loop, making executions appear stuck.
+
+**Dual-pool mode** solves this by starting a second, independent PHP CLI server
+instance inside the same agent container:
+
+| Pool | Port | Purpose | Workers |
+|---|---|---|---|
+| Exec pool (main) | `AGENT_PORT` (8865) | `cron-wrapper.sh` calls only | `PHP_CLI_SERVER_WORKERS` (default 8) |
+| Web pool (optional) | `AGENT_WEB_PORT` (e.g. 8866) | All UI / REST API reads | `PHP_CLI_WEB_SERVER_WORKERS` (default 6) |
+
+**How it works:**
+
+- Both pools run the same `agent.php` — the codebase is not aware of "exec mode" vs
+  "web mode". Separation exists only at the deployment level.
+- In `entrypoint.sh` the web pool starts as a background process before the main pool's
+  `exec` replaces the shell. Because `tini` is PID 1, both PHP processes are direct tini
+  children and receive SIGTERM on container stop.
+- In `start-agent.sh` (standalone/systemd) both pools start with `&`; a `trap EXIT/TERM/INT`
+  kills both when systemd stops the service. Single-pool mode is unchanged (`exec`).
+- The web pool binds on `0.0.0.0:<AGENT_WEB_PORT>` with plain HTTP (no nginx proxy needed
+  for Docker-internal traffic). The main pool keeps its TLS/nginx setup.
+- `cron-wrapper.sh` is not changed — it always uses `agent.port` (the exec pool).
+
+**Configuration (Docker):**
+
+```yaml
+# agent container
+environment:
+  AGENT_WEB_PORT: "8866"
+  PHP_CLI_WEB_SERVER_WORKERS: "6"   # optional, default 6
+  PHP_CLI_SERVER_WORKERS: "8"        # exec pool, default 8
+
+# web container
+environment:
+  AGENT_URL: "http://cronmanager-agent:8866"
+```
+
+Backwards compatibility: when `AGENT_WEB_PORT` is not set, a single pool starts as
+before and all behaviour is identical to previous versions.
+
+---
+
 ### Swimlane view caching (APCu)
 
 The swimlane page is the most CPU-intensive page in the application because it

@@ -421,7 +421,7 @@ New in v7.1.0. Covers `POST /crons` (Fix #128-6). Uses `useTransactionIsolation 
 | Scheduling (1) | Schedules once-entry, marker in sandbox crontab, `job_id` + `targets` in response |
 | `scheduled_at` accuracy (1) | `scheduled_at` starts with the cron H:MM matching `OnceSchedule::compute()` (Fix #128-5) |
 
-#### `Unit/Agent/DependencyRepositoryTest` (26 tests)
+#### `Unit/Agent/DependencyRepositoryTest` (32 tests)
 
 | Group | Tests |
 |---|---|
@@ -429,6 +429,33 @@ New in v7.1.0. Covers `POST /crons` (Fix #128-6). Uses `useTransactionIsolation 
 | `validateDependency()` (8) | Invalid type, self-referential predecessor, negative `trigger_delay_minutes`, zero `trigger_delay_minutes` accepted, zero `max_age_minutes` rejected, negative exit codes in dep rejected; uses mock PDO for DB-skip |
 | `findByJobId()` (5) | Returns null when none, returns row when present, `max_age_minutes=null` fallback |
 | Cycle detection (4) | Direct cycle, indirect chain cycle, no cycle |
+| `findActiveSuccessorsRecursive()` (6) | New in v7.2.0 — BFS logic via mocked PDO: empty input → `[]`, direct successor, transitive chain (depth 2), cycle guard (visited set prevents infinite loop), job with no successors, multiple root jobs |
+
+#### `Endpoints/NotesAndSuccessorConflictTest` (7 tests)
+
+New in v7.2.0. Uses `useTransactionIsolation = false` and manual `tearDown`.
+
+| Group | Tests |
+|---|---|
+| `notes` field (2) | `PUT /crons/{id}` stores and returns notes; clears when set to `null` |
+| 409 conflict (1) | Deactivating a job with an active successor returns HTTP 409 with `affected_successors` |
+| `force: true` (1) | Deactivates only the target job; successor remains active |
+| `cascade: true` (1) | Deactivates the target job and all transitive successors |
+| Bulk 409 (1) | `POST /crons/bulk/status` with active-successor job returns HTTP 409 with `affected_jobs` |
+| Bulk `force: true` (1) | Bulk deactivation proceeds; successors remain active |
+
+#### `Endpoints/CronListFiltersAndSuccessorsEndpointTest` (11 tests)
+
+New in v7.2.0. Covers server-side SQL filters in `CronListEndpoint` and both handlers in `SuccessorsEndpoint`.
+
+| Group | Tests |
+|---|---|
+| `?q=` filter (2) | Matches job description; matches job notes (new field) |
+| `?active=` filter (2) | `0` returns only inactive jobs; `1` returns only active jobs |
+| `?exec_type=` filter (2) | `schedule` excludes dependency jobs; `requires` returns only requires-type jobs |
+| Combined filter (1) | `?q=X&active=1` excludes inactive jobs matching the same search term |
+| `GET /crons/{id}/successors` (2) | `has_active_successors: false` when no deps; `true` with successor list |
+| `POST /crons/bulk/successors` (2) | `has_active_successors: false` for no-dep jobs; `true` with `affected_jobs` list |
 
 #### `Integration/Web/VersionConsistencyTest` (16 tests)
 

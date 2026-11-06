@@ -421,7 +421,7 @@ Public endpoint. No signature required.
 
 ### GET /crons
 
-List all managed cron jobs.
+List all managed cron jobs. All filters are applied server-side in SQL (v7.2.0).
 
 **Query parameters:**
 
@@ -430,7 +430,9 @@ List all managed cron jobs.
 | `user` | string | Filter by Linux user |
 | `tag` | string | Filter by tag name |
 | `target` | string | Filter by target (`local` or SSH alias) |
-| `search` | string | Wildcard match on description and command |
+| `q` | string | Full-text search on `description`, `command`, `notes`, and numeric `id`; alias `search` accepted for backwards compatibility |
+| `active` | `0`\|`1` | Filter by active state |
+| `exec_type` | `schedule`\|`requires`\|`triggered_by` | Filter by execution type (`schedule` = no dependency row) |
 
 **Response:**
 ```json
@@ -492,9 +494,29 @@ Create a new managed cron job.
 
 ### PUT /crons/{id}
 
-Update an existing job. Body is the same as POST /crons.
+Update an existing job. Body is the same as POST /crons. Additional optional fields:
 
-**Response:**
+| Field | Type | Description |
+|---|---|---|
+| `notes` | string\|null | Optional free-text notes (plain text); stored as TEXT, never truncated |
+| `force` | bool | When `true`, skip the successor-conflict check (see below) |
+| `cascade` | bool | When `true`, also deactivate all transitive active successors |
+
+**Successor-conflict check (v7.2.0):** When a job is deactivated (`active: false`) and it has active successor jobs in the dependency graph, the endpoint returns **HTTP 409 Conflict** instead of proceeding. The caller must resend with `force: true` (deactivate only this job, leave successors active) or `cascade: true` (deactivate this job and all transitive successors via BFS). The check is skipped when activating a job.
+
+**Response (409 Conflict):**
+```json
+{
+  "error": "Conflict",
+  "message": "Job has active successors ...",
+  "code": 409,
+  "affected_successors": [
+    { "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }
+  ]
+}
+```
+
+**Response (200 OK):**
 ```json
 { "id": 42 }
 ```
@@ -509,9 +531,54 @@ Delete a job and remove its crontab entries.
 
 ---
 
+### GET /crons/{id}/successors
+
+Returns the list of active successor jobs reachable from this job via the dependency graph (BFS, skips cycles). Used by the web UI for the pre-check AJAX call before deactivation.
+
+**Response:**
+```json
+{
+  "has_active_successors": true,
+  "successors": [
+    { "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }
+  ]
+}
+```
+
+---
+
+### POST /crons/bulk/successors
+
+Returns active successors for a set of jobs. Used by the web UI before bulk deactivation.
+
+**Request body:**
+```json
+{ "ids": [1, 4, 7] }
+```
+
+**Response:**
+```json
+{
+  "has_active_successors": true,
+  "jobs": [
+    {
+      "job_id": 1,
+      "description": "...",
+      "successors": [
+        { "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }
+      ]
+    }
+  ]
+}
+```
+
+---
+
 ### POST /crons/bulk/status
 
 Activate or deactivate a set of jobs in one call. The crontab is updated only for jobs whose `active` state actually changes.
+
+**Successor-conflict check (v7.2.0):** When deactivating (`active: false`), returns **HTTP 409 Conflict** if any selected job has active successors. Use `force: true` or `cascade: true` (see PUT /crons/{id}).
 
 **Request body:**
 ```json
@@ -521,6 +588,21 @@ Activate or deactivate a set of jobs in one call. The crontab is updated only fo
 **Response:**
 ```json
 { "updated": 3 }
+```
+
+**Response (409 – successor conflict):**
+```json
+{
+  "error": "Conflict",
+  "code": 409,
+  "affected_jobs": [
+    {
+      "job_id": 1,
+      "description": "...",
+      "successors": [{ "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }]
+    }
+  ]
+}
 ```
 
 ---
@@ -1419,6 +1501,7 @@ One-time tokens for invitation links and password-reset flows.
 | `schedule` | VARCHAR(100) | Standard cron expression |
 | `command` | TEXT | Command to execute |
 | `description` | VARCHAR(255) | Human-readable name |
+| `notes` | TEXT NULL | Optional free-text notes (plain text); shown on job detail page only, not in list; included in full-text `?q=` search; audit-logged as `notes_changed: true` on change (content never logged) |
 | `active` | TINYINT(1) | `1` = enabled |
 | `notify_on_failure` | TINYINT(1) | Send email/Telegram on failure or limit exceeded |
 | `notify_on_recovery` | TINYINT(1) | Send recovery notification after a notified failure streak; DEFAULT 0 (opt-in) |
@@ -2295,6 +2378,10 @@ are already included in the baseline schema.
 | `017_performance_indexes.sql` | Added composite indexes for `CronListEndpoint` and `HistoryEndpoint`; repairs `schema.sql` to include objects from migrations 011, 012, and 016 |
 | `018_last_execution_refs.sql` | Added `last_execution_id` and `last_finished_execution_id` to `cronjobs` (denormalised pointers for O(1) last-run lookups; replaces the previous `MAX(id) GROUP BY` aggregate) |
 | `019_user_management_v2.sql` | Added `active`, `email`, `agent_ids` to `users`; changed `role` ENUM to `('viewer','operator','admin','api-only')`; added `auth_tokens` table for invitation and password-reset tokens |
+| `020_acknowledge.sql` | Added `acknowledged_at` and `acknowledged_by_user_id` to `execution_log`; added `acknowledge_all` column to `cronjobs` for bulk-acknowledge support |
+| `021_job_dependencies.sql` | Added `job_dependencies` table (predecessor_id, job_id, type, exit_codes, max_age_minutes); added `execution_type` and `schedule` nullable changes to `cronjobs`; added `job_dependency_trigger_state` table |
+| `022_trigger_delay_minutes.sql` | Added `trigger_delay_minutes INT UNSIGNED NOT NULL DEFAULT 0` to `job_dependencies` |
+| `023_job_notes.sql` | Added `notes TEXT NULL DEFAULT NULL` to `cronjobs` for the optional free-text notes field |
 
 Always apply migrations in order. The full schema in `agent/sql/schema.sql` reflects
 the current state after all migrations and is used for fresh installations.

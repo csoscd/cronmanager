@@ -38,7 +38,7 @@ use Cronmanager\Web\Auth\ScopeHelper;
 /**
  * Class JobsApiController
  */
-final class JobsApiController extends BaseApiController
+class JobsApiController extends BaseApiController
 {
     // -------------------------------------------------------------------------
     // Actions

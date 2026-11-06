@@ -56,14 +56,15 @@ class HostAgentClient
     // -------------------------------------------------------------------------
 
     /**
-     * @param Logger $logger      Monolog logger.
-     * @param string $agentUrl    Base URL of the agent (e.g. https://host.docker.internal:8865).
-     * @param string $hmacSecret  Shared secret for HMAC-SHA256 request signing.
-     * @param int    $userId      ID of the acting user (0 for unauthenticated / system calls).
-     * @param string $username    Username of the acting user (e.g. "admin" or "api:key-name").
-     * @param int    $timeout     Request timeout in seconds (default: 10).
-     * @param bool   $sslVerify   Verify TLS certificate (default: true).
-     * @param string $sslCaBundle Path to a custom CA bundle PEM (optional).
+     * @param Logger      $logger      Monolog logger.
+     * @param string      $agentUrl    Base URL of the agent (e.g. https://host.docker.internal:8865).
+     * @param string      $hmacSecret  Shared secret for HMAC-SHA256 request signing.
+     * @param int         $userId      ID of the acting user (0 for unauthenticated / system calls).
+     * @param string      $username    Username of the acting user (e.g. "admin" or "api:key-name").
+     * @param int         $timeout     Request timeout in seconds (default: 10).
+     * @param bool        $sslVerify   Verify TLS certificate (default: true).
+     * @param string      $sslCaBundle Path to a custom CA bundle PEM (optional).
+     * @param Client|null $httpClient  Pre-built Guzzle client (for testing only; production passes null).
      */
     public function __construct(
         private readonly Logger $logger,
@@ -74,7 +75,10 @@ class HostAgentClient
         private readonly int    $timeout     = 10,
         private readonly bool   $sslVerify   = true,
         private readonly string $sslCaBundle = '',
-    ) {}
+        ?Client                 $httpClient  = null,
+    ) {
+        $this->guzzle = $httpClient;
+    }
 
     // -------------------------------------------------------------------------
     // Public API

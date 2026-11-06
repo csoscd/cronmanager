@@ -41,7 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 6 new unit tests (`DependencyRepositoryTest`): `findActiveSuccessorsRecursive` BFS logic — empty input, direct successor, transitive chain, cycle guard, job with no successors, multiple roots.
 - 7 new integration tests (`NotesAndSuccessorConflictTest`): notes store/clear and 409/force/cascade for `CronUpdateEndpoint` and `CronBulkStatusEndpoint`.
 - 11 new integration tests (`CronListFiltersAndSuccessorsEndpointTest`): `CronListEndpoint` q/notes/active/exec_type filters (incl. combination), and `SuccessorsEndpoint` single + bulk for has/has-no successors.
-- 10 new integration tests (`JobsApiControllerBulkAndSuccessorsTest`): auth (401), input validation (400), and agent resolution (404) for `POST /api/v1/jobs/bulk/status`, `GET /api/v1/jobs/{id}/successors`, and `POST /api/v1/jobs/bulk/successors`.
+- 14 new integration tests (`JobsApiControllerBulkAndSuccessorsTest`): auth (401), input validation (400), and agent resolution (404) for all three endpoints (Group A, 10 tests); proxy behaviour with mocked Guzzle client — 200/409 forwarding for bulk/status, and 200 forwarding for single/bulk successors (Group B, 4 tests).
 
 ---
 

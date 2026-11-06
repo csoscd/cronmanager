@@ -444,15 +444,25 @@ New in v7.2.0. Uses `useTransactionIsolation = false` and manual `tearDown`.
 | Bulk 409 (1) | `POST /crons/bulk/status` with active-successor job returns HTTP 409 with `affected_jobs` |
 | Bulk `force: true` (1) | Bulk deactivation proceeds; successors remain active |
 
-#### `Web/JobsApiControllerBulkAndSuccessorsTest` (10 tests)
+#### `Web/JobsApiControllerBulkAndSuccessorsTest` (14 tests)
 
-New in v7.2.0. Covers auth/input-validation/agent-resolution for the three new external REST endpoints added to `JobsApiController`. No running agent required — 4xx responses are emitted before any agent HTTP call.
+New in v7.2.0. Split into two groups:
+
+**Group A (10 tests)** — input validation/auth/agent-resolution; no running agent required (4xx are returned before any agent HTTP call):
 
 | Group | Tests |
 |---|---|
 | `POST /api/v1/jobs/bulk/status` (4) | Missing auth → 401; missing `ids` field → 400; missing `active` field → 400; unknown agent → 404 |
 | `GET /api/v1/jobs/{id}/successors` (3) | Missing auth → 401; non-positive ID → 400; unknown agent → 404 |
 | `POST /api/v1/jobs/bulk/successors` (3) | Missing auth → 401; missing `ids` field → 400; unknown agent → 404 |
+
+**Group B (4 tests)** — proxy behaviour with injected GuzzleHttp `MockHandler` via the `HostAgentClient` optional `$httpClient` constructor parameter; uses a `MockedJobsApiController` subclass:
+
+| Endpoint | Tests |
+|---|---|
+| `POST /api/v1/jobs/bulk/status` (2) | Agent 200 → controller returns 200 with `updated` and `agent_id`; agent 409 → controller forwards 409 with `affected_jobs` unchanged |
+| `GET /api/v1/jobs/{id}/successors` (1) | Agent 200 `has_active_successors: true` → controller returns 200 with successor list |
+| `POST /api/v1/jobs/bulk/successors` (1) | Agent 200 `has_active_successors: false` → controller returns 200 with empty `jobs` list |
 
 #### `Endpoints/CronListFiltersAndSuccessorsEndpointTest` (11 tests)
 

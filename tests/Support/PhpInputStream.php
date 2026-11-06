@@ -77,10 +77,20 @@ final class PhpInputStream
 
     /**
      * Restore the built-in `php://` stream wrapper.
+     *
+     * Only acts when set() was actually called ($replaced is true).
+     * Unregisters PhpInputStream, then re-instates the built-in handler so
+     * that subsequent code (e.g. GuzzleHttp PSR7 Utils::streamFor) can open
+     * php://temp and php://memory normally again.
      */
     public static function restore(): void
     {
-        if (!in_array('php', stream_get_wrappers(), true)) {
+        if (self::$replaced) {
+            // Remove our handler from the 'php' slot.
+            if (in_array('php', stream_get_wrappers(), true)) {
+                stream_wrapper_unregister('php');
+            }
+            // Re-instate the built-in php:// handler.
             stream_wrapper_restore('php');
         }
 
@@ -115,6 +125,30 @@ final class PhpInputStream
     public function stream_eof(): bool
     {
         return $this->position >= strlen(self::$content);
+    }
+
+    /**
+     * No-op write: silences PHP warnings when Guzzle opens php://temp for the
+     * request body while our wrapper is active. The MockHandler discards the
+     * request body anyway, so silent loss is harmless in tests.
+     */
+    public function stream_write(string $data): int
+    {
+        return strlen($data);
+    }
+
+    /**
+     * No-op seek: silences PHP warnings from Guzzle's stream utilities.
+     * Returns false so callers know seeking is unsupported.
+     */
+    public function stream_seek(int $offset, int $whence): bool
+    {
+        return false;
+    }
+
+    public function stream_tell(): int
+    {
+        return $this->position;
     }
 
     /**

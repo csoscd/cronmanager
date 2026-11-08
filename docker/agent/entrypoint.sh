@@ -538,6 +538,14 @@ log_info "Cron daemon started (PID ${CRON_PID})."
 #     http://cronmanager-agent:<AGENT_WEB_PORT> to route UI reads to this pool.
 # =============================================================================
 
+# Resolve agent entry point here so it is available for both the web pool
+# (step 5d) and the main exec pool (step 6).
+AGENT_PHP="${AGENT_DIR}/agent.php"
+if [[ ! -f "$AGENT_PHP" ]]; then
+    log_error "Agent entry point not found: ${AGENT_PHP}"
+    exit 1
+fi
+
 AGENT_WEB_PORT="${AGENT_WEB_PORT:-}"
 if [[ -n "${AGENT_WEB_PORT}" ]]; then
     WEB_WORKERS="${PHP_CLI_WEB_SERVER_WORKERS:-6}"
@@ -578,12 +586,6 @@ if [[ "${AGENT_TLS_ENABLED}" == "true" ]]; then
     BIND_ADDRESS="127.0.0.1"
     PORT="${TLS_INTERNAL_PORT}"
     log_info "TLS mode: PHP built-in server binding on ${BIND_ADDRESS}:${PORT} (nginx on :${AGENT_PORT:-8865})"
-fi
-
-AGENT_PHP="${AGENT_DIR}/agent.php"
-if [[ ! -f "$AGENT_PHP" ]]; then
-    log_error "Agent entry point not found: ${AGENT_PHP}"
-    exit 1
 fi
 
 # Concurrency: without PHP_CLI_SERVER_WORKERS the built-in server handles all

@@ -477,16 +477,20 @@ New in v7.2.0. Covers server-side SQL filters in `CronListEndpoint` and both han
 | `GET /crons/{id}/successors` (2) | `has_active_successors: false` when no deps; `true` with successor list |
 | `POST /crons/bulk/successors` (2) | `has_active_successors: false` for no-dep jobs; `true` with `affected_jobs` list |
 
-#### `Integration/Infrastructure/DualPoolConfigTest` (13 tests)
+#### `Integration/Infrastructure/DualPoolConfigTest` (20 tests)
 
-New in v7.3.0 — structural and functional tests for the dual-pool agent feature.
+New in v7.3.0, extended in v7.4.0 — structural and functional tests for the dual-pool agent feature.
 
 | Group | Tests |
 |---|---|
-| `entrypoint.sh` structure (4) | Contains `AGENT_WEB_PORT` handling; starts web pool in background on `0.0.0.0`; writes `agent.web_port` and `agent.web_workers` to config.json; documents `PHP_CLI_WEB_SERVER_WORKERS` |
-| `start-agent.sh` structure (4) | Reads `web_port` from config; has dual-pool branch on `WEB_PORT`; has `trap` for cleanup; keeps original `exec` path for single-pool mode |
-| Config generation snippet (3) | Web-pool env set → `web_port`/`web_workers` present in generated JSON; default workers=6; env absent → both keys omitted from config |
-| README.md documentation (2) | `AGENT_WEB_PORT` and `PHP_CLI_WEB_SERVER_WORKERS` are documented in the env-var reference table |
+| `entrypoint.sh` structure – v7.3.0 (4) | Contains `AGENT_WEB_PORT` handling; starts web pool in background on `0.0.0.0`; writes `agent.web_port` and `agent.web_workers` to config.json; documents `PHP_CLI_WEB_SERVER_WORKERS` |
+| `entrypoint.sh` TLS web-pool – v7.4.0 (3) | Defines `WEB_INTERNAL_PORT=18866`; nginx proxy_pass references `WEB_INTERNAL_PORT`; PHP bound on `127.0.0.1:WEB_INTERNAL_PORT` in TLS mode |
+| `start-agent.sh` structure – v7.3.0 (4) | Reads `web_port` from config; has dual-pool branch on `WEB_PORT`; has `trap` for cleanup; keeps original `exec` path for single-pool mode |
+| Config generation snippet – v7.3.0 (3) | Web-pool env set → `web_port`/`web_workers` present in generated JSON; default workers=6; env absent → both keys omitted from config |
+| AgentSchema web_url column – v7.4.0 (2) | `AgentSchema.php` defines `web_url` column; `addWebUrlColumn()` uses `ADD COLUMN IF NOT EXISTS` |
+| AgentsApiController – v7.4.0 (1) | `GET /api/v1/agents` exposes `web_pool_url` |
+| README.md documentation – v7.3.0 (2) | `AGENT_WEB_PORT` and `PHP_CLI_WEB_SERVER_WORKERS` are documented in the env-var reference table |
+| `Unit/Web/HostAgentClientTest` – v7.4.0 (2) | `webUrl` used as `base_uri` when set; falls back to `agentUrl` when empty |
 
 ---
 

@@ -238,6 +238,7 @@ abstract class BaseController
                 timeout:     (int)     ($agent['timeout']     ?? 10),
                 sslVerify:   (bool)    ($agent['ssl_verify']  ?? true),
                 sslCaBundle: (string)  ($agent['ssl_ca_bundle'] ?? ''),
+                webUrl:      (string)  ($agent['web_url'] ?? ''),
             );
         }
 
@@ -395,6 +396,7 @@ abstract class BaseController
             timeout:     (int)    ($agent['timeout']      ?? 10),
             sslVerify:   (bool)   ($agent['ssl_verify']   ?? true),
             sslCaBundle: (string) ($agent['ssl_ca_bundle'] ?? ''),
+            webUrl:      (string) ($agent['web_url'] ?? ''),
         );
     }
 

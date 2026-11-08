@@ -88,6 +88,21 @@ $val = fn(string $key, mixed $default = ''): string =>
                    style="background:var(--cm-input-bg);border-color:var(--cm-border);color:var(--cm-text)">
         </div>
 
+        <!-- Web-Pool-URL -->
+        <div class="space-y-1">
+            <label for="agent-web-url" class="block text-sm font-medium" style="color:var(--cm-text)">
+                <?= htmlspecialchars($t('agent_web_pool_url'), ENT_QUOTES, 'UTF-8') ?>
+            </label>
+            <input id="agent-web-url" type="url" name="web_url" maxlength="500"
+                   placeholder="https://host.example.com:8866"
+                   value="<?= $val('web_url') ?>"
+                   class="w-full rounded-lg border px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                   style="background:var(--cm-input-bg);border-color:var(--cm-border);color:var(--cm-text)">
+            <p class="text-xs mt-1" style="color:var(--cm-text-muted)">
+                <?= htmlspecialchars($t('agent_web_pool_url_hint'), ENT_QUOTES, 'UTF-8') ?>
+            </p>
+        </div>
+
         <!-- HMAC Secret -->
         <div class="space-y-1">
             <label for="agent-secret" class="block text-sm font-medium" style="color:var(--cm-text)">

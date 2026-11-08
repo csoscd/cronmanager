@@ -108,7 +108,7 @@ final class AgentRepository
      * Insert a new agent and return its auto-generated primary key.
      *
      * Expected keys in $data:
-     *   name (string), url (string), hmac_secret (string),
+     *   name (string), url (string), web_url (string|null), hmac_secret (string),
      *   description (string|null), timeout (int), ssl_verify (bool|int),
      *   ssl_ca_bundle (string|null), enabled (bool|int), sort_order (int)
      *
@@ -122,9 +122,9 @@ final class AgentRepository
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO agents
-                (name, description, url, hmac_secret, timeout, ssl_verify, ssl_ca_bundle, enabled, sort_order)
+                (name, description, url, web_url, hmac_secret, timeout, ssl_verify, ssl_ca_bundle, enabled, sort_order)
              VALUES
-                (:name, :description, :url, :hmac_secret, :timeout, :ssl_verify, :ssl_ca_bundle, :enabled, :sort_order)'
+                (:name, :description, :url, :web_url, :hmac_secret, :timeout, :ssl_verify, :ssl_ca_bundle, :enabled, :sort_order)'
         );
 
         $stmt->execute([
@@ -133,6 +133,9 @@ final class AgentRepository
                                     ? (string) $data['description']
                                     : null,
             ':url'           => (string) ($data['url']           ?? ''),
+            ':web_url'       => isset($data['web_url']) && $data['web_url'] !== ''
+                                    ? (string) $data['web_url']
+                                    : null,
             ':hmac_secret'   => (string) ($data['hmac_secret']   ?? ''),
             ':timeout'       => (int)    ($data['timeout']        ?? 10),
             ':ssl_verify'    => (int)    ($data['ssl_verify']     ?? 1),
@@ -165,6 +168,7 @@ final class AgentRepository
                 name          = :name,
                 description   = :description,
                 url           = :url,
+                web_url       = :web_url,
                 hmac_secret   = :hmac_secret,
                 timeout       = :timeout,
                 ssl_verify    = :ssl_verify,
@@ -180,6 +184,9 @@ final class AgentRepository
                                     ? (string) $data['description']
                                     : null,
             ':url'           => (string) ($data['url']           ?? ''),
+            ':web_url'       => isset($data['web_url']) && $data['web_url'] !== ''
+                                    ? (string) $data['web_url']
+                                    : null,
             ':hmac_secret'   => (string) ($data['hmac_secret']   ?? ''),
             ':timeout'       => (int)    ($data['timeout']        ?? 10),
             ':ssl_verify'    => (int)    ($data['ssl_verify']     ?? 1),

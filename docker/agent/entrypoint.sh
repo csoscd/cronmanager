@@ -21,10 +21,12 @@
 #   AGENT_BIND_ADDRESS  0.0.0.0
 #   AGENT_PORT          8865
 #   AGENT_WEB_PORT      (unset) When set, a second PHP built-in server instance is
-#                               started on this port (plain HTTP, 0.0.0.0) alongside
-#                               the main exec pool. The web UI should then point its
-#                               AGENT_URL at this port so UI reads are isolated from
-#                               critical cron-wrapper writes on the main port.
+#                               started on this port alongside the main exec pool.
+#                               The web container's web_pool_url agent field should
+#                               point here so UI reads are isolated from cron-wrapper
+#                               writes on AGENT_PORT.  When AGENT_TLS_ENABLED=true,
+#                               nginx terminates TLS on this port too (→ 127.0.0.1:18866);
+#                               without TLS, PHP binds directly on 0.0.0.0:AGENT_WEB_PORT.
 #                               Example: AGENT_WEB_PORT=8866
 #   PHP_CLI_WEB_SERVER_WORKERS  6  Worker count for the optional web pool
 #   DB_HOST             cronmanager-db
@@ -393,6 +395,7 @@ AGENT_TLS_ENABLED="${AGENT_TLS_ENABLED:-true}"
 TLS_CERT_FILE="${TLS_CERT_FILE:-/opt/cronmanager/agent/tls/cert.pem}"
 TLS_KEY_FILE="${TLS_KEY_FILE:-/opt/cronmanager/agent/tls/key.pem}"
 TLS_INTERNAL_PORT=18865
+WEB_INTERNAL_PORT=18866
 
 if [[ "${AGENT_TLS_ENABLED}" == "true" ]]; then
     log_info "TLS enabled – configuring nginx reverse proxy..."
@@ -460,6 +463,35 @@ server {
     }
 }
 NGINX_EOF
+
+    # Optionally add a second server block for the web pool
+    if [[ -n "${AGENT_WEB_PORT:-}" ]]; then
+        cat >> /etc/nginx/sites-enabled/cronmanager-agent.conf << NGINX_WEB_EOF
+
+server {
+    listen 0.0.0.0:${AGENT_WEB_PORT} ssl;
+
+    ssl_certificate     ${TLS_CERT_FILE};
+    ssl_certificate_key ${TLS_KEY_FILE};
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    access_log /dev/stdout;
+    error_log  /dev/stderr;
+
+    location / {
+        proxy_pass         http://127.0.0.1:${WEB_INTERNAL_PORT};
+        proxy_set_header   Host \$host;
+        proxy_set_header   X-Real-IP \$remote_addr;
+        proxy_read_timeout 60;
+        proxy_connect_timeout 10;
+    }
+}
+NGINX_WEB_EOF
+        log_info "Web pool nginx block added (0.0.0.0:${AGENT_WEB_PORT} → 127.0.0.1:${WEB_INTERNAL_PORT})."
+    fi
 
     # Validate config and start nginx
     if nginx -t 2>&1; then
@@ -531,11 +563,17 @@ log_info "Cron daemon started (PID ${CRON_PID})."
 # =============================================================================
 # 5d. Start optional web pool (background)
 #     When AGENT_WEB_PORT is set, a second PHP built-in server instance is
-#     started on that port for web UI traffic.  This keeps cron-wrapper calls
-#     (always on AGENT_PORT) isolated from busy UI reads.  The web pool binds
-#     on 0.0.0.0 with plain HTTP – TLS termination is not needed for
-#     Docker-internal traffic.  Set AGENT_URL in the web container to
-#     http://cronmanager-agent:<AGENT_WEB_PORT> to route UI reads to this pool.
+#     started for web UI / API traffic, keeping cron-wrapper calls (always on
+#     AGENT_PORT) isolated from busy UI reads.
+#
+#     TLS mode (AGENT_TLS_ENABLED=true):
+#       PHP binds on 127.0.0.1:18866; nginx terminates TLS on 0.0.0.0:AGENT_WEB_PORT.
+#       Set web_pool_url = https://<host>:AGENT_WEB_PORT in the web container.
+#
+#     Plain HTTP mode:
+#       PHP binds directly on 0.0.0.0:AGENT_WEB_PORT.
+#       Set web_pool_url = http://<host>:AGENT_WEB_PORT in the web container.
+#       Only use this for same-Docker-network deployments.
 # =============================================================================
 
 # Resolve agent entry point here so it is available for both the web pool
@@ -549,12 +587,20 @@ fi
 AGENT_WEB_PORT="${AGENT_WEB_PORT:-}"
 if [[ -n "${AGENT_WEB_PORT}" ]]; then
     WEB_WORKERS="${PHP_CLI_WEB_SERVER_WORKERS:-6}"
-    log_info "Starting web pool on 0.0.0.0:${AGENT_WEB_PORT} (${WEB_WORKERS} workers)..."
+
+    if [[ "${AGENT_TLS_ENABLED}" == "true" ]]; then
+        WEB_PHP_BIND="127.0.0.1:${WEB_INTERNAL_PORT}"
+        log_info "Starting web pool on 127.0.0.1:${WEB_INTERNAL_PORT} (nginx TLS on 0.0.0.0:${AGENT_WEB_PORT}, ${WEB_WORKERS} workers)..."
+    else
+        WEB_PHP_BIND="0.0.0.0:${AGENT_WEB_PORT}"
+        log_info "Starting web pool on 0.0.0.0:${AGENT_WEB_PORT} (plain HTTP, ${WEB_WORKERS} workers)..."
+    fi
+
     PHP_CLI_SERVER_WORKERS="${WEB_WORKERS}" php \
         -d opcache.enable=1 \
         -d opcache.enable_cli=1 \
         -d opcache.jit=off \
-        -S "0.0.0.0:${AGENT_WEB_PORT}" "${AGENT_PHP}" &
+        -S "${WEB_PHP_BIND}" "${AGENT_PHP}" &
     WEB_PHP_PID=$!
     log_info "Web pool started (PID ${WEB_PHP_PID})."
 fi

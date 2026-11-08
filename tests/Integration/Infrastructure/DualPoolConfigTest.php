@@ -185,6 +185,97 @@ class DualPoolConfigTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // entrypoint.sh TLS web-pool checks (v7.4.0)
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function entrypointDefinesWebInternalPort(): void
+    {
+        $script = (string) file_get_contents($this->root . '/docker/agent/entrypoint.sh');
+
+        $this->assertStringContainsString(
+            'WEB_INTERNAL_PORT=18866',
+            $script,
+            'entrypoint.sh must define WEB_INTERNAL_PORT=18866 for TLS nginx proxy'
+        );
+    }
+
+    #[Test]
+    public function entrypointAddsNginxWebPoolBlockWhenTlsEnabled(): void
+    {
+        $script = (string) file_get_contents($this->root . '/docker/agent/entrypoint.sh');
+
+        // The nginx heredoc must reference WEB_INTERNAL_PORT for the proxy_pass
+        $this->assertMatchesRegularExpression(
+            '/proxy_pass.*WEB_INTERNAL_PORT/s',
+            $script,
+            'entrypoint.sh nginx block must proxy to WEB_INTERNAL_PORT'
+        );
+    }
+
+    #[Test]
+    public function entrypointBindsWebPoolToInternalPortInTlsMode(): void
+    {
+        $script = (string) file_get_contents($this->root . '/docker/agent/entrypoint.sh');
+
+        // TLS path: PHP must bind on 127.0.0.1:WEB_INTERNAL_PORT
+        $this->assertMatchesRegularExpression(
+            '/127\.0\.0\.1.*WEB_INTERNAL_PORT/s',
+            $script,
+            'entrypoint.sh must bind web pool PHP on 127.0.0.1:WEB_INTERNAL_PORT in TLS mode'
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // AgentSchema web_url column (v7.4.0)
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function agentSchemaCreateTableIncludesWebUrl(): void
+    {
+        $schema = (string) file_get_contents($this->root . '/web/src/Bootstrap/AgentSchema.php');
+
+        $this->assertStringContainsString(
+            'web_url',
+            $schema,
+            'AgentSchema must define the web_url column'
+        );
+    }
+
+    #[Test]
+    public function agentSchemaHasAddWebUrlColumnMethod(): void
+    {
+        $schema = (string) file_get_contents($this->root . '/web/src/Bootstrap/AgentSchema.php');
+
+        $this->assertStringContainsString(
+            'addWebUrlColumn',
+            $schema,
+            'AgentSchema must have addWebUrlColumn() for idempotent ALTER TABLE migration'
+        );
+        $this->assertStringContainsString(
+            'ADD COLUMN IF NOT EXISTS',
+            $schema,
+            'addWebUrlColumn() must use ADD COLUMN IF NOT EXISTS for idempotence'
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // AgentsApiController web_pool_url field (v7.4.0)
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function agentsApiControllerExposesWebPoolUrl(): void
+    {
+        $controller = (string) file_get_contents($this->root . '/web/src/Api/AgentsApiController.php');
+
+        $this->assertStringContainsString(
+            'web_pool_url',
+            $controller,
+            'AgentsApiController must expose web_pool_url in GET /api/v1/agents response'
+        );
+    }
+
+    // -------------------------------------------------------------------------
     // README.md documentation check
     // -------------------------------------------------------------------------
 

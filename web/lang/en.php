@@ -492,6 +492,8 @@ return [
     'agent_name'                 => 'Name',
     'agent_description'          => 'Description',
     'agent_url'                  => 'URL',
+    'agent_web_pool_url'         => 'Web pool URL',
+    'agent_web_pool_url_hint'    => 'Optional: URL of the web pool (AGENT_WEB_PORT). When set, all web UI requests are routed here instead of the exec pool URL. Leave empty if no separate web pool is configured.',
     'agent_hmac_secret'          => 'HMAC secret',
     'agent_secret_leave_blank'   => 'leave blank to keep existing',
     'agent_secret_toggle'        => 'Show/hide secret',
@@ -507,6 +509,7 @@ return [
     'agent_error_name_too_long'  => 'Name may not exceed 100 characters.',
     'agent_error_url_required'   => 'URL must not be empty.',
     'agent_error_url_invalid'    => 'URL must start with http:// or https://.',
+    'agent_error_web_url_invalid'=> 'Web pool URL must start with http:// or https://.',
     'agent_error_secret_required'=> 'HMAC secret must not be empty.',
 
     // -------------------------------------------------------------------------

@@ -279,6 +279,7 @@ final class AgentController extends BaseController
                 timeout:     (int)     ($agent['timeout']     ?? 10),
                 sslVerify:   (bool)    ($agent['ssl_verify']  ?? true),
                 sslCaBundle: (string)  ($agent['ssl_ca_bundle'] ?? ''),
+                webUrl:      (string)  ($agent['web_url'] ?? ''),
             );
 
             $health  = $client->get('/health');
@@ -386,6 +387,7 @@ final class AgentController extends BaseController
             'name'          => trim((string) ($_POST['name']          ?? '')),
             'description'   => trim((string) ($_POST['description']   ?? '')),
             'url'           => rtrim(trim((string) ($_POST['url']     ?? '')), '/'),
+            'web_url'       => rtrim(trim((string) ($_POST['web_url'] ?? '')), '/'),
             'hmac_secret'   => trim((string) ($_POST['hmac_secret']   ?? '')),
             'timeout'       => max(1, (int) ($_POST['timeout']        ?? 10)),
             'ssl_verify'    => isset($_POST['ssl_verify']) ? 1 : 0,
@@ -420,6 +422,11 @@ final class AgentController extends BaseController
 
         if (!str_starts_with((string) $data['url'], 'http://') && !str_starts_with((string) $data['url'], 'https://')) {
             return 'agent_error_url_invalid';
+        }
+
+        $webUrl = (string) ($data['web_url'] ?? '');
+        if ($webUrl !== '' && !str_starts_with($webUrl, 'http://') && !str_starts_with($webUrl, 'https://')) {
+            return 'agent_error_web_url_invalid';
         }
 
         if (!$allowEmptySecret && (string) $data['hmac_secret'] === '') {

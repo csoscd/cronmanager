@@ -1836,7 +1836,7 @@ any requests are processed.
 
 ## Performance
 
-### Dual-pool agent mode (v7.3.0)
+### Dual-pool agent mode (v7.3.0 / v7.4.0)
 
 The PHP CLI built-in server uses a shared worker pool (`PHP_CLI_SERVER_WORKERS`).
 Under sustained UI load (long history queries, timeline, export) all workers can be
@@ -1861,26 +1861,56 @@ instance inside the same agent container:
   children and receive SIGTERM on container stop.
 - In `start-agent.sh` (standalone/systemd) both pools start with `&`; a `trap EXIT/TERM/INT`
   kills both when systemd stops the service. Single-pool mode is unchanged (`exec`).
-- The web pool binds on `0.0.0.0:<AGENT_WEB_PORT>` with plain HTTP (no nginx proxy needed
-  for Docker-internal traffic). The main pool keeps its TLS/nginx setup.
 - `cron-wrapper.sh` is not changed — it always uses `agent.port` (the exec pool).
 
-**Configuration (Docker):**
+**TLS support for the web pool (v7.4.0):**
+
+When `AGENT_TLS_ENABLED=true` (the default), `entrypoint.sh` adds a second nginx
+`server {}` block that terminates TLS on `0.0.0.0:AGENT_WEB_PORT` and proxies to
+`127.0.0.1:18866` (internal PHP, same pattern as the exec pool on `18865`). This
+makes the web pool accessible over encrypted connections from remote or cross-network
+agents — identical to the exec pool's TLS path.
+
+When `AGENT_TLS_ENABLED=false`, the web pool binds directly on `0.0.0.0:AGENT_WEB_PORT`
+as plain HTTP (suitable for same-Docker-network deployments only).
+
+**Routing in the web container (v7.4.0):**
+
+Each agent in the web UI has an optional **Web-Pool-URL** field (`agents.web_url`). When
+set, `HostAgentClient` uses this URL as `base_uri` for all HTTP calls, routing all UI
+traffic to the web pool. When empty, it falls back to `agents.url` (exec pool) —
+single-pool behaviour, fully backwards-compatible.
+
+```
+web container (HostAgentClient)
+  → agents.web_url (web pool)      ← UI reads, REST API reads
+  → agents.url     (exec pool)     ← only when web_url is not set (single-pool mode)
+
+cron-wrapper.sh
+  → agent.port     (exec pool)     ← always, never uses HostAgentClient
+```
+
+**Configuration (Docker, TLS mode):**
 
 ```yaml
 # agent container
 environment:
-  AGENT_WEB_PORT: "8866"
-  PHP_CLI_WEB_SERVER_WORKERS: "6"   # optional, default 6
-  PHP_CLI_SERVER_WORKERS: "8"        # exec pool, default 8
+  AGENT_WEB_PORT: "8866"           # enables web pool + nginx TLS block on port 8866
+  PHP_CLI_WEB_SERVER_WORKERS: "6"  # optional, default 6
+  PHP_CLI_SERVER_WORKERS: "8"      # exec pool, default 8
 
-# web container
-environment:
-  AGENT_URL: "http://cronmanager-agent:8866"
+# web container: set Web-Pool-URL on the agent record in Settings → Agents
+# Example: https://cronmanager-agent:8866
 ```
 
+**Configuration (Docker, plain HTTP / same-network):**
+
+Same `AGENT_WEB_PORT: "8866"` on the agent. Web-Pool-URL: `http://cronmanager-agent:8866`.
+Only use this when both containers are on the same Docker network.
+
 Backwards compatibility: when `AGENT_WEB_PORT` is not set, a single pool starts as
-before and all behaviour is identical to previous versions.
+before and all behaviour is identical to previous versions. When `web_url` is NULL
+in the `agents` table, `HostAgentClient` falls back to `url` (exec pool).
 
 ---
 

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [7.4.0] – branch: `feature/v7.4.0`
+
+### Added
+
+- **Web-pool TLS support** (`web_pool_url` per agent): completing the dual-pool architecture
+  introduced in v7.3.0. When an agent runs with `AGENT_WEB_PORT`, the agent container's nginx
+  now also terminates TLS on that port (second `server {}` block, internal PHP on `127.0.0.1:18866`),
+  making the web pool accessible over encrypted cross-network connections. Each agent in the web UI
+  gains an optional **Web-Pool-URL** field (`web_url` column in the `agents` table). When set,
+  `HostAgentClient` routes all web UI requests to this URL instead of the main exec-pool URL —
+  no method-level routing required because `cron-wrapper.sh` calls the agent directly and never
+  uses `HostAgentClient`. The `GET /api/v1/agents` endpoint exposes the new field as `web_pool_url`.
+  Existing installations without `AGENT_WEB_PORT` are fully unaffected (`web_url = NULL`,
+  `HostAgentClient` falls back to the existing `url`).
+
+---
+
 ## [7.3.0] – branch: `feature/v7.3.0`
 
 ### Added

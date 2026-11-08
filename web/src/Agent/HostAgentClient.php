@@ -57,13 +57,16 @@ class HostAgentClient
 
     /**
      * @param Logger      $logger      Monolog logger.
-     * @param string      $agentUrl    Base URL of the agent (e.g. https://host.docker.internal:8865).
+     * @param string      $agentUrl    Base URL of the exec pool (e.g. https://host.docker.internal:8865).
      * @param string      $hmacSecret  Shared secret for HMAC-SHA256 request signing.
      * @param int         $userId      ID of the acting user (0 for unauthenticated / system calls).
      * @param string      $username    Username of the acting user (e.g. "admin" or "api:key-name").
      * @param int         $timeout     Request timeout in seconds (default: 10).
      * @param bool        $sslVerify   Verify TLS certificate (default: true).
      * @param string      $sslCaBundle Path to a custom CA bundle PEM (optional).
+     * @param string      $webUrl      Optional web-pool URL (AGENT_WEB_PORT). When non-empty,
+     *                                 all requests from the web container are routed here instead
+     *                                 of $agentUrl, keeping UI reads off the exec pool.
      * @param Client|null $httpClient  Pre-built Guzzle client (for testing only; production passes null).
      */
     public function __construct(
@@ -75,6 +78,7 @@ class HostAgentClient
         private readonly int    $timeout     = 10,
         private readonly bool   $sslVerify   = true,
         private readonly string $sslCaBundle = '',
+        private readonly string $webUrl      = '',
         ?Client                 $httpClient  = null,
     ) {
         $this->guzzle = $httpClient;
@@ -455,7 +459,7 @@ class HostAgentClient
             }
 
             $this->guzzle = new Client([
-                'base_uri'        => rtrim($this->agentUrl, '/'),
+                'base_uri'        => rtrim($this->webUrl !== '' ? $this->webUrl : $this->agentUrl, '/'),
                 'timeout'         => $this->timeout,
                 // Without an explicit connect_timeout cURL falls back to its
                 // 300 s default, so an unreachable agent blocks for the full

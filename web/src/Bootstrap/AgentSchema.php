@@ -53,6 +53,7 @@ final class AgentSchema
     {
         try {
             self::createTable($pdo);
+            self::addWebUrlColumn($pdo);
             self::seedFromConfig($pdo, $config, $logger);
         } catch (PDOException $e) {
             $logger->error('AgentSchema::ensure: database error', [
@@ -80,6 +81,7 @@ final class AgentSchema
                 name          VARCHAR(100) NOT NULL,
                 description   VARCHAR(255) NULL     DEFAULT NULL,
                 url           VARCHAR(500) NOT NULL,
+                web_url       VARCHAR(500) NULL     DEFAULT NULL,
                 hmac_secret   VARCHAR(255) NOT NULL,
                 timeout       INT          NOT NULL DEFAULT 10,
                 ssl_verify    TINYINT(1)   NOT NULL DEFAULT 1,
@@ -91,6 +93,24 @@ final class AgentSchema
                                            ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             SQL);
+    }
+
+    /**
+     * Add the web_url column to an existing agents table (idempotent).
+     *
+     * Allows existing installations to gain the column without a full table
+     * recreation.  ADD COLUMN IF NOT EXISTS is a no-op when the column already
+     * exists, so this is safe to run on every container start.
+     *
+     * @param PDO $pdo Active database connection.
+     *
+     * @throws PDOException On database errors.
+     */
+    private static function addWebUrlColumn(PDO $pdo): void
+    {
+        $pdo->exec(
+            'ALTER TABLE agents ADD COLUMN IF NOT EXISTS web_url VARCHAR(500) NULL DEFAULT NULL AFTER url'
+        );
     }
 
     /**
@@ -127,16 +147,18 @@ final class AgentSchema
         $timeout   = (int)  $config->get('agent.timeout',     10);
         $sslVerify = (bool) $config->get('agent.ssl_verify',  true);
         $caBundle  = (string) $config->get('agent.ssl_ca_bundle', '');
+        $webUrl    = (string) ($config->get('agent.web_url', '') ?: (getenv('AGENT_WEB_URL') ?: ''));
 
         $stmt = $pdo->prepare(
-            'INSERT INTO agents (name, description, url, hmac_secret, timeout, ssl_verify, ssl_ca_bundle, enabled, sort_order)
-             VALUES (:name, :description, :url, :hmac_secret, :timeout, :ssl_verify, :ssl_ca_bundle, 1, 0)'
+            'INSERT INTO agents (name, description, url, web_url, hmac_secret, timeout, ssl_verify, ssl_ca_bundle, enabled, sort_order)
+             VALUES (:name, :description, :url, :web_url, :hmac_secret, :timeout, :ssl_verify, :ssl_ca_bundle, 1, 0)'
         );
 
         $stmt->execute([
             ':name'         => 'Default',
             ':description'  => 'Automatically migrated from config.json',
             ':url'          => $url,
+            ':web_url'      => $webUrl !== '' ? rtrim($webUrl, '/') : null,
             ':hmac_secret'  => $secret,
             ':timeout'      => $timeout,
             ':ssl_verify'   => $sslVerify ? 1 : 0,

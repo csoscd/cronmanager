@@ -470,4 +470,51 @@ final class HostAgentClientTest extends TestCase
         $this->assertNotEmpty($history[0]['request']->getHeaderLine('X-Agent-Signature'));
         $this->assertNotEmpty($history[1]['request']->getHeaderLine('X-Agent-Signature'));
     }
+
+    // -------------------------------------------------------------------------
+    // Web-pool URL routing (v7.4.0)
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function usesWebUrlAsBaseUriWhenSet(): void
+    {
+        $webUrl   = 'https://web-pool.example:8866';
+        $agentUrl = 'https://exec-pool.example:8865';
+
+        $client = new HostAgentClient(
+            logger:     new Logger('test'),
+            agentUrl:   $agentUrl,
+            hmacSecret: self::SECRET,
+            webUrl:     $webUrl,
+        );
+
+        // Trigger lazy Guzzle client creation via reflection
+        $method = new \ReflectionMethod(HostAgentClient::class, 'client');
+        $method->setAccessible(true);
+        $guzzle = $method->invoke($client);
+
+        $baseUri = (string) $guzzle->getConfig('base_uri');
+        $this->assertStringContainsString('web-pool.example', $baseUri, 'webUrl must be used as base_uri when set');
+        $this->assertStringNotContainsString('exec-pool.example', $baseUri, 'agentUrl must not be used when webUrl is set');
+    }
+
+    #[Test]
+    public function fallsBackToAgentUrlWhenWebUrlIsEmpty(): void
+    {
+        $agentUrl = 'https://exec-pool.example:8865';
+
+        $client = new HostAgentClient(
+            logger:     new Logger('test'),
+            agentUrl:   $agentUrl,
+            hmacSecret: self::SECRET,
+            webUrl:     '',
+        );
+
+        $method = new \ReflectionMethod(HostAgentClient::class, 'client');
+        $method->setAccessible(true);
+        $guzzle = $method->invoke($client);
+
+        $baseUri = (string) $guzzle->getConfig('base_uri');
+        $this->assertStringContainsString('exec-pool.example', $baseUri, 'agentUrl must be used as base_uri when webUrl is empty');
+    }
 }

@@ -1323,6 +1323,7 @@ to 60 seconds of delay before the daemon picks up the entry.
 
 | Version | Change |
 |---|---|
+| 7.4.0 | `GET /api/v1/agents` now includes `web_pool_url` (string\|null) per agent: the web-pool URL (`AGENT_WEB_PORT`) configured for that agent, or `null` when no separate web pool is configured. No breaking changes; all existing fields are unchanged. |
 | 7.3.0 | No API changes. Infrastructure: dual-pool agent mode (`AGENT_WEB_PORT`) allows running a second agent instance for web UI reads while reserving the main pool for cron-wrapper writes. See README for configuration details. |
 | 7.2.0 | Added `notes` field (string\|null) to job objects (create, update, detail, CSV export); `GET /api/v1/jobs` now accepts `?q=` (full-text search, alias `search` kept for compatibility) and `?exec_type=schedule\|requires\|triggered_by` query parameters; `PUT /api/v1/jobs/{id}` and `POST /api/v1/jobs/bulk/status` accept `force: true` and `cascade: true` to handle active-successor conflicts; a 409 Conflict response is returned (and forwarded unchanged by the API) when a job has active successors and neither flag is set. |
 | 7.1.1 | All agent-specific endpoints now accept `?agent_id=<id>` as an alternative to the `X-Agent-Id` header for agent selection (§4). Header takes precedence when both are supplied. |

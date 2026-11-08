@@ -179,8 +179,8 @@ All persistent data lives in **Docker-managed named volumes** (`db-data`, `agent
 |---|---|---|
 | `latest` | Every release (code or rebuild) | Production — always the newest stable image |
 | `7`, `7.1` | Same as `latest` (updated on every release) | Pinning to a major or minor line |
-| `7.3.0` | Code release tag `v7.3.0` | Pinning to an exact code version |
-| `7.3.0-r1` | Rebuild release (same code, updated base image) | Pinning to a specific rebuild |
+| `7.4.0` | Code release tag `v7.4.0` | Pinning to an exact code version |
+| `7.4.0-r1` | Rebuild release (same code, updated base image) | Pinning to a specific rebuild |
 | `dev` | Latest development branch push | Testing unreleased features |
 
 Rebuild releases (`vX.Y.Z-rN`) are created automatically when upstream base images are
@@ -193,8 +193,8 @@ layers are updated.
 
 To use a specific version, replace `:latest` in `docker-compose-full.yml`:
 ```yaml
-image: cs1711/cronmanager-agent:7.3.0
-image: cs1711/cronmanager-web:7.3.0
+image: cs1711/cronmanager-agent:7.4.0
+image: cs1711/cronmanager-web:7.4.0
 ```
 
 ### Updating to a new release
@@ -307,7 +307,7 @@ key rotation, troubleshooting), see **[MULTI-HOST.md](MULTI-HOST.md)**.
 | `INFLUXDB_BUCKET` | `cronmanager` | InfluxDB bucket name |
 | `INFLUXDB_TIMEOUT` | `10` | HTTP write timeout in seconds |
 | `AGENT_SETTINGS_KEY` | _(empty)_ | When set, `mail.password`, `telegram.bot_token` and `influxdb.token` are encrypted with AES-256-CBC before being stored in the `agent_settings` DB table. Use at least 32 random characters (`openssl rand -hex 32`). If unset, values are stored as plaintext. Removing the key after setting it makes stored credentials unreadable until re-saved via the web UI. |
-| `AGENT_WEB_PORT` | _(unset)_ | **Dual-pool mode**: when set, starts a second PHP server instance on this port (plain HTTP, 0.0.0.0) for web UI reads. The main pool on `AGENT_PORT` is then exclusively for `cron-wrapper.sh` calls. Set `AGENT_URL` in the web container to `http://cronmanager-agent:<AGENT_WEB_PORT>`. When unset, behaviour is identical to previous versions (single pool). |
+| `AGENT_WEB_PORT` | _(unset)_ | **Dual-pool mode**: when set, starts a second PHP server instance on this port for web UI reads. The main pool on `AGENT_PORT` is then exclusively for `cron-wrapper.sh` calls. When `AGENT_TLS_ENABLED=true`, nginx also terminates TLS on this port (→ `127.0.0.1:18866`), so the web pool is reachable over HTTPS from remote agents. When TLS is disabled, PHP binds directly on `0.0.0.0:AGENT_WEB_PORT` (plain HTTP; suitable for same-network Docker deployments only). Set the **Web-Pool-URL** field on the agent record in the web UI to route UI traffic to this port. When unset, behaviour is identical to previous versions (single pool). |
 | `PHP_CLI_WEB_SERVER_WORKERS` | `6` | Worker count for the optional web pool (only used when `AGENT_WEB_PORT` is set). |
 
 #### Web container optional variables

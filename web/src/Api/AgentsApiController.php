@@ -69,11 +69,12 @@ class AgentsApiController extends BaseApiController
         $webUrl = rtrim((string) $this->config->get('app.web_url', ''), '/') ?: null;
 
         $data = array_map(fn(array $a): array => [
-            'id'          => (int)    $a['id'],
-            'name'        => (string) $a['name'],
-            'description' => $a['description'] !== null ? (string) $a['description'] : null,
-            'enabled'     => (bool)   $a['enabled'],
-            'web_url'     => $webUrl,
+            'id'           => (int)    $a['id'],
+            'name'         => (string) $a['name'],
+            'description'  => $a['description'] !== null ? (string) $a['description'] : null,
+            'enabled'      => (bool)   $a['enabled'],
+            'web_url'      => $webUrl,
+            'web_pool_url' => isset($a['web_url']) && $a['web_url'] !== null ? (string) $a['web_url'] : null,
         ], $agents);
 
         $this->jsonOk([

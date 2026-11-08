@@ -492,6 +492,8 @@ return [
     'agent_name'                 => 'Name',
     'agent_description'          => 'Beschreibung',
     'agent_url'                  => 'URL',
+    'agent_web_pool_url'         => 'Web-Pool-URL',
+    'agent_web_pool_url_hint'    => 'Optional: URL des Web-Pools (AGENT_WEB_PORT). Wenn gesetzt, werden alle Web-UI-Anfragen hierhin geleitet statt an die Exec-Pool-URL. Leer lassen, wenn kein getrennter Web-Pool konfiguriert ist.',
     'agent_hmac_secret'          => 'HMAC-Secret',
     'agent_secret_leave_blank'   => 'leer lassen, um beizubehalten',
     'agent_secret_toggle'        => 'Secret anzeigen/verbergen',
@@ -507,6 +509,7 @@ return [
     'agent_error_name_too_long'  => 'Der Name darf maximal 100 Zeichen lang sein.',
     'agent_error_url_required'   => 'Die URL darf nicht leer sein.',
     'agent_error_url_invalid'    => 'Die URL muss mit http:// oder https:// beginnen.',
+    'agent_error_web_url_invalid'=> 'Die Web-Pool-URL muss mit http:// oder https:// beginnen.',
     'agent_error_secret_required'=> 'Das HMAC-Secret darf nicht leer sein.',
 
     // -------------------------------------------------------------------------

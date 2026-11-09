@@ -45,6 +45,13 @@ class HostAgentClient
     private ?Client $guzzle = null;
 
     /**
+     * @var bool True when a request on the web pool failed with a connection
+     *           error and the client automatically fell back to the exec pool
+     *           URL for the remainder of this request lifetime.
+     */
+    private bool $fallbackActive = false;
+
+    /**
      * @var array{request_ms: float, db_ms: float, db_queries: int}|null
      *      Performance data from the most recently completed agent request, or
      *      null when the agent did not include a _perf field in its response.
@@ -111,15 +118,17 @@ class HostAgentClient
 
         $this->logger->debug('HostAgentClient GET', ['path' => $path, 'query' => $query]);
 
+        $headers = [
+            'X-Agent-Signature' => $signature,
+            'X-User-Id'         => (string) $this->userId,
+            'X-User-Name'       => $this->username,
+            'Accept'            => 'application/json',
+        ];
+
         try {
-            $response = $this->client()->request('GET', $path . $queryString, [
-                'headers' => [
-                    'X-Agent-Signature' => $signature,
-                    'X-User-Id'         => (string) $this->userId,
-                    'X-User-Name'       => $this->username,
-                    'Accept'            => 'application/json',
-                ],
-            ]);
+            $response = $this->attemptRequest(
+                fn(Client $c) => $c->request('GET', $path . $queryString, ['headers' => $headers]),
+            );
         } catch (ConnectException $e) {
             $this->logger->error('HostAgentClient: connection failed on GET', [
                 'path'    => $path,
@@ -148,17 +157,18 @@ class HostAgentClient
 
         $this->logger->debug('HostAgentClient POST', ['path' => $path]);
 
+        $headers = [
+            'X-Agent-Signature' => $signature,
+            'X-User-Id'         => (string) $this->userId,
+            'X-User-Name'       => $this->username,
+            'Content-Type'      => 'application/json',
+            'Accept'            => 'application/json',
+        ];
+
         try {
-            $response = $this->client()->request('POST', $path, [
-                'headers' => [
-                    'X-Agent-Signature' => $signature,
-                    'X-User-Id'         => (string) $this->userId,
-                    'X-User-Name'       => $this->username,
-                    'Content-Type'      => 'application/json',
-                    'Accept'            => 'application/json',
-                ],
-                'body' => $rawBody,
-            ]);
+            $response = $this->attemptRequest(
+                fn(Client $c) => $c->request('POST', $path, ['headers' => $headers, 'body' => $rawBody]),
+            );
         } catch (ConnectException $e) {
             $this->logger->error('HostAgentClient: connection failed on POST', [
                 'path'    => $path,
@@ -187,17 +197,18 @@ class HostAgentClient
 
         $this->logger->debug('HostAgentClient PUT', ['path' => $path]);
 
+        $headers = [
+            'X-Agent-Signature' => $signature,
+            'X-User-Id'         => (string) $this->userId,
+            'X-User-Name'       => $this->username,
+            'Content-Type'      => 'application/json',
+            'Accept'            => 'application/json',
+        ];
+
         try {
-            $response = $this->client()->request('PUT', $path, [
-                'headers' => [
-                    'X-Agent-Signature' => $signature,
-                    'X-User-Id'         => (string) $this->userId,
-                    'X-User-Name'       => $this->username,
-                    'Content-Type'      => 'application/json',
-                    'Accept'            => 'application/json',
-                ],
-                'body' => $rawBody,
-            ]);
+            $response = $this->attemptRequest(
+                fn(Client $c) => $c->request('PUT', $path, ['headers' => $headers, 'body' => $rawBody]),
+            );
         } catch (ConnectException $e) {
             $this->logger->error('HostAgentClient: connection failed on PUT', [
                 'path'    => $path,
@@ -224,15 +235,17 @@ class HostAgentClient
 
         $this->logger->debug('HostAgentClient DELETE', ['path' => $path]);
 
+        $headers = [
+            'X-Agent-Signature' => $signature,
+            'X-User-Id'         => (string) $this->userId,
+            'X-User-Name'       => $this->username,
+            'Accept'            => 'application/json',
+        ];
+
         try {
-            $response = $this->client()->request('DELETE', $path, [
-                'headers' => [
-                    'X-Agent-Signature' => $signature,
-                    'X-User-Id'         => (string) $this->userId,
-                    'X-User-Name'       => $this->username,
-                    'Accept'            => 'application/json',
-                ],
-            ]);
+            $response = $this->attemptRequest(
+                fn(Client $c) => $c->request('DELETE', $path, ['headers' => $headers]),
+            );
         } catch (ConnectException $e) {
             $this->logger->error('HostAgentClient: connection failed on DELETE', [
                 'path'    => $path,
@@ -296,10 +309,44 @@ class HostAgentClient
         try {
             $responses = PromiseUtils::unwrap($promises);
         } catch (ConnectException $e) {
-            $this->logger->error('HostAgentClient: connection failed in getMultiple', [
-                'message' => $e->getMessage(),
-            ]);
-            throw new \RuntimeException('Agent unreachable: ' . $e->getMessage(), 0, $e);
+            if ($this->webUrl !== '' && !$this->fallbackActive) {
+                $this->logger->warning('HostAgentClient: web pool unreachable in getMultiple, falling back to exec pool', [
+                    'web_url'  => $this->webUrl,
+                    'exec_url' => $this->agentUrl,
+                    'message'  => $e->getMessage(),
+                ]);
+                $this->fallbackActive = true;
+                $this->guzzle         = null;
+                // Rebuild promises against the exec pool and retry
+                $promises = [];
+                foreach ($requests as $key => $spec) {
+                    $path        = (string) $spec['path'];
+                    $query       = isset($spec['query']) && is_array($spec['query']) ? $spec['query'] : [];
+                    $queryString = $query !== [] ? '?' . http_build_query($query) : '';
+                    $signature   = $this->sign('GET', $path, '');
+                    $promises[$key] = $this->client()->requestAsync('GET', $path . $queryString, [
+                        'headers' => [
+                            'X-Agent-Signature' => $signature,
+                            'X-User-Id'         => (string) $this->userId,
+                            'X-User-Name'       => $this->username,
+                            'Accept'            => 'application/json',
+                        ],
+                    ]);
+                }
+                try {
+                    $responses = PromiseUtils::unwrap($promises);
+                } catch (ConnectException $e2) {
+                    $this->logger->error('HostAgentClient: connection failed in getMultiple (web pool + exec pool)', [
+                        'message' => $e2->getMessage(),
+                    ]);
+                    throw new \RuntimeException('Agent unreachable (web pool + exec pool): ' . $e2->getMessage(), 0, $e2);
+                }
+            } else {
+                $this->logger->error('HostAgentClient: connection failed in getMultiple', [
+                    'message' => $e->getMessage(),
+                ]);
+                throw new \RuntimeException('Agent unreachable: ' . $e->getMessage(), 0, $e);
+            }
         }
 
         $results = [];
@@ -309,6 +356,20 @@ class HostAgentClient
         }
 
         return $results;
+    }
+
+    /**
+     * Return true when a web-pool connection failure triggered an automatic
+     * fallback to the exec pool for this request.
+     *
+     * Controllers pass this flag to the layout so a warning banner can be shown
+     * to the user without interrupting their work.
+     *
+     * @return bool
+     */
+    public function isFallbackActive(): bool
+    {
+        return $this->fallbackActive;
     }
 
     /**
@@ -447,6 +508,46 @@ class HostAgentClient
      *
      * @return Client
      */
+    /**
+     * Execute a Guzzle request callable with automatic web-pool fallback.
+     *
+     * When a web pool URL is configured and the first attempt raises a
+     * ConnectException (the web pool is unreachable), the client is rebuilt
+     * against the exec pool URL and the request is retried once.
+     * $fallbackActive is set to true for the rest of this request lifetime so
+     * all subsequent requests in the same page load also use the exec pool.
+     *
+     * @param  callable(\GuzzleHttp\Client): \Psr\Http\Message\ResponseInterface $fn
+     * @throws \RuntimeException When both pools are unreachable.
+     * @return \Psr\Http\Message\ResponseInterface
+     */
+    private function attemptRequest(callable $fn): \Psr\Http\Message\ResponseInterface
+    {
+        try {
+            return $fn($this->client());
+        } catch (ConnectException $e) {
+            if ($this->webUrl === '' || $this->fallbackActive) {
+                throw $e;
+            }
+            $this->logger->warning('HostAgentClient: web pool unreachable, falling back to exec pool', [
+                'web_url'   => $this->webUrl,
+                'exec_url'  => $this->agentUrl,
+                'message'   => $e->getMessage(),
+            ]);
+            $this->fallbackActive = true;
+            $this->guzzle         = null; // Force rebuild against agentUrl
+            try {
+                return $fn($this->client());
+            } catch (ConnectException $e2) {
+                throw new \RuntimeException(
+                    'Agent unreachable (web pool + exec pool): ' . $e2->getMessage(),
+                    0,
+                    $e2,
+                );
+            }
+        }
+    }
+
     private function client(): Client
     {
         if ($this->guzzle === null) {
@@ -458,8 +559,14 @@ class HostAgentClient
                 $verify = true;
             }
 
+            // When fallback is active use the exec pool URL, otherwise prefer
+            // the web pool URL when one is configured.
+            $baseUrl = (!$this->fallbackActive && $this->webUrl !== '')
+                ? $this->webUrl
+                : $this->agentUrl;
+
             $this->guzzle = new Client([
-                'base_uri'        => rtrim($this->webUrl !== '' ? $this->webUrl : $this->agentUrl, '/'),
+                'base_uri'        => rtrim($baseUrl, '/'),
                 'timeout'         => $this->timeout,
                 // Without an explicit connect_timeout cURL falls back to its
                 // 300 s default, so an unreachable agent blocks for the full

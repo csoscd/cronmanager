@@ -260,6 +260,64 @@ class DualPoolConfigTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // agent-healthcheck.sh (v7.4.0)
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function healthCheckScriptExistsAndIsReferencedInDockerfile(): void
+    {
+        $script     = $this->root . '/docker/agent/agent-healthcheck.sh';
+        $dockerfile = (string) file_get_contents($this->root . '/docker/agent/Dockerfile');
+
+        $this->assertFileExists($script, 'docker/agent/agent-healthcheck.sh must exist');
+        $this->assertStringContainsString(
+            'agent-healthcheck.sh',
+            $dockerfile,
+            'Dockerfile must reference agent-healthcheck.sh'
+        );
+        $this->assertStringContainsString(
+            'HEALTHCHECK',
+            $dockerfile,
+            'Dockerfile must contain a HEALTHCHECK instruction'
+        );
+    }
+
+    #[Test]
+    public function healthCheckScriptChecksExecPoolWithInsecureInTlsMode(): void
+    {
+        $script = (string) file_get_contents($this->root . '/docker/agent/agent-healthcheck.sh');
+
+        $this->assertStringContainsString(
+            '--insecure',
+            $script,
+            'agent-healthcheck.sh must use --insecure for self-signed TLS certificates'
+        );
+        $this->assertStringContainsString(
+            'AGENT_PORT',
+            $script,
+            'agent-healthcheck.sh must check the exec pool via AGENT_PORT'
+        );
+    }
+
+    #[Test]
+    public function healthCheckScriptChecksWebPoolOnlyWhenPortIsSet(): void
+    {
+        $script = (string) file_get_contents($this->root . '/docker/agent/agent-healthcheck.sh');
+
+        $this->assertStringContainsString(
+            'AGENT_WEB_PORT',
+            $script,
+            'agent-healthcheck.sh must guard the web pool check on AGENT_WEB_PORT'
+        );
+        // The web pool check must be conditional (inside an if block)
+        $this->assertMatchesRegularExpression(
+            '/if\s+\[+.*AGENT_WEB_PORT/s',
+            $script,
+            'agent-healthcheck.sh must only check the web pool when AGENT_WEB_PORT is set'
+        );
+    }
+
+    // -------------------------------------------------------------------------
     // AgentsApiController web_pool_url field (v7.4.0)
     // -------------------------------------------------------------------------
 

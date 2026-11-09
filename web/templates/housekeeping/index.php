@@ -185,10 +185,11 @@ $agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
                     <tbody>
                     <?php foreach ($agents as $a): ?>
                         <?php
-                            $aId      = (int) $a['id'];
-                            $aName    = htmlspecialchars((string) $a['name'], ENT_QUOTES, 'UTF-8');
-                            $aUrl     = htmlspecialchars((string) $a['url'],  ENT_QUOTES, 'UTF-8');
-                            $aEnabled = (bool) $a['enabled'];
+                            $aId        = (int) $a['id'];
+                            $aName      = htmlspecialchars((string) $a['name'], ENT_QUOTES, 'UTF-8');
+                            $aUrl       = htmlspecialchars((string) $a['url'],  ENT_QUOTES, 'UTF-8');
+                            $aEnabled   = (bool) $a['enabled'];
+                            $aDualPool  = !empty($a['web_url']);
                         ?>
                         <tr class="cm-table-row">
                             <td class="px-3 py-2 font-medium" style="color:var(--cm-text)">
@@ -197,6 +198,13 @@ $agSuffix = $agentId > 0 ? '?agent_id=' . $agentId : '';
                                     <span class="ml-1 text-xs px-1.5 py-0.5 rounded"
                                           style="background:rgba(107,114,128,.12);color:var(--cm-text-muted)">
                                         <?= htmlspecialchars($t('agent_disabled'), ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                <?php endif; ?>
+                                <?php if ($aDualPool): ?>
+                                    <span class="ml-1 text-xs px-1.5 py-0.5 rounded"
+                                          title="<?= htmlspecialchars($t('agent_dual_pool_hint'), ENT_QUOTES, 'UTF-8') ?>"
+                                          style="background:rgba(99,102,241,.12);color:#6366f1;border:1px solid rgba(99,102,241,.2)">
+                                        <?= htmlspecialchars($t('agent_dual_pool'), ENT_QUOTES, 'UTF-8') ?>
                                     </span>
                                 <?php endif; ?>
                             </td>
@@ -685,6 +693,11 @@ function confirmOnceCleanup() {
             if (!data || !data.success) {
                 badge.textContent    = <?= json_encode($t('agent_status_offline')) ?>;
                 badge.style.cssText  = 'background:rgba(239,68,68,.08);color:#dc2626;border:1px solid rgba(239,68,68,.2)';
+            } else if (data.web_pool_ok === false) {
+                const ver = data.version ? ' v' + data.version : '';
+                badge.textContent    = <?= json_encode($t('agent_status_degraded')) ?> + ver;
+                badge.style.cssText  = 'background:rgba(245,158,11,.12);color:#d97706;border:1px solid rgba(245,158,11,.25)';
+                badge.title          = <?= json_encode($t('agent_status_degraded_hint')) ?>;
             } else {
                 const ver = data.version ? ' v' + data.version : '';
                 badge.textContent    = <?= json_encode($t('agent_status_online')) ?> + ver;

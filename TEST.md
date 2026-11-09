@@ -217,7 +217,7 @@ Tests `agent/src/Router.php` route dispatching.
 > or `"bulk"` is silently interpreted as a job ID. This is a known pitfall
 > documented in `CLAUDE.md`.
 
-#### `Web/HostAgentClientTest` (12 tests)
+#### `Web/HostAgentClientTest` (16 tests)
 
 Tests `web/src/Agent/HostAgentClient.php` without making real HTTP calls.
 A Guzzle `MockHandler` backed `HandlerStack` is injected into the private
@@ -236,6 +236,8 @@ captures outgoing requests for header/URL inspection.
 | 4xx/5xx errors | `AgentHttpException` with correct `getStatusCode()` |
 | `ConnectException` | Wrapped in `RuntimeException("Agent unreachable: …")` |
 | Non-JSON body | Returns `[]` instead of throwing |
+| webUrl as base_uri – v7.4.0 (2) | `webUrl` used as `base_uri` when set; falls back to `agentUrl` when empty |
+| Fallback on ConnectException – v7.4.0 (2) | `ConnectException` on web pool triggers fallback to exec pool; `isFallbackActive()` returns `true` after fallback |
 
 **HMAC formula verified:**
 ```
@@ -477,7 +479,7 @@ New in v7.2.0. Covers server-side SQL filters in `CronListEndpoint` and both han
 | `GET /crons/{id}/successors` (2) | `has_active_successors: false` when no deps; `true` with successor list |
 | `POST /crons/bulk/successors` (2) | `has_active_successors: false` for no-dep jobs; `true` with `affected_jobs` list |
 
-#### `Integration/Infrastructure/DualPoolConfigTest` (20 tests)
+#### `Integration/Infrastructure/DualPoolConfigTest` (23 tests)
 
 New in v7.3.0, extended in v7.4.0 — structural and functional tests for the dual-pool agent feature.
 
@@ -490,7 +492,7 @@ New in v7.3.0, extended in v7.4.0 — structural and functional tests for the du
 | AgentSchema web_url column – v7.4.0 (2) | `AgentSchema.php` defines `web_url` column; `addWebUrlColumn()` uses `ADD COLUMN IF NOT EXISTS` |
 | AgentsApiController – v7.4.0 (1) | `GET /api/v1/agents` exposes `web_pool_url` |
 | README.md documentation – v7.3.0 (2) | `AGENT_WEB_PORT` and `PHP_CLI_WEB_SERVER_WORKERS` are documented in the env-var reference table |
-| `Unit/Web/HostAgentClientTest` – v7.4.0 (2) | `webUrl` used as `base_uri` when set; falls back to `agentUrl` when empty |
+| Health-check script – v7.4.0 (3) | `agent-healthcheck.sh` exists and is referenced in Dockerfile `HEALTHCHECK`; checks exec pool in TLS mode with `--insecure`; checks web pool only when `AGENT_WEB_PORT` is set |
 
 ---
 

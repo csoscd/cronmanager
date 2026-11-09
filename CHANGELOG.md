@@ -21,6 +21,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Existing installations without `AGENT_WEB_PORT` are fully unaffected (`web_url = NULL`,
   `HostAgentClient` falls back to the existing `url`).
 
+- **Agent Docker health check** (`agent-healthcheck.sh`): a TLS-aware shell script is now baked
+  into the agent Docker image (`/usr/local/bin/agent-healthcheck.sh`) and registered as the
+  container `HEALTHCHECK`. It verifies both the exec pool and (when `AGENT_WEB_PORT` is set) the
+  web pool via their nginx-exposed ports — in TLS mode using `--insecure` for self-signed
+  certificates — so a crashed nginx layer or a failed PHP pool is detected and the container
+  transitions to `Unhealthy`. Both `docker-compose-full.yml` and `docker-compose-agent.yml`
+  include the `healthcheck` block. `curl` is added to the agent image's installed packages.
+
+- **Web-pool fallback with warning banner**: `HostAgentClient` now automatically falls back to the
+  exec-pool URL when the web pool raises a `ConnectException`, sets `$fallbackActive = true`, and
+  logs a warning. All subsequent requests in the same page load use the exec pool. The layout
+  (`layout.php`) shows an amber banner in the topbar when the fallback is active, indicating that
+  the web pool is unreachable. The fallback covers all HTTP methods (GET, POST, PUT, DELETE) and
+  the parallel `getMultiple()` path.
+
+- **Dual-Pool badge and Degraded status in the agents list**: the agents settings page now shows
+  an indigo `Dual-Pool` badge next to the agent name when a `web_pool_url` is configured. The
+  async health-check ping (`POST /settings/agents/{id}/test`) now independently tests both pools;
+  when the exec pool is reachable but the web pool is not, the status badge shows amber `Degraded`
+  with a tooltip explaining the situation. Only when both pools are healthy does the badge show
+  green `Online`.
+
 ---
 
 ## [7.3.0] – branch: `feature/v7.3.0`

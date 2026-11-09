@@ -517,4 +517,68 @@ final class HostAgentClientTest extends TestCase
         $baseUri = (string) $guzzle->getConfig('base_uri');
         $this->assertStringContainsString('exec-pool.example', $baseUri, 'agentUrl must be used as base_uri when webUrl is empty');
     }
+
+    // -------------------------------------------------------------------------
+    // Web-pool ConnectException fallback (v7.4.0)
+    // -------------------------------------------------------------------------
+
+    #[Test]
+    public function setsFallbackActiveOnWebPoolConnectException(): void
+    {
+        // The injected mock throws ConnectException (simulates web pool down).
+        // After fallback, the exec pool also fails (fake URL in a unit test) —
+        // we catch the resulting RuntimeException and verify that $fallbackActive
+        // was set to true before the second failure.
+        $webUrl   = 'https://web-pool.example:8866';
+        $agentUrl = 'https://exec-pool.example:8865'; // also unreachable in test
+
+        $mock   = new MockHandler([
+            new ConnectException('Connection refused', new GuzzleRequest('GET', '/health')),
+        ]);
+        $stack  = HandlerStack::create($mock);
+        $guzzle = new Client([
+            'handler'     => $stack,
+            'base_uri'    => $webUrl,
+            'http_errors' => false,
+        ]);
+
+        $client = new HostAgentClient(
+            logger:     new Logger('test'),
+            agentUrl:   $agentUrl,
+            hmacSecret: self::SECRET,
+            webUrl:     $webUrl,
+            httpClient: $guzzle,
+        );
+
+        try {
+            $client->get('/health');
+            $this->fail('Expected a RuntimeException when both pools are unreachable');
+        } catch (\RuntimeException $e) {
+            $this->assertTrue(
+                $client->isFallbackActive(),
+                'isFallbackActive() must return true after a ConnectException on the web pool'
+            );
+            // Message must mention both pools to distinguish from a single-pool failure
+            $this->assertStringContainsString('web pool', $e->getMessage());
+        }
+    }
+
+    #[Test]
+    public function isFallbackActiveReturnsFalseWhenNoFallbackOccurred(): void
+    {
+        $mock    = new MockHandler([new Response(200, [], json_encode(['status' => 'ok']))]);
+        $stack   = HandlerStack::create($mock);
+        $guzzle  = new Client(['handler' => $stack, 'base_uri' => self::AGENT_URL, 'http_errors' => false]);
+
+        $client = new HostAgentClient(
+            logger:     new Logger('test'),
+            agentUrl:   self::AGENT_URL,
+            hmacSecret: self::SECRET,
+            httpClient: $guzzle,
+        );
+
+        $client->get('/health');
+
+        $this->assertFalse($client->isFallbackActive(), 'isFallbackActive() must return false when no fallback occurred');
+    }
 }

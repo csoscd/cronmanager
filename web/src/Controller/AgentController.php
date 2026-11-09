@@ -270,7 +270,9 @@ final class AgentController extends BaseController
         }
 
         try {
-            $client = new HostAgentClient(
+            // Test exec pool via its direct URL (bypass HostAgentClient fallback
+            // so we get an honest per-pool result for the status badge).
+            $execClient = new HostAgentClient(
                 logger:      $this->logger,
                 agentUrl:    (string)  $agent['url'],
                 hmacSecret:  (string)  $agent['hmac_secret'],
@@ -279,22 +281,44 @@ final class AgentController extends BaseController
                 timeout:     (int)     ($agent['timeout']     ?? 10),
                 sslVerify:   (bool)    ($agent['ssl_verify']  ?? true),
                 sslCaBundle: (string)  ($agent['ssl_ca_bundle'] ?? ''),
-                webUrl:      (string)  ($agent['web_url'] ?? ''),
             );
 
-            $health  = $client->get('/health');
+            $health  = $execClient->get('/health');
             $version = (string) ($health['version'] ?? 'unknown');
 
+            // If a web pool URL is configured, test it independently.
+            $webPoolOk  = true;
+            $webPoolUrl = (string) ($agent['web_url'] ?? '');
+            if ($webPoolUrl !== '') {
+                try {
+                    $webClient = new HostAgentClient(
+                        logger:      $this->logger,
+                        agentUrl:    $webPoolUrl,
+                        hmacSecret:  (string) $agent['hmac_secret'],
+                        userId:      SessionManager::getUserId()   ?? 0,
+                        username:    SessionManager::getUsername() ?? 'system',
+                        timeout:     (int)    ($agent['timeout']     ?? 10),
+                        sslVerify:   (bool)   ($agent['ssl_verify']  ?? true),
+                        sslCaBundle: (string) ($agent['ssl_ca_bundle'] ?? ''),
+                    );
+                    $webClient->get('/health');
+                } catch (\Throwable) {
+                    $webPoolOk = false;
+                }
+            }
+
             echo json_encode([
-                'success' => true,
-                'version' => $version,
-                'message' => '',
+                'success'     => true,
+                'version'     => $version,
+                'web_pool_ok' => $webPoolOk,
+                'message'     => '',
             ]);
         } catch (\Throwable $e) {
             echo json_encode([
-                'success' => false,
-                'version' => '',
-                'message' => $e->getMessage(),
+                'success'     => false,
+                'version'     => '',
+                'web_pool_ok' => null,
+                'message'     => $e->getMessage(),
             ]);
         }
     }

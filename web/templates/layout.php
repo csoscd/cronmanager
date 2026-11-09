@@ -355,6 +355,20 @@ $icon = static function (string $name): string {
             </span>
         </div>
 
+        <?php if (!empty($webPoolFallback)): ?>
+        <!-- Web-pool fallback warning: shown when the web pool URL was
+             unreachable and HostAgentClient fell back to the exec pool. -->
+        <div class="px-4 py-2 text-sm font-medium flex items-center gap-2"
+             style="background:rgba(245,158,11,.12);color:#d97706;border-bottom:1px solid rgba(245,158,11,.25)">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex-shrink:0">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92z"/>
+                <line x1="10" y1="9" x2="10" y2="12" stroke-linecap="round"/>
+                <circle cx="10" cy="14.5" r="0.5" fill="currentColor"/>
+            </svg>
+            <?= htmlspecialchars($t('web_pool_fallback_warning'), ENT_QUOTES, 'UTF-8') ?>
+        </div>
+        <?php endif; ?>
+
         <!-- Page content (templates render inside max-w-7xl for readability) -->
         <main class="cm-content">
             <div class="max-w-7xl mx-auto">

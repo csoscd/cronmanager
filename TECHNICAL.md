@@ -1912,6 +1912,36 @@ Backwards compatibility: when `AGENT_WEB_PORT` is not set, a single pool starts 
 before and all behaviour is identical to previous versions. When `web_url` is NULL
 in the `agents` table, `HostAgentClient` falls back to `url` (exec pool).
 
+**Web-pool fallback (v7.4.0):**
+
+If `web_url` is configured but the web pool raises a `ConnectException`, `HostAgentClient`
+automatically falls back to `agentUrl` (exec pool) for the remainder of that page-load, sets
+`$fallbackActive = true`, and logs a warning. All subsequent requests in the same HTTP request
+use the exec pool. The layout shows an amber topbar banner when fallback is active.
+
+The fallback covers GET, POST, PUT, DELETE, and the parallel `getMultiple()` path. It fires
+only once per request (subsequent calls skip the web pool attempt).
+
+**Agent health check (v7.4.0):**
+
+`docker/agent/agent-healthcheck.sh` is baked into the agent image at
+`/usr/local/bin/agent-healthcheck.sh` and registered as `HEALTHCHECK`. It checks:
+
+1. Exec pool via `{SCHEME}://127.0.0.1:{AGENT_PORT}/health` (always)
+2. Web pool via `{SCHEME}://127.0.0.1:{AGENT_WEB_PORT}/health` (only when `AGENT_WEB_PORT` set)
+
+In TLS mode it uses `--insecure` (self-signed cert). The check goes through nginx on the
+exposed ports, so both nginx and the PHP workers must be alive for the container to stay
+`Healthy`. Interval 30 s, timeout 10 s, start period 30 s, retries 3.
+
+**Dual-Pool status in the web UI (v7.4.0):**
+
+- **Dual-Pool badge**: indigo badge next to agent name in Settings → Agents when `web_url` is set.
+- **Status**: `POST /settings/agents/{id}/test` now independently pings both pools.
+  - Both OK → green `Online v…`
+  - Exec OK, web not → amber `Degraded v…` (tooltip explains)
+  - Exec not OK → red `Offline`
+
 ---
 
 ### Swimlane view caching (APCu)

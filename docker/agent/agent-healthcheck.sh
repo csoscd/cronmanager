@@ -17,7 +17,7 @@ set -euo pipefail
 SCHEME="http"
 CURL_OPTS=(-sf --max-time 5)
 
-if [[ "${AGENT_TLS_ENABLED:-false}" == "true" ]]; then
+if [[ "${AGENT_TLS_ENABLED:-true}" == "true" ]]; then
     SCHEME="https"
     CURL_OPTS+=("--insecure")
 fi

@@ -393,6 +393,7 @@ abstract class BaseApiController
 
         $status = match (true) {
             $statusCode === 404 => 404,
+            $statusCode === 409 => 409,
             $statusCode === 422 => 422,
             $statusCode >= 500  => 502,
             default             => 502,
@@ -401,6 +402,15 @@ abstract class BaseApiController
         // Message format: "Agent error <code>: <json-body>"
         $parts   = explode(': ', $e->getMessage(), 2);
         $decoded = isset($parts[1]) ? json_decode($parts[1], true) : null;
+
+        // For 409 conflict (e.g. deactivation with active successors), forward the
+        // full agent response body so callers receive the affected_successors list.
+        if ($status === 409 && is_array($decoded)) {
+            http_response_code(409);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+            return;
+        }
 
         $this->jsonError(
             $status,

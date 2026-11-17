@@ -487,6 +487,38 @@ $hasAnyFilter = $filterSearch !== '' || $hasSecondaryFilter;
         </div>
     </div>
 </div>
+
+<!-- Successor warning dialog — shown before deactivating jobs that have active successors -->
+<div id="cm-successor-modal"
+     class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 p-6 max-w-lg w-full mx-4">
+        <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-2">
+            <svg class="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+            <?= htmlspecialchars($t('successor_dialog_title'), ENT_QUOTES, 'UTF-8') ?>
+        </h2>
+        <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">
+            <?= htmlspecialchars($t('successor_dialog_intro'), ENT_QUOTES, 'UTF-8') ?>
+        </p>
+        <ul id="cm-successor-list"
+            class="mb-4 max-h-48 overflow-y-auto text-sm text-gray-700 dark:text-gray-300 space-y-1 bg-gray-50 dark:bg-gray-900/40 rounded-lg p-3"></ul>
+        <div class="flex flex-wrap justify-end gap-3">
+            <button type="button" onclick="cmSuccessorCancel()"
+                    class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600
+                           text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                <?= htmlspecialchars($t('cancel'), ENT_QUOTES, 'UTF-8') ?>
+            </button>
+            <button type="button" onclick="cmSuccessorForce()"
+                    class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600
+                           text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                <?= htmlspecialchars($t('successor_dialog_force'), ENT_QUOTES, 'UTF-8') ?>
+            </button>
+            <button type="button" onclick="cmSuccessorCascade()"
+                    class="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white transition">
+                <?= htmlspecialchars($t('successor_dialog_cascade'), ENT_QUOTES, 'UTF-8') ?>
+            </button>
+        </div>
+    </div>
+</div>
 <?php endif; ?>
 
 <!-- ======================================================================
@@ -679,17 +711,23 @@ $hasAnyFilter = $filterSearch !== '' || $hasSecondaryFilter;
                                 <?php if ($_hasChain): ?>
                                     <div class="mt-0.5 flex flex-wrap items-center gap-1">
                                         <?php if ($_directPred !== null): ?>
-                                            <?php $_isPurple = ($_directPred['type'] ?? '') === 'triggered_by'; ?>
-                                            <span title="<?= htmlspecialchars($_chainTooltip, ENT_QUOTES, 'UTF-8') ?>"
+                                            <?php
+                                                $_isPurple   = ($_directPred['type'] ?? '') === 'triggered_by';
+                                                $_predId     = (int) $_directPred['id'];
+                                                $_predActive = $depJobMeta[$_predId]['active'] ?? true;
+                                            ?>
+                                            <span title="<?= htmlspecialchars((!$_predActive ? '⚠ Vorgänger inaktiv – ' : '') . $_chainTooltip, ENT_QUOTES, 'UTF-8') ?>"
                                                   class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium
-                                                         <?= $_isPurple ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' ?>">
-                                                <?php if ($_isPurple): ?>
+                                                         <?= !$_predActive ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' : ($_isPurple ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300') ?>">
+                                                <?php if (!$_predActive): ?>
+                                                    <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                                                <?php elseif ($_isPurple): ?>
                                                     <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                                                 <?php else: ?>
                                                     <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
                                                 <?php endif; ?>
-                                                <a href="/crons/<?= htmlspecialchars(rawurlencode((string) $_directPred['id']), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
-                                                   class="hover:underline">#<?= (int) $_directPred['id'] ?></a>
+                                                <a href="/crons/<?= htmlspecialchars(rawurlencode((string) $_predId), ENT_QUOTES, 'UTF-8') ?><?= $agSuffix ?>"
+                                                   class="hover:underline">#<?= $_predId ?></a>
                                             </span>
                                         <?php endif; ?>
                                         <?php foreach ($_succList as $_succId): ?>
@@ -1108,6 +1146,135 @@ $hasAnyFilter = $filterSearch !== '' || $hasSecondaryFilter;
         modalText.textContent = LABEL_SINGLE_DEL;
         modal.classList.remove('hidden');
     };
+}());
+
+/**
+ * Successor pre-check dialog for bulk deactivation.
+ *
+ * Before submitting a "deactivate" bulk action, we do an AJAX check
+ * against POST /crons/bulk/successors. If the response reports active
+ * successors we show a warning dialog offering three choices:
+ *   – Cancel
+ *   – Force (deactivate the selection only, leave successors active)
+ *   – Cascade (deactivate the selection AND all their successors)
+ */
+(function () {
+    'use strict';
+
+    var succModal    = document.getElementById('cm-successor-modal');
+    var succList     = document.getElementById('cm-successor-list');
+    var pendingDeactivateAction = null; // 'deactivate'
+    var pendingForce   = false;
+    var pendingCascade = false;
+
+    if (!succModal) { return; }
+
+    // Intercept cmBulkSubmit for the 'deactivate' action
+    var _origBulkSubmit = window.cmBulkSubmit;
+    window.cmBulkSubmit = function (action) {
+        if (action !== 'deactivate') {
+            _origBulkSubmit(action);
+            return;
+        }
+
+        var ids = [];
+        document.querySelectorAll('.cm-row-check:checked').forEach(function (cb) { ids.push(cb.value); });
+        if (ids.length === 0) { return; }
+
+        // Reset pending flags
+        pendingForce   = false;
+        pendingCascade = false;
+        pendingDeactivateAction = 'deactivate';
+
+        fetch('/crons/bulk/successors<?= $agSuffix !== '' ? '&' . ltrim($agSuffix, '?') : '' ?>', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: JSON.stringify({ ids: ids.map(Number) })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.has_active_successors) {
+                // No successors — proceed directly
+                _origBulkSubmit('deactivate');
+                return;
+            }
+
+            // Build the list of affected jobs + successors
+            succList.innerHTML = '';
+            (data.jobs || []).forEach(function (entry) {
+                if (!entry.successors || entry.successors.length === 0) { return; }
+                var li = document.createElement('li');
+                li.className = 'font-medium';
+                li.textContent = '#' + entry.job_id + (entry.description ? ' ' + entry.description : '');
+                succList.appendChild(li);
+                entry.successors.forEach(function (s) {
+                    var sub = document.createElement('li');
+                    sub.className = 'ml-4 text-gray-500 dark:text-gray-400';
+                    sub.textContent = '→ #' + s.id + (s.description ? ' ' + s.description : '') + ' (' + s.dependency_type + ')';
+                    succList.appendChild(sub);
+                });
+            });
+
+            succModal.classList.remove('hidden');
+        })
+        .catch(function () {
+            // On error, proceed without check to avoid blocking the user
+            _origBulkSubmit('deactivate');
+        });
+    };
+
+    window.cmSuccessorCancel = function () {
+        succModal.classList.add('hidden');
+        pendingDeactivateAction = null;
+    };
+
+    window.cmSuccessorForce = function () {
+        succModal.classList.add('hidden');
+        pendingForce = true;
+        // Submit with force=1 via hidden field
+        document.getElementById('cm-bulk-action').value = 'deactivate_force';
+        // Re-use populateForm by calling the original submit
+        // Actually: inject force flag and submit
+        var forceInp = document.getElementById('cm-bulk-force');
+        if (!forceInp) {
+            forceInp = document.createElement('input');
+            forceInp.type  = 'hidden';
+            forceInp.name  = 'force';
+            forceInp.id    = 'cm-bulk-force';
+            document.getElementById('cm-bulk-form').appendChild(forceInp);
+        }
+        forceInp.value = '1';
+        var cascadeInp = document.getElementById('cm-bulk-cascade');
+        if (cascadeInp) { cascadeInp.value = ''; }
+        // Reset action to 'deactivate' and submit
+        document.getElementById('cm-bulk-action').value = 'deactivate';
+        _origBulkSubmit._forceFlag = true;
+        _origBulkSubmit('deactivate');
+    };
+
+    window.cmSuccessorCascade = function () {
+        succModal.classList.add('hidden');
+        // Inject cascade=1 and submit
+        var cascadeInp = document.getElementById('cm-bulk-cascade');
+        if (!cascadeInp) {
+            cascadeInp = document.createElement('input');
+            cascadeInp.type  = 'hidden';
+            cascadeInp.name  = 'cascade';
+            cascadeInp.id    = 'cm-bulk-cascade';
+            document.getElementById('cm-bulk-form').appendChild(cascadeInp);
+        }
+        cascadeInp.value = '1';
+        var forceInp = document.getElementById('cm-bulk-force');
+        if (forceInp) { forceInp.value = ''; }
+        _origBulkSubmit('deactivate');
+    };
+
+    succModal.addEventListener('click', function (e) {
+        if (e.target === succModal) { cmSuccessorCancel(); }
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !succModal.classList.contains('hidden')) { cmSuccessorCancel(); }
+    });
 }());
 <?php endif; ?>
 

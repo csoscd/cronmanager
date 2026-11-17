@@ -6,6 +6,117 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [7.4.0] – 2026-11-17
+
+### Added
+
+- **Web-pool TLS support** (`web_pool_url` per agent): completing the dual-pool architecture
+  introduced in v7.3.0. When an agent runs with `AGENT_WEB_PORT`, the agent container's nginx
+  now also terminates TLS on that port (second `server {}` block, internal PHP on `127.0.0.1:18866`),
+  making the web pool accessible over encrypted cross-network connections. Each agent in the web UI
+  gains an optional **Web-Pool-URL** field (`web_url` column in the `agents` table). When set,
+  `HostAgentClient` routes all web UI requests to this URL instead of the main exec-pool URL —
+  no method-level routing required because `cron-wrapper.sh` calls the agent directly and never
+  uses `HostAgentClient`. The `GET /api/v1/agents` endpoint exposes the new field as `web_pool_url`.
+  Existing installations without `AGENT_WEB_PORT` are fully unaffected (`web_url = NULL`,
+  `HostAgentClient` falls back to the existing `url`).
+
+- **Agent Docker health check** (`agent-healthcheck.sh`): a TLS-aware shell script is now baked
+  into the agent Docker image (`/usr/local/bin/agent-healthcheck.sh`) and registered as the
+  container `HEALTHCHECK`. It verifies both the exec pool and (when `AGENT_WEB_PORT` is set) the
+  web pool via their nginx-exposed ports — in TLS mode using `--insecure` for self-signed
+  certificates — so a crashed nginx layer or a failed PHP pool is detected and the container
+  transitions to `Unhealthy`. Both `docker-compose-full.yml` and `docker-compose-agent.yml`
+  include the `healthcheck` block. `curl` is added to the agent image's installed packages.
+
+- **Web-pool fallback with warning banner**: `HostAgentClient` now automatically falls back to the
+  exec-pool URL when the web pool raises a `ConnectException`, sets `$fallbackActive = true`, and
+  logs a warning. All subsequent requests in the same page load use the exec pool. The layout
+  (`layout.php`) shows an amber banner in the topbar when the fallback is active, indicating that
+  the web pool is unreachable. The fallback covers all HTTP methods (GET, POST, PUT, DELETE) and
+  the parallel `getMultiple()` path.
+
+- **Dual-Pool badge and Degraded status in the agents list**: the agents settings page now shows
+  an indigo `Dual-Pool` badge next to the agent name when a `web_pool_url` is configured. The
+  async health-check ping (`POST /settings/agents/{id}/test`) now independently tests both pools;
+  when the exec pool is reachable but the web pool is not, the status badge shows amber `Degraded`
+  with a tooltip explaining the situation. Only when both pools are healthy does the badge show
+  green `Online`.
+
+---
+
+## [7.3.0] – branch: `feature/v7.3.0`
+
+### Added
+
+- **Dual-pool agent mode** (`AGENT_WEB_PORT`): a second PHP built-in server instance can
+  be started inside the agent container by setting the `AGENT_WEB_PORT` environment
+  variable (e.g. `AGENT_WEB_PORT=8866`). Both instances run the same `agent.php` codebase
+  with no code changes — separation is purely at the deployment level.
+  - The main pool (always-on, `AGENT_PORT`) is reserved for `cron-wrapper.sh` calls
+    (`/execution/start`, `/execution/finish`, `GET /crons/{id}`, etc.) — the
+    operationally critical path that must never be starved.
+  - The optional web pool (`AGENT_WEB_PORT`) handles all browser/API reads (job list,
+    history, timeline, export, settings). Point the web container at this pool by setting
+    `AGENT_URL=http://cronmanager-agent:<AGENT_WEB_PORT>`.
+  - Worker count is controlled independently: `PHP_CLI_SERVER_WORKERS` for the main pool
+    (default 8), `PHP_CLI_WEB_SERVER_WORKERS` for the web pool (default 6).
+  - Fully backwards-compatible: without `AGENT_WEB_PORT` the behaviour is identical to
+    all prior versions (single pool on `AGENT_PORT`).
+  - `docker/agent/entrypoint.sh`: starts the web pool in the background (before the main
+    `exec` that becomes the foreground process). `tini` (PID 1) reaps both pools on
+    container stop.
+  - `agent/bin/start-agent.sh`: dual-pool mode uses a `trap EXIT/TERM/INT` to terminate
+    both PHP processes when systemd stops the service; single-pool mode is unchanged
+    (`exec` → systemd tracks the PHP PID directly).
+  - `config.json`: `agent.web_port` and `agent.web_workers` are written only when
+    `AGENT_WEB_PORT` is set.
+
+### Tests
+
+- 13 new integration tests (`DualPoolConfigTest`): structural checks on `entrypoint.sh` (AGENT_WEB_PORT handling, background startup, config.json keys, env-var documentation); structural checks on `start-agent.sh` (web_port config read, dual-pool branch, trap pattern, single-pool exec path retained); functional verification of the PHP config-generation snippet (web_port/web_workers present/absent based on AGENT_WEB_PORT); README.md env-var documentation checks.
+
+---
+
+## [7.2.0] – branch: `feature/v7.2.0`
+
+### Added
+
+- **Successor warning on job deactivation** (Issue #124): deactivating a job that has active successor jobs in a dependency chain now triggers a confirmation dialog instead of silently deactivating.
+  - Agent returns HTTP 409 Conflict with an `affected_successors` array when a job is deactivated without `force: true` or `cascade: true`.
+  - Bulk deactivation (`POST /crons/bulk/status`) returns HTTP 409 with an `affected_jobs` array when any selected job has active successors.
+  - Three options: **Cancel** (abort), **Force** (deactivate the selected jobs only, leave successors active), **Cascade** (deactivate the selected jobs and all their transitive successors).
+  - Predecessor badge in the job list shows an amber ⚠ icon when the predecessor is currently inactive.
+  - New agent endpoints: `GET /crons/{id}/successors` and `POST /crons/bulk/successors` for pre-check AJAX calls from the web UI and external API.
+  - External REST API: `PUT /api/v1/jobs/{id}` accepts `force` and `cascade` flags and passes through the 409 Conflict response body unchanged.
+  - New external REST API endpoint `POST /api/v1/jobs/bulk/status` (`jobs:write`): activate/deactivate multiple jobs; supports `force`/`cascade`; returns 409 Conflict with `affected_jobs` when active successors block deactivation.
+  - New external REST API endpoint `GET /api/v1/jobs/{id}/successors` (`jobs:read`): returns BFS-reachable active successors for a single job.
+  - New external REST API endpoint `POST /api/v1/jobs/bulk/successors` (`jobs:read`): returns active successors for a set of jobs (pre-check for bulk deactivation).
+
+- **Free-text notes field** (`notes`) on jobs:
+  - Optional plain-text textarea in the job edit form (new "Notizen" tab).
+  - Shown in the job detail view only (not in the job list).
+  - Included in full-text server-side search (`?q=`).
+  - Audit-logged as `notes_changed: true` on change (content is never logged).
+  - Included in CSV export (`notes` column after `description`).
+  - New database migration: `023_job_notes.sql` (`ALTER TABLE cronjobs ADD COLUMN notes TEXT NULL DEFAULT NULL`).
+
+- **Server-side filtering for job list** (agent `GET /crons`): previously all filtering was done client-side in PHP; it is now delegated to SQL in the agent. Supported query parameters: `q` (full-text search on description, command, notes, and id), `active` (0/1), `exec_type` (schedule/requires/triggered_by), `tag`, `user`, `target`. The `search` parameter remains a backwards-compatible alias for `q` in the external REST API.
+
+### Changed
+
+- `GET /api/v1/jobs`: the `search` query parameter is now mapped to the agent's `q` parameter (previously mismatched and had no effect); `exec_type` added.
+- 409 responses from the agent are now forwarded unchanged by `BaseApiController::handleAgentException()` instead of being converted to 502.
+
+### Tests
+
+- 6 new unit tests (`DependencyRepositoryTest`): `findActiveSuccessorsRecursive` BFS logic — empty input, direct successor, transitive chain, cycle guard, job with no successors, multiple roots.
+- 7 new integration tests (`NotesAndSuccessorConflictTest`): notes store/clear and 409/force/cascade for `CronUpdateEndpoint` and `CronBulkStatusEndpoint`.
+- 11 new integration tests (`CronListFiltersAndSuccessorsEndpointTest`): `CronListEndpoint` q/notes/active/exec_type filters (incl. combination), and `SuccessorsEndpoint` single + bulk for has/has-no successors.
+- 14 new integration tests (`JobsApiControllerBulkAndSuccessorsTest`): auth (401), input validation (400), and agent resolution (404) for all three endpoints (Group A, 10 tests); proxy behaviour with mocked Guzzle client — 200/409 forwarding for bulk/status, and 200 forwarding for single/bulk successors (Group B, 4 tests).
+
+---
+
 ## [7.1.1] – branch: `feature/v7.1.1`
 
 ### Added

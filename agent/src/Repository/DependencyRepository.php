@@ -154,6 +154,80 @@ final class DependencyRepository
     }
 
     // -------------------------------------------------------------------------
+    // Successor lookup
+    // -------------------------------------------------------------------------
+
+    /**
+     * Build the full recursive tree of active successors for one or more jobs.
+     *
+     * Loads all active job_dependencies in one query (avoids N+1) and runs BFS
+     * from each root ID. Returns a map of root_job_id → list of successor entries
+     * ordered breadth-first with a `depth` field.
+     *
+     * @param int[] $rootIds One or more root job IDs.
+     *
+     * @return array<int, list<array{id: int, description: string|null, dependency_type: string, depth: int}>>
+     *
+     * @throws \PDOException
+     */
+    public function findActiveSuccessorsRecursive(array $rootIds): array
+    {
+        if ($rootIds === []) {
+            return [];
+        }
+
+        // Load all active dependencies in one query
+        $stmt = $this->pdo->prepare(
+            'SELECT jd.predecessor_id, jd.job_id, jd.type, c.description
+               FROM job_dependencies jd
+               JOIN cronjobs c ON c.id = jd.job_id AND c.active = 1'
+        );
+        $stmt->execute();
+
+        /** @var array<int, list<array{job_id: int, type: string, description: string|null}>> $adj */
+        $adj = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            $predId = (int) $row['predecessor_id'];
+            $adj[$predId][] = [
+                'job_id'      => (int) $row['job_id'],
+                'type'        => (string) $row['type'],
+                'description' => isset($row['description']) ? (string) $row['description'] : null,
+            ];
+        }
+
+        $result = [];
+
+        foreach ($rootIds as $rootId) {
+            $visited    = [$rootId => true];
+            $queue      = [[$rootId, 0]];
+            $successors = [];
+
+            while ($queue !== []) {
+                [$currentId, $depth] = array_shift($queue);
+
+                foreach ($adj[$currentId] ?? [] as $child) {
+                    $childId = $child['job_id'];
+                    if (isset($visited[$childId])) {
+                        continue;
+                    }
+                    $visited[$childId] = true;
+                    $successors[] = [
+                        'id'              => $childId,
+                        'description'     => $child['description'],
+                        'dependency_type' => $child['type'],
+                        'depth'           => $depth + 1,
+                    ];
+                    $queue[] = [$childId, $depth + 1];
+                }
+            }
+
+            $result[$rootId] = $successors;
+        }
+
+        return $result;
+    }
+
+    // -------------------------------------------------------------------------
     // Cycle detection
     // -------------------------------------------------------------------------
 

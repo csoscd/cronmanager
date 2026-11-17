@@ -49,7 +49,7 @@ LABEL org.opencontainers.image.title="Cronmanager Agent" \
 # with &, so without tini the container gradually fills with defunct PHP
 # processes until fork() fails and the cron daemon can no longer start jobs.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tini jq \
+ && apt-get install -y --no-install-recommends tini jq curl \
  && rm -rf /var/lib/apt/lists/*
 
 # Copy Composer-installed vendor tree into the expected path
@@ -66,14 +66,18 @@ RUN chmod +x /opt/cronmanager/agent/bin/cron-wrapper.sh \
              /opt/cronmanager/agent/bin/resync-crontab.php \
              /opt/cronmanager/agent/bin/check-limits.php
 
-# Copy and configure entrypoint
+# Copy and configure entrypoint and health check
 COPY docker/agent/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY docker/agent/agent-healthcheck.sh /usr/local/bin/agent-healthcheck.sh
+RUN chmod +x /entrypoint.sh /usr/local/bin/agent-healthcheck.sh
 
 # Declare volumes (Docker-managed named volumes by default)
 VOLUME ["/opt/cronmanager/agent/log"]
 
 EXPOSE 8865
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["/usr/local/bin/agent-healthcheck.sh"]
 
 # The agent container intentionally runs as root to manage the system crontab
 # via crontab(1), which requires root privileges. The container is not publicly

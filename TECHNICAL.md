@@ -421,7 +421,7 @@ Public endpoint. No signature required.
 
 ### GET /crons
 
-List all managed cron jobs.
+List all managed cron jobs. All filters are applied server-side in SQL (v7.2.0).
 
 **Query parameters:**
 
@@ -430,7 +430,9 @@ List all managed cron jobs.
 | `user` | string | Filter by Linux user |
 | `tag` | string | Filter by tag name |
 | `target` | string | Filter by target (`local` or SSH alias) |
-| `search` | string | Wildcard match on description and command |
+| `q` | string | Full-text search on `description`, `command`, `notes`, and numeric `id`; alias `search` accepted for backwards compatibility |
+| `active` | `0`\|`1` | Filter by active state |
+| `exec_type` | `schedule`\|`requires`\|`triggered_by` | Filter by execution type (`schedule` = no dependency row) |
 
 **Response:**
 ```json
@@ -492,9 +494,29 @@ Create a new managed cron job.
 
 ### PUT /crons/{id}
 
-Update an existing job. Body is the same as POST /crons.
+Update an existing job. Body is the same as POST /crons. Additional optional fields:
 
-**Response:**
+| Field | Type | Description |
+|---|---|---|
+| `notes` | string\|null | Optional free-text notes (plain text); stored as TEXT, never truncated |
+| `force` | bool | When `true`, skip the successor-conflict check (see below) |
+| `cascade` | bool | When `true`, also deactivate all transitive active successors |
+
+**Successor-conflict check (v7.2.0):** When a job is deactivated (`active: false`) and it has active successor jobs in the dependency graph, the endpoint returns **HTTP 409 Conflict** instead of proceeding. The caller must resend with `force: true` (deactivate only this job, leave successors active) or `cascade: true` (deactivate this job and all transitive successors via BFS). The check is skipped when activating a job.
+
+**Response (409 Conflict):**
+```json
+{
+  "error": "Conflict",
+  "message": "Job has active successors ...",
+  "code": 409,
+  "affected_successors": [
+    { "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }
+  ]
+}
+```
+
+**Response (200 OK):**
 ```json
 { "id": 42 }
 ```
@@ -509,9 +531,54 @@ Delete a job and remove its crontab entries.
 
 ---
 
+### GET /crons/{id}/successors
+
+Returns the list of active successor jobs reachable from this job via the dependency graph (BFS, skips cycles). Used by the web UI for the pre-check AJAX call before deactivation.
+
+**Response:**
+```json
+{
+  "has_active_successors": true,
+  "successors": [
+    { "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }
+  ]
+}
+```
+
+---
+
+### POST /crons/bulk/successors
+
+Returns active successors for a set of jobs. Used by the web UI before bulk deactivation.
+
+**Request body:**
+```json
+{ "ids": [1, 4, 7] }
+```
+
+**Response:**
+```json
+{
+  "has_active_successors": true,
+  "jobs": [
+    {
+      "job_id": 1,
+      "description": "...",
+      "successors": [
+        { "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }
+      ]
+    }
+  ]
+}
+```
+
+---
+
 ### POST /crons/bulk/status
 
 Activate or deactivate a set of jobs in one call. The crontab is updated only for jobs whose `active` state actually changes.
+
+**Successor-conflict check (v7.2.0):** When deactivating (`active: false`), returns **HTTP 409 Conflict** if any selected job has active successors. Use `force: true` or `cascade: true` (see PUT /crons/{id}).
 
 **Request body:**
 ```json
@@ -521,6 +588,21 @@ Activate or deactivate a set of jobs in one call. The crontab is updated only fo
 **Response:**
 ```json
 { "updated": 3 }
+```
+
+**Response (409 – successor conflict):**
+```json
+{
+  "error": "Conflict",
+  "code": 409,
+  "affected_jobs": [
+    {
+      "job_id": 1,
+      "description": "...",
+      "successors": [{ "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }]
+    }
+  ]
+}
 ```
 
 ---
@@ -1419,6 +1501,7 @@ One-time tokens for invitation links and password-reset flows.
 | `schedule` | VARCHAR(100) | Standard cron expression |
 | `command` | TEXT | Command to execute |
 | `description` | VARCHAR(255) | Human-readable name |
+| `notes` | TEXT NULL | Optional free-text notes (plain text); shown on job detail page only, not in list; included in full-text `?q=` search; audit-logged as `notes_changed: true` on change (content never logged) |
 | `active` | TINYINT(1) | `1` = enabled |
 | `notify_on_failure` | TINYINT(1) | Send email/Telegram on failure or limit exceeded |
 | `notify_on_recovery` | TINYINT(1) | Send recovery notification after a notified failure streak; DEFAULT 0 (opt-in) |
@@ -1752,6 +1835,114 @@ any requests are processed.
 ---
 
 ## Performance
+
+### Dual-pool agent mode (v7.3.0 / v7.4.0)
+
+The PHP CLI built-in server uses a shared worker pool (`PHP_CLI_SERVER_WORKERS`).
+Under sustained UI load (long history queries, timeline, export) all workers can be
+occupied by read requests, leaving no capacity for `cron-wrapper.sh` write calls
+(`/execution/start`, `/execution/finish`).  Starvation causes the wrapper to retry
+its finish call in a loop, making executions appear stuck.
+
+**Dual-pool mode** solves this by starting a second, independent PHP CLI server
+instance inside the same agent container:
+
+| Pool | Port | Purpose | Workers |
+|---|---|---|---|
+| Exec pool (main) | `AGENT_PORT` (8865) | `cron-wrapper.sh` calls only | `PHP_CLI_SERVER_WORKERS` (default 8) |
+| Web pool (optional) | `AGENT_WEB_PORT` (e.g. 8866) | All UI / REST API reads | `PHP_CLI_WEB_SERVER_WORKERS` (default 6) |
+
+**How it works:**
+
+- Both pools run the same `agent.php` — the codebase is not aware of "exec mode" vs
+  "web mode". Separation exists only at the deployment level.
+- In `entrypoint.sh` the web pool starts as a background process before the main pool's
+  `exec` replaces the shell. Because `tini` is PID 1, both PHP processes are direct tini
+  children and receive SIGTERM on container stop.
+- In `start-agent.sh` (standalone/systemd) both pools start with `&`; a `trap EXIT/TERM/INT`
+  kills both when systemd stops the service. Single-pool mode is unchanged (`exec`).
+- `cron-wrapper.sh` is not changed — it always uses `agent.port` (the exec pool).
+
+**TLS support for the web pool (v7.4.0):**
+
+When `AGENT_TLS_ENABLED=true` (the default), `entrypoint.sh` adds a second nginx
+`server {}` block that terminates TLS on `0.0.0.0:AGENT_WEB_PORT` and proxies to
+`127.0.0.1:18866` (internal PHP, same pattern as the exec pool on `18865`). This
+makes the web pool accessible over encrypted connections from remote or cross-network
+agents — identical to the exec pool's TLS path.
+
+When `AGENT_TLS_ENABLED=false`, the web pool binds directly on `0.0.0.0:AGENT_WEB_PORT`
+as plain HTTP (suitable for same-Docker-network deployments only).
+
+**Routing in the web container (v7.4.0):**
+
+Each agent in the web UI has an optional **Web-Pool-URL** field (`agents.web_url`). When
+set, `HostAgentClient` uses this URL as `base_uri` for all HTTP calls, routing all UI
+traffic to the web pool. When empty, it falls back to `agents.url` (exec pool) —
+single-pool behaviour, fully backwards-compatible.
+
+```
+web container (HostAgentClient)
+  → agents.web_url (web pool)      ← UI reads, REST API reads
+  → agents.url     (exec pool)     ← only when web_url is not set (single-pool mode)
+
+cron-wrapper.sh
+  → agent.port     (exec pool)     ← always, never uses HostAgentClient
+```
+
+**Configuration (Docker, TLS mode):**
+
+```yaml
+# agent container
+environment:
+  AGENT_WEB_PORT: "8866"           # enables web pool + nginx TLS block on port 8866
+  PHP_CLI_WEB_SERVER_WORKERS: "6"  # optional, default 6
+  PHP_CLI_SERVER_WORKERS: "8"      # exec pool, default 8
+
+# web container: set Web-Pool-URL on the agent record in Settings → Agents
+# Example: https://cronmanager-agent:8866
+```
+
+**Configuration (Docker, plain HTTP / same-network):**
+
+Same `AGENT_WEB_PORT: "8866"` on the agent. Web-Pool-URL: `http://cronmanager-agent:8866`.
+Only use this when both containers are on the same Docker network.
+
+Backwards compatibility: when `AGENT_WEB_PORT` is not set, a single pool starts as
+before and all behaviour is identical to previous versions. When `web_url` is NULL
+in the `agents` table, `HostAgentClient` falls back to `url` (exec pool).
+
+**Web-pool fallback (v7.4.0):**
+
+If `web_url` is configured but the web pool raises a `ConnectException`, `HostAgentClient`
+automatically falls back to `agentUrl` (exec pool) for the remainder of that page-load, sets
+`$fallbackActive = true`, and logs a warning. All subsequent requests in the same HTTP request
+use the exec pool. The layout shows an amber topbar banner when fallback is active.
+
+The fallback covers GET, POST, PUT, DELETE, and the parallel `getMultiple()` path. It fires
+only once per request (subsequent calls skip the web pool attempt).
+
+**Agent health check (v7.4.0):**
+
+`docker/agent/agent-healthcheck.sh` is baked into the agent image at
+`/usr/local/bin/agent-healthcheck.sh` and registered as `HEALTHCHECK`. It checks:
+
+1. Exec pool via `{SCHEME}://127.0.0.1:{AGENT_PORT}/health` (always)
+2. Web pool via `{SCHEME}://127.0.0.1:{AGENT_WEB_PORT}/health` (only when `AGENT_WEB_PORT` set)
+
+In TLS mode it uses `--insecure` (self-signed cert). The check goes through nginx on the
+exposed ports, so both nginx and the PHP workers must be alive for the container to stay
+`Healthy`. Interval 30 s, timeout 10 s, start period 30 s, retries 3.
+
+**Dual-Pool status in the web UI (v7.4.0):**
+
+- **Dual-Pool badge**: indigo badge next to agent name in Settings → Agents when `web_url` is set.
+- **Status**: `POST /settings/agents/{id}/test` now independently pings both pools.
+  - Both OK → green `Online v…`
+  - Exec OK, web not → amber `Degraded v…` (tooltip explains)
+  - Exec not OK → red `Offline`
+
+---
 
 ### Swimlane view caching (APCu)
 
@@ -2295,6 +2486,10 @@ are already included in the baseline schema.
 | `017_performance_indexes.sql` | Added composite indexes for `CronListEndpoint` and `HistoryEndpoint`; repairs `schema.sql` to include objects from migrations 011, 012, and 016 |
 | `018_last_execution_refs.sql` | Added `last_execution_id` and `last_finished_execution_id` to `cronjobs` (denormalised pointers for O(1) last-run lookups; replaces the previous `MAX(id) GROUP BY` aggregate) |
 | `019_user_management_v2.sql` | Added `active`, `email`, `agent_ids` to `users`; changed `role` ENUM to `('viewer','operator','admin','api-only')`; added `auth_tokens` table for invitation and password-reset tokens |
+| `020_acknowledge.sql` | Added `acknowledged_at` and `acknowledged_by_user_id` to `execution_log`; added `acknowledge_all` column to `cronjobs` for bulk-acknowledge support |
+| `021_job_dependencies.sql` | Added `job_dependencies` table (predecessor_id, job_id, type, exit_codes, max_age_minutes); added `execution_type` and `schedule` nullable changes to `cronjobs`; added `job_dependency_trigger_state` table |
+| `022_trigger_delay_minutes.sql` | Added `trigger_delay_minutes INT UNSIGNED NOT NULL DEFAULT 0` to `job_dependencies` |
+| `023_job_notes.sql` | Added `notes TEXT NULL DEFAULT NULL` to `cronjobs` for the optional free-text notes field |
 
 Always apply migrations in order. The full schema in `agent/sql/schema.sql` reflects
 the current state after all migrations and is used for fresh installations.

@@ -52,6 +52,12 @@ services:
     image: cs1711/cronmanager-agent:latest
     container_name: cronmanager-agent
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/agent-healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     depends_on:
       cronmanager-db:
         condition: service_healthy

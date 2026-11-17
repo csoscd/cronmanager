@@ -182,6 +182,39 @@ final class CronUpdateEndpoint
         $wasActive = (bool) $existing['active'];
         $isActive  = (bool) $merged['active'];
 
+        // ------------------------------------------------------------------
+        // 4b. Successor conflict check on deactivation
+        //     Returns 409 when active successors exist unless the caller
+        //     passes force:true (skip) or cascade:true (also deactivate them).
+        // ------------------------------------------------------------------
+        $cascadeDeactivate = !empty($body['cascade']) && $body['cascade'] === true;
+        $forceDeactivate   = !empty($body['force'])   && $body['force']   === true;
+
+        /** @var int[] $cascadeIds */
+        $cascadeIds = [];
+
+        if ($wasActive && !$isActive && !$forceDeactivate) {
+            $successorMap  = $this->deps->findActiveSuccessorsRecursive([$jobId]);
+            $jobSuccessors = $successorMap[$jobId] ?? [];
+
+            if ($jobSuccessors !== []) {
+                if (!$cascadeDeactivate) {
+                    jsonResponse(409, [
+                        'error'              => 'Conflict',
+                        'message'            => 'Job has active successors. Use cascade:true to deactivate them, or force:true to skip.',
+                        'code'               => 409,
+                        'affected_successors' => $jobSuccessors,
+                    ]);
+                    return;
+                }
+
+                // Cascade: collect all descendant IDs to deactivate within the transaction
+                foreach ($jobSuccessors as $s) {
+                    $cascadeIds[] = (int) $s['id'];
+                }
+            }
+        }
+
         /** @var string[] $mergedTargets */
         $mergedTargets = $merged['targets'];
 
@@ -207,6 +240,7 @@ final class CronUpdateEndpoint
                      schedule = :schedule,
                      command = :command,
                      description = :description,
+                     notes = :notes,
                      active = :active,
                      notify_on_failure = :notify_on_failure,
                      notify_on_recovery = :notify_on_recovery,
@@ -231,6 +265,7 @@ final class CronUpdateEndpoint
                 ':schedule'                => $merged['schedule'],
                 ':command'                 => $merged['command'],
                 ':description'             => $merged['description'],
+                ':notes'                   => $merged['notes'],
                 ':active'                  => (int) $isActive,
                 ':notify_on_failure'       => (int) $merged['notify_on_failure'],
                 ':notify_on_recovery'      => (int) ($merged['notify_on_recovery'] ?? false),
@@ -295,6 +330,19 @@ final class CronUpdateEndpoint
                 $this->crontabManager->removeAllEntries((string) $existing['linux_user'], $jobId);
             }
 
+            // Cascade-deactivate successors when requested
+            if ($cascadeIds !== []) {
+                $cascadePlaceholders = implode(',', array_fill(0, count($cascadeIds), '?'));
+                // $cascadePlaceholders contains only '?' characters – values bound via execute().
+                // nosemgrep: php.lang.security.injection.tainted-callable.tainted-callable
+                $this->pdo->prepare("UPDATE cronjobs SET active = 0 WHERE id IN ({$cascadePlaceholders})")
+                           ->execute($cascadeIds);
+
+                foreach ($cascadeIds as $cascadeId) {
+                    $this->crontabManager->removeAllEntries((string) $existing['linux_user'], $cascadeId);
+                }
+            }
+
             // Persist dependency changes
             if ($setDep && $depData !== null) {
                 $this->deps->save(
@@ -348,6 +396,9 @@ final class CronUpdateEndpoint
         $job = $this->fetchJob($jobId);
 
         $changes = $this->buildChanges($existing, $merged);
+        if ($cascadeIds !== []) {
+            $changes['cascade_deactivated'] = $cascadeIds;
+        }
         $this->audit->log(
             'cron.update',
             'cron',
@@ -415,6 +466,9 @@ final class CronUpdateEndpoint
                 : (isset($existing['schedule']) && $existing['schedule'] !== '' ? $existing['schedule'] : null),
             'command'                  => array_key_exists('command',           $body) ? $body['command']           : $existing['command'],
             'description'              => array_key_exists('description',       $body) ? $body['description']       : $existing['description'],
+            'notes'                    => array_key_exists('notes', $body)
+                ? (is_string($body['notes']) && $body['notes'] !== '' ? $body['notes'] : null)
+                : (isset($existing['notes']) && $existing['notes'] !== null ? (string) $existing['notes'] : null),
             'active'                   => array_key_exists('active',            $body) ? $body['active']            : (bool) $existing['active'],
             'notify_on_failure'        => array_key_exists('notify_on_failure',  $body) ? $body['notify_on_failure']  : (bool) $existing['notify_on_failure'],
             'notify_on_recovery'       => array_key_exists('notify_on_recovery', $body) ? $body['notify_on_recovery'] : (bool) ($existing['notify_on_recovery'] ?? false),
@@ -526,6 +580,13 @@ final class CronUpdateEndpoint
                 $errors['description'] = 'Must be a string.';
             } elseif (strlen((string) $data['description']) > 255) {
                 $errors['description'] = 'Must not exceed 255 characters.';
+            }
+        }
+
+        // notes
+        if (isset($data['notes']) && $data['notes'] !== null) {
+            if (!is_string($data['notes'])) {
+                $errors['notes'] = 'Must be a string or null.';
             }
         }
 
@@ -741,6 +802,7 @@ final class CronUpdateEndpoint
                 j.schedule,
                 j.command,
                 j.description,
+                j.notes,
                 j.active,
                 j.notify_on_failure,
                 j.notify_on_recovery,
@@ -806,6 +868,7 @@ final class CronUpdateEndpoint
             'schedule'                 => $row['schedule'] !== null ? (string) $row['schedule'] : null,
             'command'                  => (string) $row['command'],
             'description'              => isset($row['description']) ? (string) $row['description'] : null,
+            'notes'                    => isset($row['notes']) && $row['notes'] !== null ? (string) $row['notes'] : null,
             'active'                   => (bool)   $row['active'],
             'notify_on_failure'        => (bool)   $row['notify_on_failure'],
             'notify_on_recovery'       => (bool)  ($row['notify_on_recovery'] ?? false),
@@ -901,6 +964,13 @@ final class CronUpdateEndpoint
         sort($sortedMerged);
         if ($existingTargets !== $sortedMerged) {
             $changes['targets'] = implode(', ', $existingTargets) . ' → ' . implode(', ', $sortedMerged);
+        }
+
+        // notes: TEXT field – log only that it changed, not the full content.
+        $existingNotes = isset($existing['notes']) && $existing['notes'] !== null ? (string) $existing['notes'] : null;
+        $mergedNotes   = $merged['notes'];
+        if ($existingNotes !== $mergedNotes) {
+            $changes['notes_changed'] = true;
         }
 
         // Tags: GROUP_CONCAT string from DB → sorted array; compare to $merged['tags'].

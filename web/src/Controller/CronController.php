@@ -47,11 +47,19 @@ class CronController extends BaseController
     // -------------------------------------------------------------------------
 
     /**
-     * List all cron jobs, with optional tag and user filters.
+     * List all cron jobs, with optional filters.
      *
      * Query parameters forwarded to the agent:
-     *   ?tag=  – filter by tag name
-     *   ?user= – filter by linux_user
+     *   ?tag=       – filter by tag name
+     *   ?user=      – filter by linux_user
+     *   ?target=    – filter by execution target
+     *   ?q=         – free-text search (description, command, notes, ID)
+     *   ?active=0|1 – active/inactive filter
+     *   ?exec_type= – schedule | requires | triggered_by
+     *
+     * The ?result= filter (ok/failed/not_run) is applied client-side because it
+     * is based on last_exit_code which the agent returns per job but does not
+     * index as a filter parameter.
      *
      * @param array<string,string> $params Path parameters (unused).
      *
@@ -96,21 +104,36 @@ class CronController extends BaseController
         $currentPage = max(1, (int) ($_GET['page'] ?? 1));
 
         // ------------------------------------------------------------------
-        // Fetch all page data from the agent in one parallel batch
+        // Build query parameters for the server-side filtered job list
+        // ------------------------------------------------------------------
+
+        $cronQuery = [];
+        if ($filterTag      !== '') { $cronQuery['tag']       = $filterTag;      }
+        if ($filterUser     !== '') { $cronQuery['user']      = $filterUser;      }
+        if ($filterTarget   !== '') { $cronQuery['target']    = $filterTarget;    }
+        if ($filterSearch   !== '') { $cronQuery['q']         = $filterSearch;    }
+        if ($filterActive   !== '') { $cronQuery['active']    = $filterActive === 'active' ? '1' : '0'; }
+        if ($filterExecType !== '') { $cronQuery['exec_type'] = $filterExecType === 'none' ? 'schedule' : $filterExecType; }
+
+        // ------------------------------------------------------------------
+        // Fetch all page data from the agent in one parallel batch.
+        //
+        // 'crons'     – filtered job list (passed to the template for display)
+        // 'crons_all' – unfiltered job list (for dropdown population and the
+        //               bidirectional dependency graph, which must include
+        //               predecessors/successors that may be outside the filter)
         // ------------------------------------------------------------------
 
         try {
-            // One getMultiple() batch instead of up to four sequential
-            // roundtrips. The full job list already contains linux_user, tags
-            // and targets per job, so the tag/user/target filters are applied
-            // locally below instead of re-fetching /crons with query params.
             $results = $agent->getMultiple([
-                'crons'   => ['path' => '/crons'],
-                'tags'    => ['path' => '/tags'],
-                'windows' => ['path' => '/maintenance/windows'],
+                'crons'     => ['path' => '/crons', 'query' => $cronQuery],
+                'crons_all' => ['path' => '/crons'],
+                'tags'      => ['path' => '/tags'],
+                'windows'   => ['path' => '/maintenance/windows'],
             ]);
-            $allJobs = $results['crons']['data'] ?? [];
-            $allTags = $results['tags']['data']  ?? [];
+            $jobs    = $results['crons']['data']     ?? [];
+            $allJobs = $results['crons_all']['data'] ?? [];
+            $allTags = $results['tags']['data']      ?? [];
             // Only show tags that are actually in use in the filter dropdown
             $tags = array_values(array_filter($allTags, static fn(array $t): bool => ($t['job_count'] ?? 0) > 0));
         } catch (\RuntimeException $e) {
@@ -119,28 +142,6 @@ class CronController extends BaseController
             ]);
             $this->renderError(503, 'error_agent_unavailable', '/crons');
             return;
-        }
-
-        // Apply tag / user / target filters locally (same semantics as the
-        // agent-side ?tag=&user=&target= query parameters).
-        $jobs = $allJobs;
-        if ($filterTag !== '') {
-            $jobs = array_values(array_filter(
-                $jobs,
-                static fn(array $job): bool => in_array($filterTag, (array) ($job['tags'] ?? []), strict: true)
-            ));
-        }
-        if ($filterUser !== '') {
-            $jobs = array_values(array_filter(
-                $jobs,
-                static fn(array $job): bool => (string) ($job['linux_user'] ?? '') === $filterUser
-            ));
-        }
-        if ($filterTarget !== '') {
-            $jobs = array_values(array_filter(
-                $jobs,
-                static fn(array $job): bool => in_array($filterTarget, (array) ($job['targets'] ?? []), strict: true)
-            ));
         }
 
         // Build a set of target names that have at least one active maintenance
@@ -158,44 +159,8 @@ class CronController extends BaseController
             }
         }
 
-        // Apply free-text search filter (description + command, case-insensitive; also matches numeric job ID)
-        if ($filterSearch !== '') {
-            $needle    = mb_strtolower($filterSearch);
-            $isNumeric = ctype_digit($filterSearch) && (int) $filterSearch > 0;
-            $numericId = $isNumeric ? (int) $filterSearch : 0;
-            $jobs      = array_values(array_filter($jobs, static function (array $job) use ($needle, $isNumeric, $numericId): bool {
-                if ($isNumeric && (int) ($job['id'] ?? 0) === $numericId) {
-                    return true;
-                }
-                $desc    = mb_strtolower((string) ($job['description'] ?? ''));
-                $command = mb_strtolower((string) ($job['command']     ?? ''));
-                return str_contains($desc, $needle) || str_contains($command, $needle);
-            }));
-        }
-
-        // Apply active/inactive filter
-        if ($filterActive !== '') {
-            $wantActive = $filterActive === 'active';
-            $jobs       = array_values(array_filter(
-                $jobs,
-                static fn(array $job): bool => (bool) ($job['active'] ?? false) === $wantActive
-            ));
-        }
-
-        // Apply execution-type filter (none = no dependency, requires, triggered_by)
-        if ($filterExecType !== '') {
-            $jobs = array_values(array_filter($jobs, static function (array $job) use ($filterExecType): bool {
-                $dep = is_array($job['dependency'] ?? null) ? $job['dependency'] : null;
-                return match ($filterExecType) {
-                    'none'         => $dep === null,
-                    'requires'     => $dep !== null && ($dep['type'] ?? '') === 'requires',
-                    'triggered_by' => $dep !== null && ($dep['type'] ?? '') === 'triggered_by',
-                    default        => true,
-                };
-            }));
-        }
-
         // Apply last-result filter (ok = exit_code 0, failed = exit_code != 0, not_run = never started)
+        // This filter is client-side because the agent does not index last_exit_code.
         if ($filterResult !== '') {
             $jobs = array_values(array_filter($jobs, static function (array $job) use ($filterResult): bool {
                 $lastExitCode = isset($job['last_exit_code']) ? (int) $job['last_exit_code'] : null;
@@ -258,13 +223,16 @@ class CronController extends BaseController
         // so the chain display in the list template can walk predecessor/successor links.
         $depPredOf  = [];  // job_id => ['id', 'desc', 'type']
         $depSuccOf  = [];  // job_id => [successor_job_id, ...]
-        $depJobMeta = [];  // job_id => ['desc']
+        $depJobMeta = [];  // job_id => ['desc', 'active']
         foreach ($allJobs as $_dj) {
             $_djid = (int) ($_dj['id'] ?? 0);
             if ($_djid <= 0) {
                 continue;
             }
-            $depJobMeta[$_djid] = ['desc' => (string) ($_dj['description'] ?? "Job #{$_djid}")];
+            $depJobMeta[$_djid] = [
+                'desc'   => (string) ($_dj['description'] ?? "Job #{$_djid}"),
+                'active' => (bool) ($_dj['active'] ?? true),
+            ];
             if (!isset($depSuccOf[$_djid])) {
                 $depSuccOf[$_djid] = [];
             }
@@ -554,7 +522,10 @@ class CronController extends BaseController
             if ($_djid <= 0) {
                 continue;
             }
-            $depJobMeta[$_djid] = ['desc' => (string) ($_dj['description'] ?? "Job #{$_djid}")];
+            $depJobMeta[$_djid] = [
+                'desc'   => (string) ($_dj['description'] ?? "Job #{$_djid}"),
+                'active' => (bool) ($_dj['active'] ?? true),
+            ];
             if (!isset($depSuccOf[$_djid])) {
                 $depSuccOf[$_djid] = [];
             }
@@ -701,6 +672,10 @@ class CronController extends BaseController
     {
         $id   = (string) ($params['id'] ?? '');
         $data = $this->buildJobPayload($_POST);
+
+        // Forward cascade/force flags from the successor confirmation dialog
+        if (!empty($_POST['force'])   && $_POST['force']   === '1') { $data['force']   = true; }
+        if (!empty($_POST['cascade']) && $_POST['cascade'] === '1') { $data['cascade'] = true; }
 
         try {
             $this->agentClient()->put('/crons/' . rawurlencode($id), $data);
@@ -1093,7 +1068,10 @@ class CronController extends BaseController
                     break;
 
                 case 'deactivate':
-                    $result = $agent->post('/crons/bulk/status', ['ids' => $ids, 'active' => false]);
+                    $deactivatePayload = ['ids' => $ids, 'active' => false];
+                    if (!empty($_POST['force'])   && $_POST['force']   === '1') { $deactivatePayload['force']   = true; }
+                    if (!empty($_POST['cascade']) && $_POST['cascade'] === '1') { $deactivatePayload['cascade'] = true; }
+                    $result = $agent->post('/crons/bulk/status', $deactivatePayload);
                     $msg    = str_replace('{n}', (string) ($result['updated'] ?? count($ids)), $t->t('bulk_flash_deactivated'));
                     SessionManager::set('_flash_success', $msg);
                     break;
@@ -1162,6 +1140,58 @@ class CronController extends BaseController
         $safe      = ($returnUrl !== '' && str_starts_with($returnUrl, '/crons')) ? $returnUrl : $this->agentPath('/crons');
 
         (new Response())->redirect($safe);
+    }
+
+    /**
+     * GET /crons/{id}/successors — JSON proxy for the agent successor-check endpoint.
+     *
+     * Used by the UI before deactivating a single job to warn about active successors.
+     *
+     * @param array<string,string> $params Path parameters. Expected key: 'id'.
+     *
+     * @return void
+     */
+    public function successors(array $params): void
+    {
+        $id = (string) ($params['id'] ?? '');
+
+        try {
+            $result = $this->agentClient()->get('/crons/' . rawurlencode($id) . '/successors');
+            $this->jsonResponse($result);
+        } catch (AgentHttpException $e) {
+            $this->jsonResponse(['error' => $e->getMessage()], $e->getStatusCode());
+        } catch (\RuntimeException $e) {
+            $this->jsonResponse(['error' => 'agent_unavailable'], 503);
+        }
+    }
+
+    /**
+     * POST /crons/bulk/successors — JSON proxy for the agent bulk successor-check endpoint.
+     *
+     * Used by the UI before bulk-deactivating jobs to warn about active successors.
+     *
+     * @param array<string,string> $params Path parameters (unused).
+     *
+     * @return void
+     */
+    public function bulkSuccessors(array $params): void
+    {
+        $rawBody = (string) file_get_contents('php://input');
+        $body    = json_decode($rawBody, true);
+
+        if (!is_array($body) || !isset($body['ids']) || !is_array($body['ids'])) {
+            $this->jsonResponse(['error' => 'bad_request'], 400);
+            return;
+        }
+
+        try {
+            $result = $this->agentClient()->post('/crons/bulk/successors', $body);
+            $this->jsonResponse($result);
+        } catch (AgentHttpException $e) {
+            $this->jsonResponse(['error' => $e->getMessage()], $e->getStatusCode());
+        } catch (\RuntimeException $e) {
+            $this->jsonResponse(['error' => 'agent_unavailable'], 503);
+        }
     }
 
     /**
@@ -1598,11 +1628,16 @@ class CronController extends BaseController
         $scheduleRaw = trim((string) ($post['schedule'] ?? ''));
         $schedule    = ($depType === 'triggered_by') ? null : ($scheduleRaw !== '' ? $scheduleRaw : '');
 
+        // notes: trim, convert empty string to null
+        $notesRaw = isset($post['notes']) ? trim((string) $post['notes']) : null;
+        $notes    = ($notesRaw !== '' && $notesRaw !== null) ? $notesRaw : null;
+
         $payload = [
             'linux_user'               => trim((string) ($post['linux_user']   ?? '')),
             'schedule'                 => $schedule,
             'command'                  => trim((string) ($post['command']      ?? '')),
             'description'              => trim((string) ($post['description']  ?? '')),
+            'notes'                    => $notes,
             'tags'                     => $tags,
             'active'                   => isset($post['active']),
             'notify_on_failure'        => isset($post['notify_on_failure']),

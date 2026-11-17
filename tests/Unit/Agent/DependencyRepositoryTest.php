@@ -242,4 +242,109 @@ final class DependencyRepositoryTest extends TestCase
             'negative system code (-4)'  => [-4,  '0',       false],
         ];
     }
+
+    // -------------------------------------------------------------------------
+    // findActiveSuccessorsRecursive – BFS logic (mocked PDO)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Build a mock PDO that returns the given rows from fetchAll().
+     *
+     * @param list<array<string, mixed>> $rows
+     */
+    private function buildMockPdoForSuccessors(array $rows): \PDO
+    {
+        $stmt = $this->createMock(\PDOStatement::class);
+        $stmt->method('execute')->willReturn(true);
+        $stmt->method('fetchAll')->willReturn($rows);
+
+        $pdo = $this->createMock(\PDO::class);
+        $pdo->method('prepare')->willReturn($stmt);
+
+        return $pdo;
+    }
+
+    #[Test]
+    public function findActiveSuccessorsRecursiveReturnsEmptyForEmptyInput(): void
+    {
+        $pdo  = $this->createMock(\PDO::class);
+        $repo = new DependencyRepository($pdo);
+
+        self::assertSame([], $repo->findActiveSuccessorsRecursive([]));
+    }
+
+    #[Test]
+    public function findActiveSuccessorsRecursiveReturnsDirectSuccessor(): void
+    {
+        $rows = [
+            ['predecessor_id' => 1, 'job_id' => 2, 'type' => 'requires', 'description' => 'Job B'],
+        ];
+        $repo   = new DependencyRepository($this->buildMockPdoForSuccessors($rows));
+        $result = $repo->findActiveSuccessorsRecursive([1]);
+
+        self::assertCount(1, $result[1]);
+        self::assertSame(2, $result[1][0]['id']);
+        self::assertSame('requires', $result[1][0]['dependency_type']);
+        self::assertSame(1, $result[1][0]['depth']);
+    }
+
+    #[Test]
+    public function findActiveSuccessorsRecursiveReturnsTransitiveSuccessors(): void
+    {
+        // Chain: 1 → 2 → 3
+        $rows = [
+            ['predecessor_id' => 1, 'job_id' => 2, 'type' => 'requires',     'description' => 'B'],
+            ['predecessor_id' => 2, 'job_id' => 3, 'type' => 'triggered_by', 'description' => 'C'],
+        ];
+        $repo   = new DependencyRepository($this->buildMockPdoForSuccessors($rows));
+        $result = $repo->findActiveSuccessorsRecursive([1]);
+
+        self::assertCount(2, $result[1]);
+        $ids = array_column($result[1], 'id');
+        self::assertContains(2, $ids);
+        self::assertContains(3, $ids);
+    }
+
+    #[Test]
+    public function findActiveSuccessorsRecursiveHandlesCycleGracefully(): void
+    {
+        // A → B → A (cycle). BFS visited guard must prevent infinite loop.
+        $rows = [
+            ['predecessor_id' => 1, 'job_id' => 2, 'type' => 'requires', 'description' => 'B'],
+            ['predecessor_id' => 2, 'job_id' => 1, 'type' => 'requires', 'description' => 'A'],
+        ];
+        $repo   = new DependencyRepository($this->buildMockPdoForSuccessors($rows));
+        $result = $repo->findActiveSuccessorsRecursive([1]);
+
+        // Only job 2 is a successor; job 1 is the root so it is in $visited from the start
+        self::assertCount(1, $result[1]);
+        self::assertSame(2, $result[1][0]['id']);
+    }
+
+    #[Test]
+    public function findActiveSuccessorsRecursiveReturnsEmptyForJobWithNoSuccessors(): void
+    {
+        $rows = [
+            ['predecessor_id' => 99, 'job_id' => 100, 'type' => 'requires', 'description' => 'X'],
+        ];
+        $repo   = new DependencyRepository($this->buildMockPdoForSuccessors($rows));
+        $result = $repo->findActiveSuccessorsRecursive([1]);
+
+        self::assertSame([], $result[1] ?? []);
+    }
+
+    #[Test]
+    public function findActiveSuccessorsRecursiveHandlesMultipleRoots(): void
+    {
+        // Root 1 → 3; Root 2 → 3; both should report job 3 as a successor
+        $rows = [
+            ['predecessor_id' => 1, 'job_id' => 3, 'type' => 'requires', 'description' => 'C'],
+            ['predecessor_id' => 2, 'job_id' => 3, 'type' => 'requires', 'description' => 'C'],
+        ];
+        $repo   = new DependencyRepository($this->buildMockPdoForSuccessors($rows));
+        $result = $repo->findActiveSuccessorsRecursive([1, 2]);
+
+        self::assertSame(3, $result[1][0]['id']);
+        self::assertSame(3, $result[2][0]['id']);
+    }
 }

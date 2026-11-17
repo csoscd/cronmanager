@@ -463,7 +463,104 @@ Update a cron job.  Scope: **`jobs:write`**
 Request body: same structure as POST (all fields optional except those noted).
 Only fields present in the body are updated.
 
+Additional fields (v7.2.0):
+
+| Field | Type | Description |
+|---|---|---|
+| `notes` | string\|null | Optional free-text notes (plain text) |
+| `force` | bool | Skip the successor-conflict check |
+| `cascade` | bool | Also deactivate all transitive active successors |
+
+When deactivating a job (`active: false`) that has active successor jobs, the endpoint returns **HTTP 409 Conflict** unless `force: true` or `cascade: true` is set.
+
 **Response 200:** Updated job object.
+
+**Response 409 – successor conflict:**
+```json
+{
+  "error": "Conflict",
+  "code": 409,
+  "affected_successors": [
+    { "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }
+  ]
+}
+```
+
+---
+
+### GET /api/v1/jobs/{id}/successors
+
+Returns active successor jobs reachable from this job via the dependency graph. Use this for a pre-check before deactivation.  Scope: **`jobs:read`**
+
+**Response 200:**
+```json
+{
+  "agent_id": 1,
+  "has_active_successors": true,
+  "successors": [
+    { "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }
+  ]
+}
+```
+
+---
+
+### POST /api/v1/jobs/bulk/status
+
+Activate or deactivate multiple jobs in one call.  Scope: **`jobs:write`**
+
+When deactivating jobs with active successors, returns **HTTP 409 Conflict** unless `force: true` or `cascade: true` is set.
+
+**Request body:**
+```json
+{ "ids": [1, 4, 7], "active": false, "force": true }
+```
+
+**Response 200:**
+```json
+{ "agent_id": 1, "updated": 3 }
+```
+
+**Response 409 – successor conflict:**
+```json
+{
+  "error": "Conflict",
+  "code": 409,
+  "affected_jobs": [
+    {
+      "job_id": 1,
+      "description": "...",
+      "successors": [{ "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }]
+    }
+  ]
+}
+```
+
+---
+
+### POST /api/v1/jobs/bulk/successors
+
+Returns active successors for a set of jobs.  Scope: **`jobs:read`**
+
+**Request body:**
+```json
+{ "ids": [1, 4, 7] }
+```
+
+**Response 200:**
+```json
+{
+  "agent_id": 1,
+  "has_active_successors": true,
+  "jobs": [
+    {
+      "job_id": 1,
+      "description": "...",
+      "successors": [{ "id": 5, "description": "...", "dependency_type": "requires", "depth": 1 }]
+    }
+  ]
+}
+```
 
 ---
 
@@ -1226,6 +1323,9 @@ to 60 seconds of delay before the daemon picks up the entry.
 
 | Version | Change |
 |---|---|
+| 7.4.0 | `GET /api/v1/agents` now includes `web_pool_url` (string\|null) per agent: the web-pool URL (`AGENT_WEB_PORT`) configured for that agent, or `null` when no separate web pool is configured. No breaking changes; all existing fields are unchanged. |
+| 7.3.0 | No API changes. Infrastructure: dual-pool agent mode (`AGENT_WEB_PORT`) allows running a second agent instance for web UI reads while reserving the main pool for cron-wrapper writes. See README for configuration details. |
+| 7.2.0 | Added `notes` field (string\|null) to job objects (create, update, detail, CSV export); `GET /api/v1/jobs` now accepts `?q=` (full-text search, alias `search` kept for compatibility) and `?exec_type=schedule\|requires\|triggered_by` query parameters; `PUT /api/v1/jobs/{id}` and `POST /api/v1/jobs/bulk/status` accept `force: true` and `cascade: true` to handle active-successor conflicts; a 409 Conflict response is returned (and forwarded unchanged by the API) when a job has active successors and neither flag is set. |
 | 7.1.1 | All agent-specific endpoints now accept `?agent_id=<id>` as an alternative to the `X-Agent-Id` header for agent selection (§4). Header takes precedence when both are supplied. |
 | 7.1.0 | Added `acknowledged_state=open\|closed` query parameter to `GET /api/v1/jobs/{id}/history` (§8) and `GET /api/v1/timeline` (§13); `unacknowledged_only=1` is now a deprecated alias for `acknowledged_state=open`; fixed: `unacknowledged_only` was previously accepted but never forwarded to the agent. Fixed: `POST /api/v1/jobs` (create) response now includes `trigger_delay_minutes` in the `dependency` object (was absent; #128-6). Fixed: `dependency.exit_codes` validation now rejects negative values (was silently accepted; #128-7). |
 | 6.2.0 | Added `unacknowledged_only` query parameter to `GET /api/v1/jobs/{id}/history` (§8); filters to executions where `acknowledged_at IS NULL` |

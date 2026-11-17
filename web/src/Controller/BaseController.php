@@ -145,6 +145,10 @@ abstract class BaseController
             $data['perfData'] = null;
         }
 
+        // Signal to the layout when the web pool was unreachable and requests
+        // fell back to the exec pool so a warning banner can be shown.
+        $data['webPoolFallback'] = $this->agentClientInstance?->isFallbackActive() ?? false;
+
         // ------------------------------------------------------------------
         // Step 1-4: capture the sub-template output
         // ------------------------------------------------------------------
@@ -238,6 +242,7 @@ abstract class BaseController
                 timeout:     (int)     ($agent['timeout']     ?? 10),
                 sslVerify:   (bool)    ($agent['ssl_verify']  ?? true),
                 sslCaBundle: (string)  ($agent['ssl_ca_bundle'] ?? ''),
+                webUrl:      (string)  ($agent['web_url'] ?? ''),
             );
         }
 
@@ -395,6 +400,7 @@ abstract class BaseController
             timeout:     (int)    ($agent['timeout']      ?? 10),
             sslVerify:   (bool)   ($agent['ssl_verify']   ?? true),
             sslCaBundle: (string) ($agent['ssl_ca_bundle'] ?? ''),
+            webUrl:      (string) ($agent['web_url'] ?? ''),
         );
     }
 

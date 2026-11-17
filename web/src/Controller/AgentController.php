@@ -270,7 +270,9 @@ final class AgentController extends BaseController
         }
 
         try {
-            $client = new HostAgentClient(
+            // Test exec pool via its direct URL (bypass HostAgentClient fallback
+            // so we get an honest per-pool result for the status badge).
+            $execClient = new HostAgentClient(
                 logger:      $this->logger,
                 agentUrl:    (string)  $agent['url'],
                 hmacSecret:  (string)  $agent['hmac_secret'],
@@ -281,19 +283,42 @@ final class AgentController extends BaseController
                 sslCaBundle: (string)  ($agent['ssl_ca_bundle'] ?? ''),
             );
 
-            $health  = $client->get('/health');
+            $health  = $execClient->get('/health');
             $version = (string) ($health['version'] ?? 'unknown');
 
+            // If a web pool URL is configured, test it independently.
+            $webPoolOk  = true;
+            $webPoolUrl = (string) ($agent['web_url'] ?? '');
+            if ($webPoolUrl !== '') {
+                try {
+                    $webClient = new HostAgentClient(
+                        logger:      $this->logger,
+                        agentUrl:    $webPoolUrl,
+                        hmacSecret:  (string) $agent['hmac_secret'],
+                        userId:      SessionManager::getUserId()   ?? 0,
+                        username:    SessionManager::getUsername() ?? 'system',
+                        timeout:     (int)    ($agent['timeout']     ?? 10),
+                        sslVerify:   (bool)   ($agent['ssl_verify']  ?? true),
+                        sslCaBundle: (string) ($agent['ssl_ca_bundle'] ?? ''),
+                    );
+                    $webClient->get('/health');
+                } catch (\Throwable) {
+                    $webPoolOk = false;
+                }
+            }
+
             echo json_encode([
-                'success' => true,
-                'version' => $version,
-                'message' => '',
+                'success'     => true,
+                'version'     => $version,
+                'web_pool_ok' => $webPoolOk,
+                'message'     => '',
             ]);
         } catch (\Throwable $e) {
             echo json_encode([
-                'success' => false,
-                'version' => '',
-                'message' => $e->getMessage(),
+                'success'     => false,
+                'version'     => '',
+                'web_pool_ok' => null,
+                'message'     => $e->getMessage(),
             ]);
         }
     }
@@ -386,6 +411,7 @@ final class AgentController extends BaseController
             'name'          => trim((string) ($_POST['name']          ?? '')),
             'description'   => trim((string) ($_POST['description']   ?? '')),
             'url'           => rtrim(trim((string) ($_POST['url']     ?? '')), '/'),
+            'web_url'       => rtrim(trim((string) ($_POST['web_url'] ?? '')), '/'),
             'hmac_secret'   => trim((string) ($_POST['hmac_secret']   ?? '')),
             'timeout'       => max(1, (int) ($_POST['timeout']        ?? 10)),
             'ssl_verify'    => isset($_POST['ssl_verify']) ? 1 : 0,
@@ -420,6 +446,11 @@ final class AgentController extends BaseController
 
         if (!str_starts_with((string) $data['url'], 'http://') && !str_starts_with((string) $data['url'], 'https://')) {
             return 'agent_error_url_invalid';
+        }
+
+        $webUrl = (string) ($data['web_url'] ?? '');
+        if ($webUrl !== '' && !str_starts_with($webUrl, 'http://') && !str_starts_with($webUrl, 'https://')) {
+            return 'agent_error_web_url_invalid';
         }
 
         if (!$allowEmptySecret && (string) $data['hmac_secret'] === '') {

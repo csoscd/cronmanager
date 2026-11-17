@@ -343,6 +343,7 @@ final class ExportEndpoint
                 j.schedule,
                 j.command,
                 j.description,
+                j.notes,
                 j.active,
                 j.notify_on_failure,
                 j.execution_limit_seconds,
@@ -410,6 +411,7 @@ final class ExportEndpoint
             'schedule'          => $row['schedule'] !== null ? (string) $row['schedule'] : null,
             'command'           => (string) $row['command'],
             'description'       => isset($row['description']) ? (string) $row['description'] : null,
+            'notes'             => isset($row['notes']) && $row['notes'] !== null ? (string) $row['notes'] : null,
             'active'                   => (bool)   $row['active'],
             'notify_on_failure'        => (bool)   $row['notify_on_failure'],
             'execution_limit_seconds'  => isset($row['execution_limit_seconds']) && $row['execution_limit_seconds'] !== null

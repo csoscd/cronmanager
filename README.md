@@ -50,14 +50,16 @@ history, email failure alerts, execution limits, multi-host support, and SSO int
 | **Job monitor** | Per-job statistics page with KPI cards (success rate, avg/min/max duration, alerts), an execution duration line chart, and a stacked bar chart – selectable time window from 1 hour to 1 year; period and target switching updates in-place via AJAX with auto-refresh for short windows |
 | **Dashboard** | At-a-glance view of total jobs, active/inactive counts, recent failures, and execution statistics; KPI cards refresh every 60 s via AJAX |
 | **Job actions menu** | Each row in the job list has a ⋮ dropdown menu with _Open_, _Edit_ (admin), _Copy_ (admin), and _Delete_ (admin); the delete action shows a confirmation dialog before proceeding |
-| **Bulk operations** | Select multiple jobs on the list page to activate, deactivate, delete, or re-tag them in a single action; running executions block bulk delete with a clear error message |
+| **Bulk operations** | Select multiple jobs on the list page to activate, deactivate, delete, or re-tag them in a single action; running executions block bulk delete with a clear error message; deactivating a job with active successors shows a warning dialog with options to cancel, force (deactivate only this job), or cascade (deactivate the job and all its transitive successors) |
 | **Timeline** | Filterable, paginated history of all executions across all jobs |
 | **Swimlane** | Visual schedule overview: planned fire times per job across a time-of-day axis, filterable by hour range, day of week, tag, and target |
 | **Multi-host execution** | A single job can run on multiple targets (local + remote SSH) in parallel |
 | **Tags** | Label jobs to enable filtering and grouped export |
 | **Crontab import** | Detect and import existing unmanaged crontab entries |
 | **Export** | Download a ready-to-use crontab file or JSON for all managed jobs |
-| **Job Dependencies** | Two dependency types: **`requires`** (job keeps its schedule but is skipped with exit code -7 if the predecessor's most recent execution did not finish with a configured exit code within `max_age_minutes`); **`triggered_by`** (job has no schedule — it is started automatically when the predecessor finishes with a configured exit code; optional `trigger_delay_minutes` delays scheduling). Cycle detection prevents circular chains. Both types visible in the job list and detail view. **Dependency visualization** shows the full predecessor chain and successor tree in the job list (flat chain under job name) and on the detail page (dedicated section with upstream chain and indented downstream tree) |
+| **Job Dependencies** | Two dependency types: **`requires`** (job keeps its schedule but is skipped with exit code -7 if the predecessor's most recent execution did not finish with a configured exit code within `max_age_minutes`); **`triggered_by`** (job has no schedule — it is started automatically when the predecessor finishes with a configured exit code; optional `trigger_delay_minutes` delays scheduling). Cycle detection prevents circular chains. Both types visible in the job list and detail view. **Dependency visualization** shows the full predecessor chain and successor tree in the job list (flat chain under job name) and on the detail page (dedicated section with upstream chain and indented downstream tree). **Successor warning on deactivation**: deactivating a job with active successors requires confirmation (Cancel / Force / Cascade) |
+| **Job notes** | Optional free-text notes field on each job; shown on the detail page; included in the job list full-text search |
+| **Job list filters** | Server-side filtering by search text (`q`), active/inactive state, execution type (`schedule`, `requires`, `triggered_by`), tag, Linux user, and target |
 | **Auto-retry on failure** | Automatically re-run a failed job up to N times with a configurable delay between attempts; notification is suppressed until all retries are exhausted |
 | **Exit-code filter for restart** | Optionally restrict which exit codes trigger an automatic retry using a flexible expression such as `1-5,10,255`; empty (default) means any non-zero code |
 | **Email alerts** | Receive an email when a job exits with a non-zero status or exceeds its execution limit |
@@ -177,8 +179,8 @@ All persistent data lives in **Docker-managed named volumes** (`db-data`, `agent
 |---|---|---|
 | `latest` | Every release (code or rebuild) | Production — always the newest stable image |
 | `7`, `7.1` | Same as `latest` (updated on every release) | Pinning to a major or minor line |
-| `7.1.1` | Code release tag `v7.1.1` | Pinning to an exact code version |
-| `7.1.1-r3` | Rebuild release (same code, updated base image) | Pinning to a specific rebuild |
+| `7.4.0` | Code release tag `v7.4.0` | Pinning to an exact code version |
+| `7.4.0-r1` | Rebuild release (same code, updated base image) | Pinning to a specific rebuild |
 | `dev` | Latest development branch push | Testing unreleased features |
 
 Rebuild releases (`vX.Y.Z-rN`) are created automatically when upstream base images are
@@ -191,8 +193,8 @@ layers are updated.
 
 To use a specific version, replace `:latest` in `docker-compose-full.yml`:
 ```yaml
-image: cs1711/cronmanager-agent:7.1.1
-image: cs1711/cronmanager-web:7.1.1
+image: cs1711/cronmanager-agent:7.4.0
+image: cs1711/cronmanager-web:7.4.0
 ```
 
 ### Updating to a new release
@@ -305,6 +307,8 @@ key rotation, troubleshooting), see **[MULTI-HOST.md](MULTI-HOST.md)**.
 | `INFLUXDB_BUCKET` | `cronmanager` | InfluxDB bucket name |
 | `INFLUXDB_TIMEOUT` | `10` | HTTP write timeout in seconds |
 | `AGENT_SETTINGS_KEY` | _(empty)_ | When set, `mail.password`, `telegram.bot_token` and `influxdb.token` are encrypted with AES-256-CBC before being stored in the `agent_settings` DB table. Use at least 32 random characters (`openssl rand -hex 32`). If unset, values are stored as plaintext. Removing the key after setting it makes stored credentials unreadable until re-saved via the web UI. |
+| `AGENT_WEB_PORT` | _(unset)_ | **Dual-pool mode**: when set, starts a second PHP server instance on this port for web UI reads. The main pool on `AGENT_PORT` is then exclusively for `cron-wrapper.sh` calls. When `AGENT_TLS_ENABLED=true`, nginx also terminates TLS on this port (→ `127.0.0.1:18866`), so the web pool is reachable over HTTPS from remote agents. When TLS is disabled, PHP binds directly on `0.0.0.0:AGENT_WEB_PORT` (plain HTTP; suitable for same-network Docker deployments only). Set the **Web-Pool-URL** field on the agent record in the web UI to route UI traffic to this port. When unset, behaviour is identical to previous versions (single pool). The Docker health check (`agent-healthcheck.sh`) automatically checks both pools when this variable is set. |
+| `PHP_CLI_WEB_SERVER_WORKERS` | `6` | Worker count for the optional web pool (only used when `AGENT_WEB_PORT` is set). |
 
 #### Web container optional variables
 

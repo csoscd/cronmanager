@@ -217,7 +217,7 @@ Tests `agent/src/Router.php` route dispatching.
 > or `"bulk"` is silently interpreted as a job ID. This is a known pitfall
 > documented in `CLAUDE.md`.
 
-#### `Web/HostAgentClientTest` (12 tests)
+#### `Web/HostAgentClientTest` (16 tests)
 
 Tests `web/src/Agent/HostAgentClient.php` without making real HTTP calls.
 A Guzzle `MockHandler` backed `HandlerStack` is injected into the private
@@ -236,6 +236,8 @@ captures outgoing requests for header/URL inspection.
 | 4xx/5xx errors | `AgentHttpException` with correct `getStatusCode()` |
 | `ConnectException` | Wrapped in `RuntimeException("Agent unreachable: …")` |
 | Non-JSON body | Returns `[]` instead of throwing |
+| webUrl as base_uri – v7.4.0 (2) | `webUrl` used as `base_uri` when set; falls back to `agentUrl` when empty |
+| Fallback on ConnectException – v7.4.0 (2) | `ConnectException` on web pool triggers fallback to exec pool; `isFallbackActive()` returns `true` after fallback |
 
 **HMAC formula verified:**
 ```
@@ -421,14 +423,78 @@ New in v7.1.0. Covers `POST /crons` (Fix #128-6). Uses `useTransactionIsolation 
 | Scheduling (1) | Schedules once-entry, marker in sandbox crontab, `job_id` + `targets` in response |
 | `scheduled_at` accuracy (1) | `scheduled_at` starts with the cron H:MM matching `OnceSchedule::compute()` (Fix #128-5) |
 
-#### `Unit/Agent/DependencyRepositoryTest` (26 tests)
+#### `Unit/Agent/DependencyRepositoryTest` (32 tests)
 
 | Group | Tests |
 |---|---|
-| `validateExitCodes()` (9) | Valid expressions accepted, negative codes rejected (Fix #128-7), empty string rejected |
-| `validateDependency()` (8) | Invalid type, self-referential predecessor, negative `trigger_delay_minutes`, zero `trigger_delay_minutes` accepted, zero `max_age_minutes` rejected, negative exit codes in dep rejected; uses mock PDO for DB-skip |
-| `findByJobId()` (5) | Returns null when none, returns row when present, `max_age_minutes=null` fallback |
-| Cycle detection (4) | Direct cycle, indirect chain cycle, no cycle |
+| `exitCodeMatches()` standalone (5) | Exact match (single/multiple codes), false for non-match, whitespace tolerance, empty list = match-any |
+| `exitCodeMatchesDataDriven` (8 data cases via `#[DataProvider]`) | Full truth table: zero/non-zero exact, list membership, whitespace, empty list, negative system codes (-7, -4) |
+| `validateExitCodes()` (7) | Valid single code, valid list, negative code rejected (Fix #128-7), out-of-range (256) rejected, non-numeric rejected, empty string accepted, empty token rejected |
+| `validateDependency()` (6) | Invalid type, self-referential predecessor, negative `trigger_delay_minutes`, zero `trigger_delay_minutes` accepted, zero `max_age_minutes` rejected, negative exit codes in dep rejected; uses mock PDO for DB-skip |
+| `findActiveSuccessorsRecursive()` (6) | New in v7.2.0 — BFS logic via mocked PDO: empty input → `[]`, direct successor, transitive chain (depth 2), cycle guard (visited set prevents infinite loop), job with no successors, multiple root jobs |
+
+#### `Endpoints/NotesAndSuccessorConflictTest` (7 tests)
+
+New in v7.2.0. Uses `useTransactionIsolation = false` and manual `tearDown`.
+
+| Group | Tests |
+|---|---|
+| `notes` field (2) | `PUT /crons/{id}` stores and returns notes; clears when set to `null` |
+| 409 conflict (1) | Deactivating a job with an active successor returns HTTP 409 with `affected_successors` |
+| `force: true` (1) | Deactivates only the target job; successor remains active |
+| `cascade: true` (1) | Deactivates the target job and all transitive successors |
+| Bulk 409 (1) | `POST /crons/bulk/status` with active-successor job returns HTTP 409 with `affected_jobs` |
+| Bulk `force: true` (1) | Bulk deactivation proceeds; successors remain active |
+
+#### `Web/JobsApiControllerBulkAndSuccessorsTest` (14 tests)
+
+New in v7.2.0. Split into two groups:
+
+**Group A (10 tests)** — input validation/auth/agent-resolution; no running agent required (4xx are returned before any agent HTTP call):
+
+| Group | Tests |
+|---|---|
+| `POST /api/v1/jobs/bulk/status` (4) | Missing auth → 401; missing `ids` field → 400; missing `active` field → 400; unknown agent → 404 |
+| `GET /api/v1/jobs/{id}/successors` (3) | Missing auth → 401; non-positive ID → 400; unknown agent → 404 |
+| `POST /api/v1/jobs/bulk/successors` (3) | Missing auth → 401; missing `ids` field → 400; unknown agent → 404 |
+
+**Group B (4 tests)** — proxy behaviour with injected GuzzleHttp `MockHandler` via the `HostAgentClient` optional `$httpClient` constructor parameter; uses a `MockedJobsApiController` subclass:
+
+| Endpoint | Tests |
+|---|---|
+| `POST /api/v1/jobs/bulk/status` (2) | Agent 200 → controller returns 200 with `updated` and `agent_id`; agent 409 → controller forwards 409 with `affected_jobs` unchanged |
+| `GET /api/v1/jobs/{id}/successors` (1) | Agent 200 `has_active_successors: true` → controller returns 200 with successor list |
+| `POST /api/v1/jobs/bulk/successors` (1) | Agent 200 `has_active_successors: false` → controller returns 200 with empty `jobs` list |
+
+#### `Endpoints/CronListFiltersAndSuccessorsEndpointTest` (11 tests)
+
+New in v7.2.0. Covers server-side SQL filters in `CronListEndpoint` and both handlers in `SuccessorsEndpoint`.
+
+| Group | Tests |
+|---|---|
+| `?q=` filter (2) | Matches job description; matches job notes (new field) |
+| `?active=` filter (2) | `0` returns only inactive jobs; `1` returns only active jobs |
+| `?exec_type=` filter (2) | `schedule` excludes dependency jobs; `requires` returns only requires-type jobs |
+| Combined filter (1) | `?q=X&active=1` excludes inactive jobs matching the same search term |
+| `GET /crons/{id}/successors` (2) | `has_active_successors: false` when no deps; `true` with successor list |
+| `POST /crons/bulk/successors` (2) | `has_active_successors: false` for no-dep jobs; `true` with `affected_jobs` list |
+
+#### `Integration/Infrastructure/DualPoolConfigTest` (23 tests)
+
+New in v7.3.0, extended in v7.4.0 — structural and functional tests for the dual-pool agent feature.
+
+| Group | Tests |
+|---|---|
+| `entrypoint.sh` structure – v7.3.0 (4) | Contains `AGENT_WEB_PORT` handling; starts web pool in background on `0.0.0.0`; writes `agent.web_port` and `agent.web_workers` to config.json; documents `PHP_CLI_WEB_SERVER_WORKERS` |
+| `entrypoint.sh` TLS web-pool – v7.4.0 (3) | Defines `WEB_INTERNAL_PORT=18866`; nginx proxy_pass references `WEB_INTERNAL_PORT`; PHP bound on `127.0.0.1:WEB_INTERNAL_PORT` in TLS mode |
+| `start-agent.sh` structure – v7.3.0 (4) | Reads `web_port` from config; has dual-pool branch on `WEB_PORT`; has `trap` for cleanup; keeps original `exec` path for single-pool mode |
+| Config generation snippet – v7.3.0 (3) | Web-pool env set → `web_port`/`web_workers` present in generated JSON; default workers=6; env absent → both keys omitted from config |
+| AgentSchema web_url column – v7.4.0 (2) | `AgentSchema.php` defines `web_url` column; `addWebUrlColumn()` uses `ADD COLUMN IF NOT EXISTS` |
+| AgentsApiController – v7.4.0 (1) | `GET /api/v1/agents` exposes `web_pool_url` |
+| README.md documentation – v7.3.0 (2) | `AGENT_WEB_PORT` and `PHP_CLI_WEB_SERVER_WORKERS` are documented in the env-var reference table |
+| Health-check script – v7.4.0 (3) | `agent-healthcheck.sh` exists and is referenced in Dockerfile `HEALTHCHECK`; checks exec pool in TLS mode with `--insecure`; checks web pool only when `AGENT_WEB_PORT` is set |
+
+---
 
 #### `Integration/Web/VersionConsistencyTest` (16 tests)
 

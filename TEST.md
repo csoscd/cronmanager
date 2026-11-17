@@ -479,9 +479,9 @@ New in v7.2.0. Covers server-side SQL filters in `CronListEndpoint` and both han
 | `GET /crons/{id}/successors` (2) | `has_active_successors: false` when no deps; `true` with successor list |
 | `POST /crons/bulk/successors` (2) | `has_active_successors: false` for no-dep jobs; `true` with `affected_jobs` list |
 
-#### `Integration/Infrastructure/DualPoolConfigTest` (23 tests)
+#### `Integration/Infrastructure/DualPoolConfigTest` (24 tests)
 
-New in v7.3.0, extended in v7.4.0 — structural and functional tests for the dual-pool agent feature.
+New in v7.3.0, extended in v7.4.0/v7.4.1 — structural and functional tests for the dual-pool agent feature.
 
 | Group | Tests |
 |---|---|
@@ -492,7 +492,7 @@ New in v7.3.0, extended in v7.4.0 — structural and functional tests for the du
 | AgentSchema web_url column – v7.4.0 (2) | `AgentSchema.php` defines `web_url` column; `addWebUrlColumn()` uses `ADD COLUMN IF NOT EXISTS` |
 | AgentsApiController – v7.4.0 (1) | `GET /api/v1/agents` exposes `web_pool_url` |
 | README.md documentation – v7.3.0 (2) | `AGENT_WEB_PORT` and `PHP_CLI_WEB_SERVER_WORKERS` are documented in the env-var reference table |
-| Health-check script – v7.4.0 (3) | `agent-healthcheck.sh` exists and is referenced in Dockerfile `HEALTHCHECK`; checks exec pool in TLS mode with `--insecure`; checks web pool only when `AGENT_WEB_PORT` is set |
+| Health-check script – v7.4.0/v7.4.1 (4) | `agent-healthcheck.sh` exists and is referenced in Dockerfile `HEALTHCHECK`; checks exec pool in TLS mode with `--insecure`; checks web pool only when `AGENT_WEB_PORT` is set; `AGENT_TLS_ENABLED` defaults to `true` (matches entrypoint.sh) |
 
 ---
 

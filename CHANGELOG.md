@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [7.4.1] – 2026-11-17
+
+### Fixed
+
+- **`agent-healthcheck.sh`: TLS default mismatch** – the health-check script defaulted
+  `AGENT_TLS_ENABLED` to `false`, while `entrypoint.sh` defaults it to `true`. On deployments
+  that rely on the default (i.e. `AGENT_TLS_ENABLED` is not set explicitly), the health check
+  hit `http://` while nginx served only `https://`, causing the container to report `Unhealthy`
+  immediately after the first check cycle. Fixed by aligning the default in
+  `agent-healthcheck.sh` to `true`.
+
+---
+
 ## [7.4.0] – 2026-11-17
 
 ### Added

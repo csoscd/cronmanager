@@ -300,6 +300,21 @@ class DualPoolConfigTest extends TestCase
     }
 
     #[Test]
+    public function healthCheckScriptDefaultsTlsToTrue(): void
+    {
+        // entrypoint.sh defaults AGENT_TLS_ENABLED to "true" (line: AGENT_TLS_ENABLED="${AGENT_TLS_ENABLED:-true}").
+        // The health-check script must use the same default so that deployments without an
+        // explicit AGENT_TLS_ENABLED env var are not broken (v7.4.1 fix).
+        $script = (string) file_get_contents($this->root . '/docker/agent/agent-healthcheck.sh');
+
+        $this->assertMatchesRegularExpression(
+            '/AGENT_TLS_ENABLED:-true/',
+            $script,
+            'agent-healthcheck.sh must default AGENT_TLS_ENABLED to "true" to match entrypoint.sh'
+        );
+    }
+
+    #[Test]
     public function healthCheckScriptChecksWebPoolOnlyWhenPortIsSet(): void
     {
         $script = (string) file_get_contents($this->root . '/docker/agent/agent-healthcheck.sh');
